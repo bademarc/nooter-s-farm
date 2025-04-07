@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ArrowDownUp, RefreshCw, ArrowRightLeft, AlertCircle, Coins, ArrowDown, Loader, ExternalLink, CheckCircle2, Plus } from "lucide-react"
 // Import specific functions from ethers v6
-import { ethers, Contract, formatUnits, parseUnits, BrowserProvider } from "ethers"
+import { ethers, Contract, formatUnits, parseUnits, BrowserProvider, JsonRpcProvider } from "ethers"
 import toast from "react-hot-toast"
 import { 
   Dialog,
@@ -24,10 +24,6 @@ const etherUtils = {
       // Use the imported formatUnits
       return formatUnits(value, decimals);
     } catch (err) {
-      // Fallback to ethers v5 if available
-      if ((ethers as any).utils && (ethers as any).utils.formatUnits) {
-        return (ethers as any).utils.formatUnits(value, decimals);
-      }
       // Last resort fallback
       return String(Number(value) / Math.pow(10, Number(decimals)));
     }
@@ -37,10 +33,6 @@ const etherUtils = {
       // Use the imported parseUnits
       return parseUnits(value, decimals);
     } catch (err) {
-      // Fallback to ethers v5 if available
-      if ((ethers as any).utils && (ethers as any).utils.parseUnits) {
-        return (ethers as any).utils.parseUnits(value, decimals);
-      }
       // Last resort fallback (not ideal but better than crashing)
       return BigInt(Math.floor(Number(value) * Math.pow(10, Number(decimals))));
     }
@@ -53,10 +45,6 @@ const getProvider = (ethereum: any) => {
     // Use proper ethers v6 BrowserProvider
     return new BrowserProvider(ethereum);
   } catch (err) {
-    // Fallback to ethers v5 if available
-    if ((ethers as any).providers && (ethers as any).providers.Web3Provider) {
-      return new (ethers as any).providers.Web3Provider(ethereum);
-    }
     // If all else fails, throw an error
     throw new Error("Cannot create provider with current ethers version");
   }
@@ -492,9 +480,9 @@ export const TokenSwap = () => {
       // Format balances for display
       let formattedContractBalance: string;
       try {
-        formattedContractBalance = etherUtils.formatUnits(contractNootBalanceWei, 18);
+        formattedContractBalance = formatUnits(contractNootBalanceWei, 18);
       } catch (err) {
-        formattedContractBalance = "Error: Cannot format balance";
+        formattedContractBalance = etherUtils.formatUnits(contractNootBalanceWei, 18);
       }
       
       toast.dismiss("debug-toast");
@@ -631,9 +619,9 @@ export const TokenSwap = () => {
       const contractBalance = await nootContract.balanceOf(checksummedFarmSwapAddress);
       let formattedContractBalance;
       try {
-        formattedContractBalance = ethers.formatUnits(contractBalance, 18);
+        formattedContractBalance = formatUnits(contractBalance, 18);
       } catch (err) {
-        formattedContractBalance = (ethers as any).utils.formatUnits(contractBalance, 18);
+        formattedContractBalance = etherUtils.formatUnits(contractBalance, 18);
       }
       
       console.log("Contract NOOT balance:", formattedContractBalance);
@@ -1236,10 +1224,10 @@ export const TokenSwap = () => {
       // Format amount with proper decimals for the blockchain
       let nootAmount;
       try {
-        nootAmount = ethers.parseUnits(nootToReceive.toString(), 18);
+        nootAmount = parseUnits(nootToReceive.toString(), 18);
       } catch (err) {
-        // Fallback for ethers v5
-        nootAmount = (ethers as any).utils.parseUnits(nootToReceive.toString(), 18);
+        // Fallback using our utility
+        nootAmount = etherUtils.parseUnits(nootToReceive.toString(), 18);
       }
       
       // Create contract instances
@@ -1253,9 +1241,9 @@ export const TokenSwap = () => {
       let formattedBalance;
       
       try {
-        formattedBalance = ethers.formatUnits(contractBalance, 18);
+        formattedBalance = formatUnits(contractBalance, 18);
       } catch (err) {
-        formattedBalance = (ethers as any).utils.formatUnits(contractBalance, 18);
+        formattedBalance = etherUtils.formatUnits(contractBalance, 18);
       }
       
       console.log("Contract NOOT balance:", formattedBalance);
