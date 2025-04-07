@@ -26,6 +26,13 @@ const nextConfig = {
       crypto: false,
     };
     
+    // Handle document access in server components
+    if (isServer) {
+      config.externals.push({
+        canvas: 'commonjs canvas',
+      });
+    }
+    
     return config;
   },
   // Ignore specific build errors that are just warnings

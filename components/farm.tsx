@@ -42,6 +42,7 @@ import {
 import { TokenSwap } from "@/components/token-swap";
 import { Switch } from "@/components/ui/switch";
 import dynamic from 'next/dynamic';
+import DynamicWrapper from '@/components/dynamic-wrapper';
 
 // Import FarmGame with SSR disabled and proper loading state
 const FarmGame = dynamic(() => import('./farm-game/FarmGame'), { 
