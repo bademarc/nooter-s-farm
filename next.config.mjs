@@ -43,11 +43,11 @@ const nextConfig = {
     parallelServerCompiles: true,
     parallelServerBuildTraces: true,
   },
-  // Add the following configurations
-  // Add basePath for GitHub Pages
-  basePath: '/nooter-s-farm',
-  // Set output to export static files
-  output: 'export',
+  // Conditionally apply GitHub Pages settings based on environment
+  ...(process.env.GITHUB_ACTIONS ? {
+    basePath: '/nooter-s-farm',
+    output: 'export',
+  } : {}),
 };
 
 if (userConfig) {
