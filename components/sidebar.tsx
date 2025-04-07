@@ -37,7 +37,7 @@ declare global {
 }
 
 export interface SidebarProps {
-  provider?: ethers.BrowserProvider | null; 
+  provider?: any; // Using a more generic type for provider
   isConnected?: boolean;
   setActiveView: (view: string) => void;
   activeView: string;

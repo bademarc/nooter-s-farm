@@ -249,7 +249,7 @@ export const TokenSwap = () => {
     }
     
     try {
-      const provider = new ethers.BrowserProvider(window.ethereum);
+      const provider = getProvider(window.ethereum);
       const chainId = await window.ethereum.request({ method: 'eth_chainId' });
       
       if (chainId !== ABSTRACT_TESTNET_CHAIN_ID) {
@@ -259,11 +259,11 @@ export const TokenSwap = () => {
       
       // Create contract instance 
       const tokenAbi = ["function balanceOf(address) view returns (uint256)"];
-      const nootContract = new ethers.Contract(NOOT_TOKEN_ADDRESS, tokenAbi, provider);
+      const nootContract = new Contract(NOOT_TOKEN_ADDRESS, tokenAbi, provider);
       
       // Get the balance
       const balanceWei = await nootContract.balanceOf(FARM_SWAP_ADDRESS);
-      const balanceFormatted = ethers.formatUnits(balanceWei, 18);
+      const balanceFormatted = etherUtils.formatUnits(balanceWei, 18);
       
       setContractNootBalance(balanceFormatted);
       console.log(`FarmSwap contract NOOT balance: ${balanceFormatted}`);
@@ -351,14 +351,14 @@ export const TokenSwap = () => {
     }, 1000);
   };
   
-  // Update the monitorTransaction function to handle null receipt
+  // Update the monitorTransaction function
   const monitorTransaction = async (txHash: string, onConfirm: () => void) => {
     console.log(`Monitoring transaction: ${txHash}`);
     
     if (!window.ethereum) return;
     
     try {
-      const provider = new ethers.BrowserProvider(window.ethereum);
+      const provider = getProvider(window.ethereum);
       
       // Wait for transaction to be mined
       const receipt = await provider.waitForTransaction(txHash);
@@ -468,7 +468,7 @@ export const TokenSwap = () => {
       setIsRefreshing(true);
       toast.loading("Checking contract configuration...", { id: "debug-toast" });
       
-      const provider = new ethers.BrowserProvider(window.ethereum);
+      const provider = getProvider(window.ethereum);
       const signer = await provider.getSigner();
       
       // Check if we're using the correct addresses
@@ -477,8 +477,8 @@ export const TokenSwap = () => {
       
       // Create contract instances 
       const tokenAbi = ["function balanceOf(address) view returns (uint256)", "function name() view returns (string)"];
-      const nootContract = new ethers.Contract(checksummedNOOTAddress, tokenAbi, provider);
-      const swapContract = new ethers.Contract(checksummedFarmSwapAddress, SWAP_ABI, provider);
+      const nootContract = new Contract(checksummedNOOTAddress, tokenAbi, provider);
+      const swapContract = new Contract(checksummedFarmSwapAddress, SWAP_ABI, provider);
       
       // Verify NOOT token contract is valid
       const tokenName = await nootContract.name().catch(e => "Error: Cannot read token name");
@@ -492,7 +492,7 @@ export const TokenSwap = () => {
       // Format balances for display
       let formattedContractBalance: string;
       try {
-        formattedContractBalance = ethers.formatUnits(contractNootBalanceWei, 18);
+        formattedContractBalance = etherUtils.formatUnits(contractNootBalanceWei, 18);
       } catch (err) {
         formattedContractBalance = "Error: Cannot format balance";
       }
@@ -567,19 +567,9 @@ export const TokenSwap = () => {
       // Now let's get actual NOOT tokens from the contract
       console.log("Claiming NOOT tokens from contract...");
       
-      // Create provider compatible with both ethers v5 and v6
-      let provider;
-      let signer;
-      try {
-        provider = new ethers.BrowserProvider(window.ethereum);
-        signer = await provider.getSigner();
-        console.log("Using ethers v6 provider");
-      } catch (err) {
-        // Fallback for ethers v5
-        provider = new (ethers as any).providers.Web3Provider(window.ethereum);
-        signer = provider.getSigner();
-        console.log("Using ethers v5 provider");
-      }
+      // Use our getProvider helper
+      const provider = getProvider(window.ethereum);
+      const signer = await provider.getSigner();
       
       // Check network ID to ensure we're on Abstract Testnet
       let chainId;
@@ -665,13 +655,7 @@ export const TokenSwap = () => {
       }
       
       // Calculate amount in wei (10 tokens with 18 decimals)
-      let nootAmount;
-      try {
-        nootAmount = ethers.parseUnits(requestAmount.toString(), 18);
-      } catch (err) {
-        // Fallback for ethers v5
-        nootAmount = (ethers as any).utils.parseUnits(requestAmount.toString(), 18);
-      }
+      const nootAmount = etherUtils.parseUnits(requestAmount.toString(), 18);
       
       console.log("Claiming NOOT amount:", nootAmount.toString());
       
@@ -725,7 +709,7 @@ export const TokenSwap = () => {
         
         // Add event listener for token transfers to this wallet
         try {
-          const provider = new ethers.BrowserProvider(window.ethereum);
+          const provider = getProvider(window.ethereum);
           const filter = {
             address: checksummedNOOTAddress,
             topics: [
@@ -741,7 +725,7 @@ export const TokenSwap = () => {
             console.log("Removed claim event listener after timeout");
           }, 30000);
           
-          provider.on(filter, (log) => {
+          provider.on(filter, (log: any) => {
             console.log("Transfer event detected after claim:", log);
             fetchNootBalance(walletAddress);
             clearTimeout(timeoutId);
@@ -917,19 +901,9 @@ export const TokenSwap = () => {
       // Store initial farm coins to ensure proper update
       const initialFarmCoins = farmCoins;
       
-      // Create provider compatible with both ethers v5 and v6
-      let provider;
-      let signer;
-      try {
-        provider = new ethers.BrowserProvider(window.ethereum);
-        signer = await provider.getSigner();
-        console.log("Using ethers v6 provider");
-      } catch (err) {
-        // Fallback for ethers v5
-        provider = new (ethers as any).providers.Web3Provider(window.ethereum);
-        signer = provider.getSigner();
-        console.log("Using ethers v5 provider");
-      }
+      // Use our provider helper
+      const provider = getProvider(window.ethereum);
+      const signer = await provider.getSigner();
       
       // Check network ID to ensure we're on Abstract Testnet
       let chainId;
@@ -984,19 +958,13 @@ export const TokenSwap = () => {
       // Create contract instances
       const checksummedNOOTAddress = getChecksumAddress(NOOT_TOKEN_ADDRESS);
       const checksummedFarmSwapAddress = getChecksumAddress(FARM_SWAP_ADDRESS);
-      const nootContract = new ethers.Contract(checksummedNOOTAddress, TOKEN_ABI, signer);
-      const swapContract = new ethers.Contract(checksummedFarmSwapAddress, SWAP_ABI, signer);
+      const nootContract = new Contract(checksummedNOOTAddress, TOKEN_ABI, signer);
+      const swapContract = new Contract(checksummedFarmSwapAddress, SWAP_ABI, signer);
       
       console.log("Contract instances created");
       
       // Format amount with proper decimals for the blockchain
-      let nootAmount;
-      try {
-        nootAmount = ethers.parseUnits(swapAmount.toString(), 18);
-      } catch (err) {
-        // Fallback for ethers v5
-        nootAmount = (ethers as any).utils.parseUnits(swapAmount.toString(), 18);
-      }
+      const nootAmount = etherUtils.parseUnits(swapAmount.toString(), 18);
       
       console.log("Amount to swap:", nootAmount.toString());
       
@@ -1231,27 +1199,23 @@ export const TokenSwap = () => {
       return;
     }
     
-    setIsFarmToNootLoading(true);
-    setFarmToNootError("");
-    
     try {
-      // Calculate NOOT tokens to receive (10 Farm Coins = 1 NOOT)
+      setIsFarmToNootLoading(true);
+      setFarmToNootError("");
+      
+      // Calculate NOOT to receive (10 Farm Coins = 1 NOOT)
       const nootToReceive = farmToNootAmount / 10;
-      console.log(`Converting ${farmToNootAmount} Farm Coins to ${nootToReceive} NOOT`);
-
-      // Create provider compatible with both ethers v5 and v6
-      let provider;
-      let signer;
-      try {
-        provider = new ethers.BrowserProvider(window.ethereum);
-        signer = await provider.getSigner();
-        console.log("Using ethers v6 provider");
-      } catch (err) {
-        // Fallback for ethers v5
-        provider = new (ethers as any).providers.Web3Provider(window.ethereum);
-        signer = provider.getSigner();
-        console.log("Using ethers v5 provider");
+      
+      // Check if the contract has enough NOOT
+      if (parseFloat(contractNootBalance) < nootToReceive) {
+        setFarmToNootError(`FarmSwap contract has only ${contractNootBalance} NOOT. Not enough to swap.`);
+        setIsFarmToNootLoading(false);
+        return;
       }
+      
+      // Use our compatibility helpers
+      const provider = getProvider(window.ethereum);
+      const signer = await provider.getSigner();
       
       // Check network ID to ensure we're on Abstract Testnet
       const chainId = await window.ethereum.request({ method: 'eth_chainId' });
@@ -1778,10 +1742,10 @@ export const TokenSwap = () => {
               onClick={async () => {
                 if (!window.ethereum) return;
                 try {
-                  const provider = new ethers.BrowserProvider(window.ethereum);
+                  const provider = getProvider(window.ethereum);
                   const signer = await provider.getSigner();
                   const checksummedNOOTAddress = getChecksumAddress(NOOT_TOKEN_ADDRESS);
-                  const nootContract = new ethers.Contract(checksummedNOOTAddress, TOKEN_ABI, signer);
+                  const nootContract = new Contract(checksummedNOOTAddress, TOKEN_ABI, signer);
                   const name = await nootContract.name();
                   const symbol = await nootContract.symbol();
                   toast.success(`Token info: ${name} (${symbol})`);
@@ -1800,10 +1764,10 @@ export const TokenSwap = () => {
               onClick={async () => {
                 if (!window.ethereum) return;
                 try {
-                  const provider = new ethers.BrowserProvider(window.ethereum);
+                  const provider = getProvider(window.ethereum);
                   const signer = await provider.getSigner();
                   const checksummedFarmSwapAddress = getChecksumAddress(FARM_SWAP_ADDRESS);
-                  const swapContract = new ethers.Contract(checksummedFarmSwapAddress, SWAP_ABI, signer);
+                  const swapContract = new Contract(checksummedFarmSwapAddress, SWAP_ABI, signer);
                   const nootAddr = await swapContract.nootToken();
                   const checksummedNootAddr = getChecksumAddress(nootAddr);
                   toast.success(`FarmSwap linked to NOOT at: ${checksummedNootAddr}`);
@@ -1834,7 +1798,7 @@ export const TokenSwap = () => {
                 }
                 
                 try {
-                  const provider = new ethers.BrowserProvider(window.ethereum);
+                  const provider = getProvider(window.ethereum);
                   const signer = await provider.getSigner();
                   
                   // First get wallet address
@@ -1842,11 +1806,11 @@ export const TokenSwap = () => {
                   
                   // Create NOOT contract instance
                   const checksummedNOOTAddress = getChecksumAddress(NOOT_TOKEN_ADDRESS);
-                  const nootContract = new ethers.Contract(checksummedNOOTAddress, TOKEN_ABI, signer);
+                  const nootContract = new Contract(checksummedNOOTAddress, TOKEN_ABI, signer);
                   
                   // Get current balance
                   const currentBalance = await nootContract.balanceOf(walletAddress);
-                  const formattedBalance = ethers.formatUnits(currentBalance, 18);
+                  const formattedBalance = etherUtils.formatUnits(currentBalance, 18);
                   
                   // Ask how much to fund
                   const inputAmount = prompt(`Current balance: ${formattedBalance} NOOT\nHow many NOOT tokens do you want to fund to the contract?`, "100");
@@ -1859,7 +1823,7 @@ export const TokenSwap = () => {
                   }
                   
                   // Convert to wei
-                  const weiAmount = ethers.parseUnits(amount.toString(), 18);
+                  const weiAmount = etherUtils.parseUnits(amount.toString(), 18);
                   
                   // Get the contract address
                   const checksummedFarmSwapAddress = getChecksumAddress(FARM_SWAP_ADDRESS);
@@ -1885,7 +1849,7 @@ export const TokenSwap = () => {
                     
                     // Fetch balance of the contract for immediate feedback
                     const contractBalance = await nootContract.balanceOf(checksummedFarmSwapAddress);
-                    const formattedContractBalance = ethers.formatUnits(contractBalance, 18);
+                    const formattedContractBalance = etherUtils.formatUnits(contractBalance, 18);
                     
                     toast.success(`Contract now has ${formattedContractBalance} NOOT`);
                   } else {
