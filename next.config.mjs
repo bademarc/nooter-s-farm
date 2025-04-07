@@ -43,10 +43,11 @@ const nextConfig = {
     parallelServerCompiles: true,
     parallelServerBuildTraces: true,
   },
-  // Conditionally apply GitHub Pages settings based on environment
+  // Use static export for both GitHub Pages and Vercel
+  output: 'export',
+  // Only apply basePath for GitHub Pages
   ...(process.env.GITHUB_ACTIONS ? {
     basePath: '/nooter-s-farm',
-    output: 'export',
   } : {}),
 };
 

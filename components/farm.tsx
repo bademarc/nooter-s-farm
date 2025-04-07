@@ -1179,142 +1179,144 @@ export function Farm() {
   
   // Rebuild the booster popup with a completely different approach
   const showBoosterOptions = (index: number) => {
+    // Check if we're in a browser environment
+    const isBrowser = typeof window !== 'undefined' && typeof document !== 'undefined';
+    
+    // If not in browser, show a simple fallback
+    if (!isBrowser) {
+      console.log("Cannot create modal: not in browser environment");
+      return;
+    }
+    
     // Check for active boosters on this plot
     const activeBoosters = getPlotBoosters(index);
     
     // First dismiss any existing toasts
     toast.dismiss();
     
-    // Instead of using toast.custom, create a simpler modal dialog
-    if (typeof document !== 'undefined') {
-      // Create a modal container
-      const modalContainer = document.createElement('div');
-      modalContainer.className = 'fixed inset-0 flex items-center justify-center z-[1000]';
-      modalContainer.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-      
-      // Create the modal content
-      const modalContent = document.createElement('div');
-      modalContent.className = 'bg-black border border-gray-700 w-[300px] rounded shadow-lg';
-      modalContent.style.position = 'fixed';
-      modalContent.style.top = '50%';
-      modalContent.style.left = '50%';
-      modalContent.style.transform = 'translate(-50%, -50%)';
-      modalContent.style.maxHeight = '80vh';
-      modalContent.style.display = 'flex';
-      modalContent.style.flexDirection = 'column';
-      
-      // Create the header
-      const header = document.createElement('div');
-      header.className = 'p-3 border-b border-gray-700 bg-gradient-to-r from-gray-900 to-black';
-      header.innerHTML = `
-        <h3 class="text-white font-medium flex items-center">
-          <span class="mr-2">🚀</span>
-          Apply Booster
-        </h3>
+    // Now we know we're in the browser
+    // Create a modal container
+    const modalContainer = document.createElement('div');
+    modalContainer.className = 'fixed inset-0 flex items-center justify-center z-[1000]';
+    modalContainer.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+    
+    // Create the modal content
+    const modalContent = document.createElement('div');
+    modalContent.className = 'bg-black border border-gray-700 w-[300px] rounded shadow-lg';
+    modalContent.style.position = 'fixed';
+    modalContent.style.top = '50%';
+    modalContent.style.left = '50%';
+    modalContent.style.transform = 'translate(-50%, -50%)';
+    modalContent.style.maxHeight = '80vh';
+    modalContent.style.display = 'flex';
+    modalContent.style.flexDirection = 'column';
+    
+    // Create the header
+    const header = document.createElement('div');
+    header.className = 'p-3 border-b border-gray-700 bg-gradient-to-r from-gray-900 to-black';
+    header.innerHTML = `
+      <h3 class="text-white font-medium flex items-center">
+        <span class="mr-2">🚀</span>
+        Apply Booster
+      </h3>
+    `;
+    
+    // Create the body
+    const body = document.createElement('div');
+    body.className = 'p-3 overflow-auto';
+    body.style.maxHeight = '250px';
+    
+    // Add booster items
+    const availableBoosters = Object.entries(ownedBoosters).filter(([_, count]) => count > 0);
+    
+    if (availableBoosters.length === 0) {
+      // No boosters available
+      body.innerHTML = `
+        <div class="text-center text-gray-400 p-4">
+          <p>No boosters available</p>
+          <p class="text-xs mt-1">Purchase boosters from the Boosters tab</p>
+        </div>
       `;
-      
-      // Create the body
-      const body = document.createElement('div');
-      body.className = 'p-3 overflow-auto';
-      body.style.maxHeight = '250px';
-      
-      // Add booster items
-      const availableBoosters = Object.entries(ownedBoosters).filter(([_, count]) => count > 0);
-      
-      if (availableBoosters.length === 0) {
-        // No boosters available
-        body.innerHTML = `
-          <div class="text-center text-gray-400 p-4">
-            <p>No boosters available</p>
-            <p class="text-xs mt-1">Purchase boosters from the Boosters tab</p>
-          </div>
-        `;
-      } else {
-        // Create booster items
-        availableBoosters.forEach(([boosterType, count]) => {
-          const booster = boosters.find(b => b.type === boosterType);
-          if (!booster || count <= 0) return;
-          
-          // Check if this booster is already active
-          const isActive = activeBoosters.some(ab => ab.boosterType === boosterType);
-          
-          const boosterItem = document.createElement('div');
-          boosterItem.className = `flex items-center justify-between p-2 border mb-2 hover:border-white cursor-pointer ${
-            isActive ? 'border-yellow-500 bg-yellow-900/20' : 'border-gray-700 bg-gray-900'
-          }`;
-          
-          boosterItem.innerHTML = `
-            <div class="flex items-center">
-              <div class="w-8 h-8 flex items-center justify-center text-xl mr-2 bg-black border border-gray-700">
-                ${booster.icon}
-              </div>
-              <div>
-                <div class="text-white text-sm">${booster.name}</div>
-                <div class="text-gray-400 text-xs">Qty: ${count}</div>
-              </div>
-            </div>
-            ${!isActive ? `
-              <div class="bg-blue-900/30 px-2 py-1 border border-blue-500/50 text-blue-300 text-xs">
-                Apply
-              </div>
-            ` : ''}
-          `;
-          
-          // Add click handler
-          boosterItem.addEventListener('click', () => {
-            if (!isActive) {
-              // Apply booster
-              applyBooster(index, boosterType);
-              
-              // Remove modal
-              document.body.removeChild(modalContainer);
-              
-              // Show success toast
-              toast.success(`Applied ${booster.name} to your crop!`);
-            } else {
-              toast.error(`This booster is already active!`);
-            }
-          });
-          
-          body.appendChild(boosterItem);
-        });
-      }
-      
-      // Create the footer
-      const footer = document.createElement('div');
-      footer.className = 'p-2 border-t border-gray-700 flex justify-end';
-      
-      // Create close button
-      const closeButton = document.createElement('button');
-      closeButton.className = 'bg-white text-black hover:bg-gray-200 text-xs px-2 py-1 rounded';
-      closeButton.textContent = 'Close';
-      closeButton.addEventListener('click', () => {
-        document.body.removeChild(modalContainer);
-      });
-      
-      footer.appendChild(closeButton);
-      
-      // Add elements to modal
-      modalContent.appendChild(header);
-      modalContent.appendChild(body);
-      modalContent.appendChild(footer);
-      modalContainer.appendChild(modalContent);
-      
-      // Add modal to body
-      document.body.appendChild(modalContainer);
-      
-      // Add click handler to close when clicking outside
-      modalContainer.addEventListener('click', (e) => {
-        if (e.target === modalContainer) {
-          document.body.removeChild(modalContainer);
-        }
-      });
     } else {
-      // Fallback for server-side rendering
-      toast.success("Click on a growing crop to apply boosters!", {
-        duration: 3000
+      // Create booster items
+      availableBoosters.forEach(([boosterType, count]) => {
+        const booster = boosters.find(b => b.type === boosterType);
+        if (!booster || count <= 0) return;
+        
+        // Check if this booster is already active
+        const isActive = activeBoosters.some(ab => ab.boosterType === boosterType);
+        
+        const boosterItem = document.createElement('div');
+        boosterItem.className = `flex items-center justify-between p-2 border mb-2 hover:border-white cursor-pointer ${
+          isActive ? 'border-yellow-500 bg-yellow-900/20' : 'border-gray-700 bg-gray-900'
+        }`;
+        
+        boosterItem.innerHTML = `
+          <div class="flex items-center">
+            <div class="w-8 h-8 flex items-center justify-center text-xl mr-2 bg-black border border-gray-700">
+              ${booster.icon}
+            </div>
+            <div>
+              <div class="text-white text-sm">${booster.name}</div>
+              <div class="text-gray-400 text-xs">Qty: ${count}</div>
+            </div>
+          </div>
+          ${!isActive ? `
+            <div class="bg-blue-900/30 px-2 py-1 border border-blue-500/50 text-blue-300 text-xs">
+              Apply
+            </div>
+          ` : ''}
+        `;
+        
+        // Add click handler
+        boosterItem.addEventListener('click', () => {
+          if (!isActive) {
+            // Apply booster
+            applyBooster(index, boosterType);
+            
+            // Remove modal
+            document.body.removeChild(modalContainer);
+            
+            // Show success toast
+            toast.success(`Applied ${booster.name} to your crop!`);
+          } else {
+            toast.error(`This booster is already active!`);
+          }
+        });
+        
+        body.appendChild(boosterItem);
       });
     }
+    
+    // Create the footer
+    const footer = document.createElement('div');
+    footer.className = 'p-2 border-t border-gray-700 flex justify-end';
+    
+    // Create close button
+    const closeButton = document.createElement('button');
+    closeButton.className = 'bg-white text-black hover:bg-gray-200 text-xs px-2 py-1 rounded';
+    closeButton.textContent = 'Close';
+    closeButton.addEventListener('click', () => {
+      document.body.removeChild(modalContainer);
+    });
+    
+    footer.appendChild(closeButton);
+    
+    // Add elements to modal
+    modalContent.appendChild(header);
+    modalContent.appendChild(body);
+    modalContent.appendChild(footer);
+    modalContainer.appendChild(modalContent);
+    
+    // Add modal to body
+    document.body.appendChild(modalContainer);
+    
+    // Add click handler to close when clicking outside
+    modalContainer.addEventListener('click', (e) => {
+      if (e.target === modalContainer) {
+        document.body.removeChild(modalContainer);
+      }
+    });
   };
   
   // Add this code in useEffect to ensure the user has some boosters for testing
