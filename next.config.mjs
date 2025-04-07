@@ -42,7 +42,12 @@ const nextConfig = {
     webpackBuildWorker: true,
     parallelServerCompiles: true,
     parallelServerBuildTraces: true,
-  }
+  },
+  // Add the following configurations
+  // Add basePath for GitHub Pages
+  basePath: '/nooter-s-farm',
+  // Set output to export static files
+  output: 'export',
 };
 
 if (userConfig) {
