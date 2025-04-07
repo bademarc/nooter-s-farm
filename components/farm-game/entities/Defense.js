@@ -94,14 +94,14 @@ export default class Defense {
     // Check for enemies in range more frequently (every frame)
     this.checkForEnemiesInRange();
     
-    // Reduce attack cooldown time
-    if (this.attackCooldown > 0) {
-      this.attackCooldown -= 16.67; // Approximately 60 frames per second
+    // Reduce attack cooldown time - ensure we're using the proper property name
+    if (this.cooldownRemaining > 0) {
+      this.cooldownRemaining -= 16.67; // Approximately 60 frames per second
     }
     
     // Debug
     if (this.debugMode && this.scene && this.scene.time && this.scene.time.now % 1000 < 20) {
-      console.log(`Defense at ${this.x},${this.y} actively scanning for enemies. Cooldown: ${this.attackCooldown}`);
+      console.log(`Defense at ${this.x},${this.y} actively scanning for enemies. Cooldown: ${this.cooldownRemaining}`);
     }
   }
   
@@ -130,19 +130,26 @@ export default class Defense {
   checkForEnemiesInRange() {
     // IMPORTANT: Aggressive enemy targeting to make sure mages never ignore enemies
     
+    // Initialize cooldownRemaining if it doesn't exist
+    if (this.cooldownRemaining === undefined) {
+      this.cooldownRemaining = 0;
+    }
+    
     // Skip if on cooldown but show ready status
-    if (this.attackCooldown > 0) {
+    if (this.cooldownRemaining > 0) {
       // Set "ready" appearance when cooldown almost done
-      if (this.attackCooldown < 500 && this.sprite && !this.readyState) {
+      if (this.cooldownRemaining < 500 && this.sprite && !this.readyState) {
         this.readyState = true;
-        this.scene.tweens.add({
-          targets: this.sprite,
-          scaleX: 1.1,
-          scaleY: 1.1,
-          duration: 300,
-          yoyo: true,
-          repeat: 0
-        });
+        if (this.scene && this.scene.tweens) {
+          this.scene.tweens.add({
+            targets: this.sprite,
+            scaleX: 1.1,
+            scaleY: 1.1,
+            duration: 300,
+            yoyo: true,
+            repeat: 0
+          });
+        }
       }
       return;
     }
@@ -150,33 +157,49 @@ export default class Defense {
     // Reset ready state
     this.readyState = false;
     
-    // Always check for enemies (even if list appears empty - for safety)
-    if (!this.scene.enemies) this.scene.enemies = [];
+    // Check if scene has enemies
+    if (!this.scene) return;
+    
+    // Initialize enemies array if it doesn't exist
+    if (!this.scene.enemies) {
+      this.scene.enemies = [];
+      return;
+    }
     
     let foundEnemy = false;
     let closestDistance = Infinity;
     let closestEnemy = null;
     
-    // Find closest enemy in range - aggressive checking
+    // Find closest enemy in range - aggressive checking with multiple position options
     for (let i = 0; i < this.scene.enemies.length; i++) {
       const enemy = this.scene.enemies[i];
-      if (!enemy) continue;
+      if (!enemy || !enemy.active) continue;
       
-      // Try multiple ways to get position - in case enemy structure varies
-      const enemyX = enemy.x || (enemy.sprite ? enemy.sprite.x : 0);
-      const enemyY = enemy.y || (enemy.sprite ? enemy.sprite.y : 0);
+      // Try multiple ways to get position - be very thorough
+      const enemyX = enemy.x || 
+                    (enemy.sprite ? enemy.sprite.x : null) || 
+                    (enemy.container ? enemy.container.x : null);
+      const enemyY = enemy.y || 
+                    (enemy.sprite ? enemy.sprite.y : null) || 
+                    (enemy.container ? enemy.container.y : null);
       
       // Skip enemies without position
-      if (!enemyX || !enemyY) continue;
+      if (enemyX === null || enemyY === null) continue;
       
       const dx = enemyX - this.x;
       const dy = enemyY - this.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
       
+      // If this is a valid target and in range
       if (distance <= this.range && distance < closestDistance) {
-        closestDistance = distance;
-        closestEnemy = enemy;
-        foundEnemy = true;
+        // Check if we can target this enemy type
+        if (this.targetTypes.length === 0 || 
+            this.targetTypes.includes(enemy.type) || 
+            this.targetTypes.includes('all')) {
+          closestDistance = distance;
+          closestEnemy = enemy;
+          foundEnemy = true;
+        }
       }
     }
     
@@ -187,7 +210,7 @@ export default class Defense {
       // Show targeting visuals
       this.showTargetLine(closestEnemy);
       
-      // High visibility mode for debug
+      // Debug info
       if (this.debugMode) {
         console.log(`Defense attacking enemy at ${closestEnemy.x},${closestEnemy.y} from ${this.x},${this.y}`);
       }
@@ -198,41 +221,72 @@ export default class Defense {
   }
   
   attack(enemy) {
-    if (!this.active || !enemy || !enemy.active) return;
+    if (!this.active || !enemy || !enemy.active) return false;
+    
+    // Initialize cooldownRemaining if it doesn't exist
+    if (this.cooldownRemaining === undefined) {
+      this.cooldownRemaining = 0;
+    }
     
     const currentTime = this.scene.time.now;
-    if (currentTime - this.lastAttackTime < this.cooldown) return;
     
-    // Check if enemy is in range
-    const distance = Phaser.Math.Distance.Between(this.x, this.y, enemy.x, enemy.y);
-    if (distance > this.range) return;
+    // Skip if on cooldown, but ensure proper cooldown state first
+    if (this.cooldownRemaining > 0) {
+      return false;
+    }
     
-    // Check if enemy type is valid target
-    if (!this.targetTypes.includes(enemy.type)) return;
+    // Ensure enemy has proper position values
+    const enemyX = enemy.x || (enemy.sprite ? enemy.sprite.x : 0) || (enemy.container ? enemy.container.x : 0);
+    const enemyY = enemy.y || (enemy.sprite ? enemy.sprite.y : 0) || (enemy.container ? enemy.container.y : 0);
+    
+    // Safety check - if we can't determine enemy position, skip
+    if (!enemyX || !enemyY) {
+      return false;
+    }
+    
+    // Check if enemy is in range - using more reliable distance calculation
+    const dx = enemyX - this.x;
+    const dy = enemyY - this.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    
+    if (distance > this.range) {
+      return false;
+    }
+    
+    // Additional check for enemy type - be more permissive with types when needed
+    if (this.targetTypes.length > 0 && !this.targetTypes.includes(enemy.type) && 
+        !this.targetTypes.includes('all')) {
+      return false;
+    }
     
     // Apply damage
     enemy.takeDamage(this.damage);
     
-    // Update last attack time
+    // Reset cooldown to full duration
+    this.cooldownRemaining = this.cooldown || 2000;
     this.lastAttackTime = currentTime;
     
     // Show attack animation
     if (this.type === 'scarecrow') {
       // ABS penguin mage attack animation
-      this.sprite.setTexture('ABS_attack');
-      
-      // Cast animation effect
-      this.scene.tweens.add({
-        targets: this.sprite,
-        scaleX: 1.2,
-        scaleY: 1.2,
-        duration: 200,
-        yoyo: true,
-        onComplete: () => {
-          // Switch back to idle sprite
-          this.sprite.setTexture('ABS_idle');
-        }
-      });
+      if (this.sprite) {
+        this.sprite.setTexture('ABS_attack');
+        
+        // Cast animation effect
+        this.scene.tweens.add({
+          targets: this.sprite,
+          scaleX: 1.2,
+          scaleY: 1.2,
+          duration: 200,
+          yoyo: true,
+          onComplete: () => {
+            // Switch back to idle sprite
+            if (this.sprite && this.sprite.active) {
+              this.sprite.setTexture('ABS_idle');
+            }
+          }
+        });
+      }
       
       // Launch fireball
       this.launchFireball(enemy, 'blue');
@@ -241,20 +295,24 @@ export default class Defense {
       this.showDamageText(enemy, "FREEZE!", 0x0088FF);
     } else if (this.type === 'dog') {
       // NOOT penguin mage attack animation
-      this.sprite.setTexture('NOOT_attack');
-      
-      // Cast animation effect
-      this.scene.tweens.add({
-        targets: this.sprite,
-        scaleX: 1.2,
-        scaleY: 1.2,
-        duration: 200,
-        yoyo: true,
-        onComplete: () => {
-          // Switch back to idle sprite
-          this.sprite.setTexture('NOOT_idle');
-        }
-      });
+      if (this.sprite) {
+        this.sprite.setTexture('NOOT_attack');
+        
+        // Cast animation effect
+        this.scene.tweens.add({
+          targets: this.sprite,
+          scaleX: 1.2,
+          scaleY: 1.2,
+          duration: 200,
+          yoyo: true,
+          onComplete: () => {
+            // Switch back to idle sprite
+            if (this.sprite && this.sprite.active) {
+              this.sprite.setTexture('NOOT_idle');
+            }
+          }
+        });
+      }
       
       // Launch fireball
       this.launchFireball(enemy, 'red');
@@ -265,6 +323,8 @@ export default class Defense {
     
     // Create attack effect (visual-only effects)
     this.createAttackEffect(enemy);
+    
+    return true;
   }
   
   // New method to launch fireball

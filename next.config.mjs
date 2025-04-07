@@ -13,11 +13,11 @@ try {
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
+  reactStrictMode: false, // Disable strict mode to prevent double-mounting issues with Phaser
   // Always use static export to avoid server components issues
   output: 'export',
   webpack: (config, { isServer }) => {
-    // Fix compatibility issues with ethers
+    // Fix compatibility issues with ethers and other libraries
     config.resolve.fallback = {
       ...config.resolve.fallback,
       fs: false,
@@ -32,6 +32,21 @@ const nextConfig = {
         canvas: 'commonjs canvas',
       });
     }
+
+    // Improve chunk loading for large dependencies like Phaser
+    config.optimization.splitChunks = {
+      ...config.optimization.splitChunks,
+      chunks: 'all',
+      cacheGroups: {
+        ...config.optimization.splitChunks.cacheGroups,
+        phaser: {
+          test: /[\\/]node_modules[\\/](phaser)[\\/]/,
+          name: 'phaser-vendor',
+          chunks: 'all',
+          priority: 10,
+        },
+      },
+    };
     
     return config;
   },

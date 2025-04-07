@@ -100,29 +100,54 @@ const FarmGameInner = ({ farmCoins, addFarmCoins }) => {
       if (!PhaserLoaded) {
         console.log("Loading Phaser and game modules (first time)...");
         
-        // Load Phaser
+        // Load Phaser with proper error handling
         console.log("Loading Phaser module...");
-        const PhaserModule = await import('phaser');
-        const Phaser = PhaserModule.default;
-        console.log("Phaser module loaded:", !!Phaser);
+        let Phaser;
+        try {
+          const PhaserModule = await import('phaser');
+          Phaser = PhaserModule.default;
+          console.log("Phaser module loaded:", !!Phaser);
+        } catch (error) {
+          console.error("Failed to load Phaser:", error);
+          setHasError(true);
+          throw new Error("Failed to load Phaser module: " + error.message);
+        }
         
-        // Load Enemy module
+        // Load Enemy module with error handling
         console.log("Loading Enemy module...");
+        try {
           const enemyModule = await import('./entities/Enemy');
-        EnemyClass = enemyModule.default;
-        console.log("Enemy module loaded:", !!EnemyClass);
+          EnemyClass = enemyModule.default;
+          console.log("Enemy module loaded:", !!EnemyClass);
+        } catch (error) {
+          console.error("Failed to load Enemy module:", error);
+          setHasError(true);
+          throw new Error("Failed to load Enemy module: " + error.message);
+        }
         
-        // Load Crop module
+        // Load Crop module with error handling
         console.log("Loading Crop module...");
+        try {
           const cropModule = await import('./entities/Crop');
-        CropClass = cropModule.default;
-        console.log("Crop module loaded:", !!CropClass);
+          CropClass = cropModule.default;
+          console.log("Crop module loaded:", !!CropClass);
+        } catch (error) {
+          console.error("Failed to load Crop module:", error);
+          setHasError(true);
+          throw new Error("Failed to load Crop module: " + error.message);
+        }
         
-        // Load GameScene module
+        // Load GameScene module with error handling
         console.log("Loading GameScene module...");
-        const gameSceneModule = await import('./scenes/GameScene');
-        GameSceneClass = gameSceneModule.GameScene;
-        console.log("GameScene loaded:", !!GameSceneClass);
+        try {
+          const gameSceneModule = await import('./scenes/GameScene');
+          GameSceneClass = gameSceneModule.GameScene;
+          console.log("GameScene loaded:", !!GameSceneClass);
+        } catch (error) {
+          console.error("Failed to load GameScene module:", error);
+          setHasError(true);
+          throw new Error("Failed to load GameScene module: " + error.message);
+        }
         
         // Verify all modules are loaded
         if (!Phaser || !EnemyClass || !CropClass || !GameSceneClass) {
@@ -168,43 +193,81 @@ const FarmGameInner = ({ farmCoins, addFarmCoins }) => {
     console.log("Starting game initialization...");
 
     try {
-      // Load Phaser module
-      console.log("Loading Phaser module...");
-      const PhaserModule = await import('phaser');
-      const Phaser = PhaserModule.default;
-      console.log("Phaser module loaded:", !!Phaser);
+      // Try to use preloaded modules if available
+      let Phaser;
+      try {
+        // Try to load from preloaded modules first
+        Phaser = await preloadGameModules();
+        console.log("Using preloaded Phaser module");
+      } catch (error) {
+        console.error("Failed to use preloaded modules, trying direct import:", error);
+        
+        // Try loading Phaser directly as fallback
+        const PhaserModule = await import('phaser').catch(err => {
+          console.error("Direct Phaser import failed:", err);
+          throw new Error("All Phaser loading methods failed");
+        });
+        Phaser = PhaserModule.default;
+      }
 
+      // If still no Phaser, abort
       if (!Phaser) {
         throw new Error("Failed to load Phaser module");
       }
 
-      // Load game modules
-      console.log("Loading game modules...");
-      const [EnemyModule, CropModule, DefenseModule, UpgradeModule, GameSceneModule] = await Promise.all([
-        import('./entities/Enemy'),
-        import('./entities/Crop'),
-        import('./entities/Defense'),
-        import('./entities/Upgrade'),
-        import('./scenes/GameScene')
-      ]);
+      // Load game modules individually with error handling
+      console.log("Loading game modules individually...");
+      let EnemyClass, CropClass, DefenseClass, UpgradeClass, GameSceneClass;
+      
+      try {
+        const [EnemyModule, CropModule, DefenseModule, UpgradeModule, GameSceneModule] = await Promise.allSettled([
+          import('./entities/Enemy'),
+          import('./entities/Crop'),
+          import('./entities/Defense'),
+          import('./entities/Upgrade'),
+          import('./scenes/GameScene')
+        ]);
 
-      const EnemyClass = EnemyModule.default;
-      const CropClass = CropModule.default;
-      const DefenseClass = DefenseModule.default;
-      const UpgradeClass = UpgradeModule.default;
-      const GameSceneClass = GameSceneModule.GameScene;
-
-      if (!EnemyClass || !CropClass || !DefenseClass || !UpgradeClass || !GameSceneClass) {
-        throw new Error("Failed to load game modules");
+        // Handle each module individually
+        if (EnemyModule.status === 'fulfilled') {
+          EnemyClass = EnemyModule.value.default;
+        } else {
+          console.error("Failed to load Enemy module:", EnemyModule.reason);
+          throw new Error("Failed to load Enemy module");
+        }
+        
+        if (CropModule.status === 'fulfilled') {
+          CropClass = CropModule.value.default;
+        } else {
+          console.error("Failed to load Crop module:", CropModule.reason);
+          throw new Error("Failed to load Crop module");
+        }
+        
+        if (DefenseModule.status === 'fulfilled') {
+          DefenseClass = DefenseModule.value.default;
+        } else {
+          console.error("Failed to load Defense module:", DefenseModule.reason);
+          throw new Error("Failed to load Defense module");
+        }
+        
+        if (UpgradeModule.status === 'fulfilled') {
+          UpgradeClass = UpgradeModule.value.default;
+        } else {
+          console.error("Failed to load Upgrade module:", UpgradeModule.reason);
+          throw new Error("Failed to load Upgrade module");
+        }
+        
+        if (GameSceneModule.status === 'fulfilled') {
+          GameSceneClass = GameSceneModule.value.GameScene;
+        } else {
+          console.error("Failed to load GameScene module:", GameSceneModule.reason);
+          throw new Error("Failed to load GameScene module");
+        }
+      } catch (error) {
+        console.error("Error loading game modules:", error);
+        setHasError(true);
+        throw error;
       }
-
-      console.log("Game modules loaded:", {
-        Enemy: !!EnemyModule,
-        Crop: !!CropModule,
-        Defense: !!DefenseModule,
-        Upgrade: !!UpgradeModule,
-        GameScene: !!GameSceneModule
-      });
 
       // Reset farm coins to zero
       const safeFarmCoins = 0;

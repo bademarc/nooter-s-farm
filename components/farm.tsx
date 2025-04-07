@@ -41,21 +41,10 @@ import {
 } from "lucide-react";
 import { TokenSwap } from "@/components/token-swap";
 import { Switch } from "@/components/ui/switch";
-import dynamic from 'next/dynamic';
 import DynamicWrapper from '@/components/dynamic-wrapper';
 
-// Import FarmGame with SSR disabled and proper loading state
-const FarmGame = dynamic(() => import('./farm-game/FarmGame'), { 
-  ssr: false,
-  loading: () => (
-    <div className="w-full h-[600px] flex items-center justify-center bg-black/20 border border-white/10">
-      <div className="text-white text-center">
-        <div className="mb-4">Loading farm defense game...</div>
-        <div className="text-sm text-white/60">Please wait while we prepare your defenses</div>
-      </div>
-    </div>
-  )
-});
+// Import the ClientWrapper instead of FarmGame directly
+import ClientWrapper from './farm-game/ClientWrapper';
 
 // Use the actual Plot interface from game-context
 interface Plot {
@@ -3223,7 +3212,7 @@ export function Farm() {
             
             <div className="noot-card p-1">
               {isClient && (
-                <FarmGame 
+                <ClientWrapper 
                   farmCoins={farmCoins} 
                   addFarmCoins={addFarmCoins}
                 />
