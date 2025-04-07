@@ -10,7 +10,25 @@ import { Toaster as UIToaster } from "@/components/ui/toaster";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import toast from "react-hot-toast";
-import { Menu, X, User, Trophy, Sparkles, Music, CloudRain, Settings, Volume } from "lucide-react";
+import { 
+  Menu, X, User, Trophy, Sparkles, Music, CloudRain, Settings, Volume,
+  Check, Sprout, Coins, Lock
+} from "lucide-react";
+
+// Create a client-only wrapper component for browser-only code
+function ClientOnly({ children }: { children: React.ReactNode }) {
+  const [hasMounted, setHasMounted] = useState(false);
+  
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
+  
+  if (!hasMounted) {
+    return null;
+  }
+  
+  return <>{children}</>;
+}
 
 export default function Home() {
   const [showSidebar, setShowSidebar] = useState(false);
@@ -50,65 +68,67 @@ export default function Home() {
   }, []);
 
   return (
-    <GameProvider>
-      <div className="flex min-h-screen w-full bg-black text-white relative noot-theme">
-        {/* Dark overlay when sidebar is visible on mobile */}
-        {showSidebar && (
-          <div 
-            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-20 md:hidden" 
-            onClick={handleOverlayClick}
-          />
-        )}
-        
-        {/* Sidebar */}
-        <Sidebar 
-          showSidebar={showSidebar} 
-          setShowSidebar={setShowSidebar}
-          activeTab={tab}
-          setActiveTab={setTab}
-          activeView={activeView}
-          setActiveView={setActiveView}
-          provider={null}
-          isConnected={false}
-        />
-
-        {/* Main Content */}
-        <main className="flex-1 flex flex-col min-h-screen bg-black">
-          <Navbar 
-            toggleSidebar={toggleSidebar} 
+    <ClientOnly>
+      <GameProvider>
+        <div className="flex min-h-screen w-full bg-black text-white relative noot-theme">
+          {/* Dark overlay when sidebar is visible on mobile */}
+          {showSidebar && (
+            <div 
+              className="fixed inset-0 bg-black/80 backdrop-blur-sm z-20 md:hidden" 
+              onClick={handleOverlayClick}
+            />
+          )}
+          
+          {/* Sidebar */}
+          <Sidebar 
+            showSidebar={showSidebar} 
+            setShowSidebar={setShowSidebar}
             activeTab={tab}
             setActiveTab={setTab}
+            activeView={activeView}
+            setActiveView={setActiveView}
+            provider={null}
+            isConnected={false}
           />
+
+          {/* Main Content */}
+          <main className="flex-1 flex flex-col min-h-screen bg-black">
+            <Navbar 
+              toggleSidebar={toggleSidebar} 
+              activeTab={tab}
+              setActiveTab={setTab}
+            />
+            
+            <div className="flex-1 overflow-auto px-4 py-4 md:px-6 md:py-6 relative">
+              {tab === "farm" && <Farm />}
+              {tab === "profile" && <div className="animate-fadeIn"><ProfileContent /></div>}
+              {tab === "settings" && <div className="animate-fadeIn"><SettingsContent /></div>}
+            </div>
+          </main>
           
-          <div className="flex-1 overflow-auto px-4 py-4 md:px-6 md:py-6 relative">
-            {tab === "farm" && <Farm />}
-            {tab === "profile" && <div className="animate-fadeIn"><ProfileContent /></div>}
-            {tab === "settings" && <div className="animate-fadeIn"><SettingsContent /></div>}
+          <WalletConnect />
+          
+          <UIToaster />
+          
+          {/* NOOT Contract Address Display */}
+          <div className="fixed bottom-4 left-4 md:left-1/2 md:transform md:-translate-x-1/2 z-10 bg-[#111] border border-[#333] py-1 px-3 text-xs font-mono text-white/60 flex items-center noot-text">
+            <span className="mr-2">$NOOT:</span>
+            <span className="hidden md:inline">0x85Ca16Fd0e81659e0b8Be337294149E722528731</span>
+            <span className="md:hidden">0x85Ca...28731</span>
+            <button 
+              className="ml-2 text-white/40 hover:text-white" 
+              onClick={() => {
+                if (isMounted) {
+                  copyToClipboard("0x85Ca16Fd0e81659e0b8Be337294149E722528731");
+                }
+              }}
+            >
+              copy
+            </button>
           </div>
-        </main>
-        
-        <WalletConnect />
-        
-        <UIToaster />
-        
-        {/* NOOT Contract Address Display */}
-        <div className="fixed bottom-4 left-4 md:left-1/2 md:transform md:-translate-x-1/2 z-10 bg-[#111] border border-[#333] py-1 px-3 text-xs font-mono text-white/60 flex items-center noot-text">
-          <span className="mr-2">$NOOT:</span>
-          <span className="hidden md:inline">0x85Ca16Fd0e81659e0b8Be337294149E722528731</span>
-          <span className="md:hidden">0x85Ca...28731</span>
-          <button 
-            className="ml-2 text-white/40 hover:text-white" 
-            onClick={() => {
-              if (isMounted) {
-                copyToClipboard("0x85Ca16Fd0e81659e0b8Be337294149E722528731");
-              }
-            }}
-          >
-            copy
-          </button>
         </div>
-      </div>
-    </GameProvider>
+      </GameProvider>
+    </ClientOnly>
   );
 }
 
