@@ -24,7 +24,7 @@ import {
   ArrowRightLeft
 } from "lucide-react";
 import { Leaderboard } from "./leaderboard";
-import { ethers } from "ethers";
+import { ethers, Contract } from "ethers";
 import { AccessibilityMenu } from "./accessibility-menu";
 
 // Add type declarations for window.gameFunctions
@@ -76,7 +76,7 @@ export const Sidebar = ({
       const signer = await provider.getSigner();
       const contractAddress = "YOUR_NFT_CONTRACT_ADDRESS"; // Replace with actual address
       const nftABI = ["function mint(address to) external"];
-      const contract = new ethers.Contract(contractAddress, nftABI, signer);
+      const contract = new Contract(contractAddress, nftABI, signer);
       const tx = await contract.mint(await signer.getAddress());
       await tx.wait();
       alert("NFT minted successfully!");
