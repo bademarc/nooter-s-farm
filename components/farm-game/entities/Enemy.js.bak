@@ -1,0 +1,245 @@
+'use client';
+
+export default class Enemy {
+  constructor(scene, type, x, y) {
+    this.scene = scene;
+    this.type = type;
+    this.x = x;
+    this.y = y;
+    this.active = true;
+    this.visible = true;
+    
+    // Set properties based on type
+    if (type === 'bird') {
+      this.speed = 2;
+      this.health = 2;
+      this.maxHealth = 2;
+      this.value = 8;
+    } else {
+      this.speed = 1.5;
+      this.health = 3;
+      this.maxHealth = 3;
+      this.value = 5;
+    }
+    
+    // Create visual representation
+    const color = type === 'bird' ? 0x3498db : 0x9b59b6;
+    this.sprite = scene.add.circle(x, y, 15, color);
+    
+    // Add health bar
+    this.healthBar = {
+      background: scene.add.rectangle(x, y - 20, 30, 4, 0xFF0000),
+      fill: scene.add.rectangle(x, y - 20, 30, 4, 0x00FF00)
+    };
+    
+    // Show type icon
+    this.typeText = scene.add.text(x, y, type === 'bird' ? '🐦' : '🐰', {
+      fontSize: '16px',
+      fontFamily: 'Arial'
+    }).setOrigin(0.5);
+    
+    console.log(`Created ${type} enemy at ${x},${y}`);
+  }
+  
+  update() {
+    if (!this.active) return;
+    
+    // Move towards left side of screen
+    this.x -= this.speed;
+    
+    // Update visual elements
+    this.updateVisuals();
+    
+    // Check if enemy has reached left side
+    if (this.x < 0) {
+      this.reachedEnd();
+    }
+  }
+  
+  updateVisuals() {
+    if (!this.active) return;
+    
+    // Update sprite position
+    if (this.sprite) {
+      this.sprite.x = this.x;
+      this.sprite.y = this.y;
+    }
+    
+    // Update text position
+    if (this.typeText) {
+      this.typeText.x = this.x;
+      this.typeText.y = this.y;
+    }
+    
+    // Update health bar
+    if (this.healthBar) {
+      const healthPercent = Math.max(0, this.health / this.maxHealth);
+      
+      this.healthBar.background.x = this.x;
+      this.healthBar.background.y = this.y - 20;
+      
+      this.healthBar.fill.width = 30 * healthPercent;
+      this.healthBar.fill.x = this.x - 15 + (this.healthBar.fill.width / 2);
+      this.healthBar.fill.y = this.y - 20;
+    }
+  }
+  
+  reachedEnd() {
+    // Enemy reached the farm - reduce lives
+    if (this.scene.gameState) {
+      this.scene.gameState.lives--;
+      this.scene.updateLivesText();
+      
+      console.log("Enemy reached farm! Lives remaining:", this.scene.gameState.lives);
+      
+      // Show warning text
+      this.scene.showFloatingText(50, 300, 'Farm Invaded! -1 Life', 0xFF0000);
+      
+      // Check for game over
+      if (this.scene.gameState.lives <= 0) {
+        this.endGame();
+      }
+    }
+    
+    // Remove the enemy
+    this.destroy();
+  }
+  
+  takeDamage(amount) {
+    if (!this.active) return false;
+    
+    console.log(`Enemy taking ${amount} damage, current health: ${this.health}`);
+    this.health -= amount;
+    
+    // Hit effect - flash the sprite
+    if (this.sprite && this.scene && this.scene.tweens) {
+      this.scene.tweens.add({
+        targets: this.sprite,
+        alpha: 0.5,
+        duration: 100,
+        yoyo: true
+      });
+    }
+    
+    // Update health bar
+    this.updateVisuals();
+    
+    // Check if enemy is defeated
+    if (this.health <= 0) {
+      console.log("Enemy defeated!");
+      
+      // Add score
+      if (this.scene.gameState) {
+        this.scene.gameState.score += this.value;
+        this.scene.updateScoreText();
+      }
+      
+      // Add coins
+      if (typeof this.scene.updateFarmCoins === 'function') {
+        this.scene.updateFarmCoins(this.value);
+      }
+      
+      // Destroy the enemy
+      this.destroy();
+      return true;
+    }
+    
+    return false;
+  }
+  
+  endGame() {
+    if (!this.scene) return;
+    
+    console.log("Game over!");
+    
+    // Set game to inactive
+    if (this.scene.gameState) {
+      this.scene.gameState.isActive = false;
+    }
+    
+    // Show game over text
+    const gameOverText = this.scene.add.text(400, 300, 'GAME OVER', {
+      fontSize: '48px',
+      fontFamily: 'Arial',
+      color: '#FF0000'
+    }).setOrigin(0.5);
+    
+    // Show score
+    const scoreText = this.scene.add.text(400, 350, `Final Score: ${this.scene.gameState.score}`, {
+      fontSize: '24px',
+      fontFamily: 'Arial',
+      color: '#FFFFFF'
+    }).setOrigin(0.5);
+    
+    // Show restart button
+    const restartButton = this.scene.add.rectangle(400, 420, 200, 50, 0xFFFFFF);
+    const restartText = this.scene.add.text(400, 420, 'Restart Game', {
+      fontSize: '18px',
+      fontFamily: 'Arial',
+      color: '#000000'
+    }).setOrigin(0.5);
+    
+    restartButton.setInteractive();
+    restartButton.on('pointerdown', () => {
+      this.scene.scene.restart();
+    });
+  }
+  
+  destroy() {
+    console.log(`Destroying enemy at (${this.x}, ${this.y})`);
+    
+    // Set as inactive
+    this.active = false;
+    this.visible = false;
+    
+    // Remove from enemies array
+    if (this.scene && this.scene.enemies) {
+      const index = this.scene.enemies.indexOf(this);
+      if (index !== -1) {
+        this.scene.enemies.splice(index, 1);
+      }
+    }
+    
+    // Clean up sprites
+    if (this.sprite) {
+      this.sprite.destroy();
+      this.sprite = null;
+    }
+    
+    if (this.typeText) {
+      this.typeText.destroy();
+      this.typeText = null;
+    }
+    
+    if (this.healthBar) {
+      if (this.healthBar.background) {
+        this.healthBar.background.destroy();
+        this.healthBar.background = null;
+      }
+      if (this.healthBar.fill) {
+        this.healthBar.fill.destroy();
+        this.healthBar.fill.fill = null;
+      }
+      this.healthBar = null;
+    }
+  }
+  
+  setActive(state) {
+    this.active = state;
+    return this;
+  }
+  
+  setVisible(state) {
+    this.visible = state;
+    
+    if (this.sprite) this.sprite.visible = state;
+    if (this.typeText) this.typeText.visible = state;
+    
+    if (this.healthBar) {
+      if (this.healthBar.background) this.healthBar.background.visible = state;
+      if (this.healthBar.fill) this.healthBar.fill.visible = state;
+    }
+    
+    return this;
+  }
+} 

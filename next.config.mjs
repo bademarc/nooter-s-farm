@@ -13,21 +13,37 @@ try {
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  eslint: {
-    ignoreDuringBuilds: true,
+  reactStrictMode: true,
+  webpack: (config, { isServer }) => {
+    // Fix compatibility issues with ethers
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      fs: false,
+      net: false,
+      tls: false,
+      crypto: false,
+    };
+    
+    return config;
   },
+  // Ignore specific build errors that are just warnings
   typescript: {
+    // Disable type checking during production build for faster builds
     ignoreBuildErrors: true,
+  },
+  eslint: {
+    // Disable eslint during production build for faster builds
+    ignoreDuringBuilds: true,
   },
   images: {
     unoptimized: true,
   },
   experimental: {
     webpackBuildWorker: true,
-    parallelServerBuildTraces: true,
     parallelServerCompiles: true,
-  },
-}
+    parallelServerBuildTraces: true,
+  }
+};
 
 if (userConfig) {
   // ESM imports will have a "default" property
