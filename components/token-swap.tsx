@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ArrowDownUp, RefreshCw, ArrowRightLeft, AlertCircle, Coins, ArrowDown, Loader, ExternalLink, CheckCircle2, Plus } from "lucide-react"
 // Import specific functions from ethers v6
-import { ethers, Contract, formatUnits, parseUnits, BrowserProvider, JsonRpcProvider } from "ethers"
+import { ethers, Contract, formatUnits, parseUnits, BrowserProvider, JsonRpcProvider, getAddress, id, zeroPadValue } from "ethers"
 import toast from "react-hot-toast"
 import { 
   Dialog,
@@ -82,7 +82,7 @@ const SWAP_ABI = [
 // Add a helper function to properly format addresses for ethers v6
 const getChecksumAddress = (address: string): string => {
   try {
-    return ethers.getAddress(address);
+    return getAddress(address);
   } catch (error) {
     console.error("Error formatting address:", error);
     return address; // Return original if can't format
@@ -183,7 +183,7 @@ export const TokenSwap = () => {
       }
       
       try {
-        const nootContract = new ethers.Contract(checksummedNOOTAddress, TOKEN_ABI, provider);
+        const nootContract = new Contract(checksummedNOOTAddress, TOKEN_ABI, provider);
         
         // Try to get token name first as a test
         const tokenName = await nootContract.name().catch((e: any) => {
@@ -612,8 +612,8 @@ export const TokenSwap = () => {
       // Create contract instances
       const checksummedNOOTAddress = getChecksumAddress(NOOT_TOKEN_ADDRESS);
       const checksummedFarmSwapAddress = getChecksumAddress(FARM_SWAP_ADDRESS);
-      const nootContract = new ethers.Contract(checksummedNOOTAddress, TOKEN_ABI, signer);
-      const swapContract = new ethers.Contract(checksummedFarmSwapAddress, SWAP_ABI, signer);
+      const nootContract = new Contract(checksummedNOOTAddress, TOKEN_ABI, signer);
+      const swapContract = new Contract(checksummedFarmSwapAddress, SWAP_ABI, signer);
       
       // First check contract's NOOT balance
       const contractBalance = await nootContract.balanceOf(checksummedFarmSwapAddress);
@@ -701,9 +701,9 @@ export const TokenSwap = () => {
           const filter = {
             address: checksummedNOOTAddress,
             topics: [
-              ethers.id("Transfer(address,address,uint256)"),
+              id("Transfer(address,address,uint256)"),
               null,
-              ethers.zeroPadValue(walletAddress, 32)
+              zeroPadValue(walletAddress, 32)
             ]
           };
           
@@ -968,9 +968,8 @@ export const TokenSwap = () => {
         if (currentAllowance < nootAmount) {
           console.log("Allowance insufficient, requesting approval...");
           
-          // Set a very large approval to prevent needing multiple approvals
-          // Approve 10 million tokens to avoid frequent approvals
-          const largeApprovalAmount = ethers.parseUnits("10000000", 18); // 10 million tokens
+          // Due to limitations with MetaMask, we need to use a large approval amount for tokens
+          const largeApprovalAmount = parseUnits("10000000", 18); // 10 million tokens
           
           toast.success(
             <div className="space-y-1 text-sm">
@@ -1233,8 +1232,8 @@ export const TokenSwap = () => {
       // Create contract instances
       const checksummedNootTokenAddress = getChecksumAddress(NOOT_TOKEN_ADDRESS);
       const checksummedFarmSwapAddress = getChecksumAddress(FARM_SWAP_ADDRESS);
-      const nootContract = new ethers.Contract(checksummedNootTokenAddress, TOKEN_ABI, provider);
-      const swapContract = new ethers.Contract(checksummedFarmSwapAddress, SWAP_ABI, signer);
+      const nootContract = new Contract(checksummedNootTokenAddress, TOKEN_ABI, provider);
+      const swapContract = new Contract(checksummedFarmSwapAddress, SWAP_ABI, signer);
       
       // First check contract's NOOT balance
       const contractBalance = await nootContract.balanceOf(checksummedFarmSwapAddress);
