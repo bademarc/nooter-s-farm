@@ -1,41 +1,22 @@
 "use client";
 
 import { useState, useEffect, useContext, useCallback } from "react";
-// Import only what's needed from ethers v6
-import { ethers } from "ethers";
 import { Farm } from "@/components/farm";
 import { Navbar } from "@/components/navbar";
 import { Sidebar } from "@/components/sidebar";
 import { WalletConnect } from "@/components/wallet-connect";
 import { GameProvider, GameContext } from "@/context/game-context";
-import { AbstractLogo } from "@/components/abstract-logo";
-import { AccessibleLayout } from "@/components/accessible-layout";
-import Link from "next/link";
-import { BookOpen, User, Trophy, Sparkles, Sprout, Check, Volume, Music, CloudRain, Wallet, Settings, RefreshCw, Bell, Coins, Lock } from "lucide-react";
 import { Toaster as UIToaster } from "@/components/ui/toaster";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import toast from "react-hot-toast";
-
-// For mobile menu
-import { Menu, X } from "lucide-react";
-
-// Define Abstract Testnet constants
-const ABSTRACT_CHAIN_ID = "0x2B74"; // 11124 in decimal
-const ABSTRACT_CHAIN_ID_DECIMAL = 11124;
-const ABSTRACT_RPC_URL = "https://api.testnet.abs.xyz";
-const ABSTRACT_WEBSOCKET_URL = "wss://api.testnet.abs.xyz/ws";
-const ABSTRACT_EXPLORER_URL = "https://sepolia.abscan.org/";
-const ABSTRACT_VERIFY_URL = "https://api-sepolia.abscan.org/api";
+import { Menu, X, User, Trophy, Sparkles, Music, CloudRain, Settings, Volume } from "lucide-react";
 
 export default function Home() {
   const [showSidebar, setShowSidebar] = useState(false);
   const [tab, setTab] = useState("farm");
   const [activeView, setActiveView] = useState("farm");
   const [isMounted, setIsMounted] = useState(false);
-
-  // No need to handle wallet connection state here
-  // since it is now handled inside the WalletConnect component
 
   // Handle mobile menu
   const toggleSidebar = () => {
@@ -103,14 +84,11 @@ export default function Home() {
             {tab === "farm" && <Farm />}
             {tab === "profile" && <div className="animate-fadeIn"><ProfileContent /></div>}
             {tab === "settings" && <div className="animate-fadeIn"><SettingsContent /></div>}
-            {/* Add other tabs when implemented */}
           </div>
         </main>
         
-        {/* The WalletConnect component is now completely self-contained */}
         <WalletConnect />
         
-        {/* We keep only the UI Toaster because react-hot-toast Toaster is now in layout.tsx */}
         <UIToaster />
         
         {/* NOOT Contract Address Display */}
@@ -198,7 +176,7 @@ function ProfileContent() {
                 <Button
                   variant="outline"
                   onClick={() => setEditingProfile(!editingProfile)}
-                  className="mt-4 w-full bg-white text-black border-0 rounded-none hover:bg-white/90 noot-text"
+                  className="mt-4 w-full text-xs"
                 >
                   {editingProfile ? "Save Profile" : "Edit Profile"}
                 </Button>
@@ -281,112 +259,76 @@ function ProfileContent() {
 
 // Settings component
 function SettingsContent() {
-  const { resetGame } = useContext(GameContext);
-  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [volume, setVolume] = useState(100);
   const [musicEnabled, setMusicEnabled] = useState(true);
-  const [weatherEffectsEnabled, setWeatherEffectsEnabled] = useState(true);
-  const [autoConnectWallet, setAutoConnectWallet] = useState(false);
-  const [notifications, setNotifications] = useState(true);
+  const [soundsEnabled, setSoundsEnabled] = useState(true);
+  const [weatherEffects, setWeatherEffects] = useState(true);
+  const [highPerformance, setHighPerformance] = useState(false);
   
   return (
-    <div>
+    <div className="mb-6">
       <div className="noot-card">
         <div className="border-b border-[#333] p-4">
           <h2 className="flex items-center text-white noot-title">
             <Settings className="h-5 w-5 mr-2" />
-            Game Settings
+            Settings
           </h2>
           <p className="text-white/60 text-sm noot-text">
-            Customize your farming experience
+            Configure your farming experience
           </p>
         </div>
-        <div className="p-6">
-          <div className="space-y-6">
-            <div className="bg-[#111] border border-[#333] p-5">
-              <h3 className="text-lg font-bold mb-4 text-white noot-title">Game Settings</h3>
-              
-              <div className="space-y-4 noot-text">
-                <div className="flex items-center justify-between p-3 border border-[#333] bg-black">
-                  <div className="flex items-center">
-                    <Volume className="h-5 w-5 mr-3 text-white" />
-                    <span className="text-white">Sound Effects</span>
-                  </div>
-                  <Switch 
-                    checked={soundEnabled} 
-                    onCheckedChange={setSoundEnabled}
-                    className="data-[state=checked]:bg-white data-[state=checked]:text-black"
-                  />
-                </div>
-                
-                <div className="flex items-center justify-between p-3 border border-[#333] bg-black">
-                  <div className="flex items-center">
-                    <Music className="h-5 w-5 mr-3 text-white" />
-                    <span className="text-white">Background Music</span>
-                  </div>
-                  <Switch 
-                    checked={musicEnabled} 
-                    onCheckedChange={setMusicEnabled}
-                    className="data-[state=checked]:bg-white data-[state=checked]:text-black"
-                  />
-                </div>
-                
-                <div className="flex items-center justify-between p-3 border border-[#333] bg-black">
-                  <div className="flex items-center">
-                    <CloudRain className="h-5 w-5 mr-3 text-white" />
-                    <span className="text-white">Weather Effects</span>
-                  </div>
-                  <Switch 
-                    checked={weatherEffectsEnabled} 
-                    onCheckedChange={setWeatherEffectsEnabled}
-                    className="data-[state=checked]:bg-white data-[state=checked]:text-black"
-                  />
-                </div>
-              </div>
+        <div className="p-6 space-y-5">
+          {/* Audio Settings */}
+          <div className="space-y-3">
+            <h3 className="text-lg font-medium text-white noot-title">Audio</h3>
+            
+            <div className="flex items-center justify-between">
+              <label className="flex items-center text-white noot-text">
+                <Music className="mr-2 h-4 w-4" />
+                Music
+              </label>
+              <Switch 
+                checked={musicEnabled}
+                onCheckedChange={setMusicEnabled}
+              />
             </div>
             
-            <div className="bg-[#111] border border-[#333] p-5">
-              <h3 className="text-lg font-bold mb-4 text-white noot-title">Wallet Settings</h3>
-              
-              <div className="space-y-4 noot-text">
-                <div className="flex items-center justify-between p-3 border border-[#333] bg-black">
-                  <div className="flex items-center">
-                    <Wallet className="h-5 w-5 mr-3 text-white" />
-                    <span className="text-white">Auto-connect on Start</span>
-                  </div>
-                  <Switch 
-                    checked={autoConnectWallet} 
-                    onCheckedChange={setAutoConnectWallet}
-                    className="data-[state=checked]:bg-white data-[state=checked]:text-black"
-                  />
-                </div>
-                
-                <div className="flex items-center justify-between p-3 border border-[#333] bg-black">
-                  <div className="flex items-center">
-                    <Bell className="h-5 w-5 mr-3 text-white" />
-                    <span className="text-white">Transaction Notifications</span>
-                  </div>
-                  <Switch 
-                    checked={notifications} 
-                    onCheckedChange={setNotifications}
-                    className="data-[state=checked]:bg-white data-[state=checked]:text-black"
-                  />
-                </div>
-              </div>
+            <div className="flex items-center justify-between">
+              <label className="flex items-center text-white noot-text">
+                <Volume className="mr-2 h-4 w-4" />
+                Sound Effects
+              </label>
+              <Switch 
+                checked={soundsEnabled}
+                onCheckedChange={setSoundsEnabled}
+              />
+            </div>
+          </div>
+          
+          {/* Visual Settings */}
+          <div className="space-y-3 pt-2">
+            <h3 className="text-lg font-medium text-white noot-title">Visual</h3>
+            
+            <div className="flex items-center justify-between">
+              <label className="flex items-center text-white noot-text">
+                <CloudRain className="mr-2 h-4 w-4" />
+                Weather Effects
+              </label>
+              <Switch 
+                checked={weatherEffects}
+                onCheckedChange={setWeatherEffects}
+              />
             </div>
             
-            <div className="bg-[#111] border border-[#333] p-5">
-              <h3 className="text-lg font-bold mb-4 text-white noot-title">Game Data</h3>
-              
-              <div className="space-y-4">
-                <Button 
-                  variant="outline" 
-                  onClick={resetGame}
-                  className="w-full bg-white hover:bg-white/90 text-black border-0 rounded-none noot-text"
-                >
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Reset Game Data
-                </Button>
-              </div>
+            <div className="flex items-center justify-between">
+              <label className="flex items-center text-white noot-text">
+                <Sparkles className="mr-2 h-4 w-4" />
+                High Performance Mode
+              </label>
+              <Switch 
+                checked={highPerformance}
+                onCheckedChange={setHighPerformance}
+              />
             </div>
           </div>
         </div>

@@ -14,6 +14,8 @@ try {
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Always use static export to avoid server components issues
+  output: 'export',
   webpack: (config, { isServer }) => {
     // Fix compatibility issues with ethers
     config.resolve.fallback = {
@@ -38,14 +40,13 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  experimental: {
-    webpackBuildWorker: true,
-    parallelServerCompiles: true,
-    parallelServerBuildTraces: true,
-  },
-  // Use static export for both GitHub Pages and Vercel
-  output: 'export',
-  // Only apply basePath for GitHub Pages
+  // Remove experimental features that might cause issues
+  // experimental: {
+  //   webpackBuildWorker: true,
+  //   parallelServerCompiles: true,
+  //   parallelServerBuildTraces: true,
+  // },
+  // Set basePath for GitHub Pages if needed
   ...(process.env.GITHUB_ACTIONS ? {
     basePath: '/nooter-s-farm',
   } : {}),
