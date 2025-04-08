@@ -94,43 +94,51 @@ export default class Enemy {
       if (scene.textures.exists(this.spriteKey)) {
         // Create a container for the enemy (for better grouping)
         this.container = scene.add.container(x, y);
-        this.container.setDepth(1000); // Very high depth to ensure it's visible
+        this.container.setDepth(100); // Use consistent depth 
         
         // Use a large visible sprite for the enemy
         this.sprite = scene.add.sprite(0, 0, this.spriteKey);
-        this.sprite.setDisplaySize(50, 50); // Larger size for better visibility
+        this.sprite.setDisplaySize(60, 60); // Larger size for better visibility
+        this.sprite.setInteractive(); // Make it interactive for clicks
         
         // Add to container (no highlight circle)
         this.container.add([this.sprite]);
         
-        console.log(`Created transparent enemy sprite with texture: ${this.spriteKey}`);
+        console.log(`Created enemy sprite with texture: ${this.spriteKey}`);
       } else {
         // Fallback to colored circle if texture doesn't exist
         console.warn(`Texture ${this.spriteKey} not found, using fallback circle`);
         
         // Create a container
         this.container = scene.add.container(x, y);
-        this.container.setDepth(1000);
+        this.container.setDepth(100);
         
         // Create a larger, more visible sprite or icon
         this.typeText = scene.add.text(0, 0, type === 'bird' ? '🐦' : '🐰', {
-          fontSize: '24px',
+          fontSize: '36px', // Larger text
           fontFamily: 'Arial',
           stroke: '#000000',
           strokeThickness: 4
         }).setOrigin(0.5);
+        this.typeText.setInteractive(); // Make it interactive
         
         // Add to container (no highlight circle)
         this.container.add([this.typeText]);
       }
+      
+      // Make the container interactive to improve clicking
+      this.container.setSize(60, 60); // Explicit size
+      this.container.setInteractive();
     } catch (error) {
       console.error('Error creating enemy sprite:', error);
       // Ultra fallback - create a minimal emergency representation
       this.container = scene.add.container(x, y);
-      this.container.setDepth(1000);
+      this.container.setDepth(100);
+      this.container.setSize(60, 60);
+      this.container.setInteractive();
       
       const emergencyText = scene.add.text(0, 0, "!", {
-        fontSize: '30px',
+        fontSize: '36px',
         fontFamily: 'Arial',
         color: '#FF0000',
         stroke: '#000000',
@@ -143,10 +151,10 @@ export default class Enemy {
     // Add health bar with high visibility
     this.healthBar = {
       background: scene.add.rectangle(x, y - 35, 40, 8, 0xFF0000)
-        .setDepth(1002)
+        .setDepth(101)
         .setStrokeStyle(1, 0x000000),
       fill: scene.add.rectangle(x, y - 35, 40, 8, 0x00FF00)
-        .setDepth(1003)
+        .setDepth(102)
     };
     
     // Remove the emoji text since we're using sprites now
@@ -187,8 +195,9 @@ export default class Enemy {
         this.lastMoveTime = currentTime;
       }
       
-      // Move towards left side of screen
-      this.x -= this.speed;
+      // Move towards left side of screen - FASTER MOVEMENT
+      // Original speed multiplied by 1.5 for faster movement
+      this.x -= this.speed * 1.5;
       
       // Initialize stuck counter if not already set
       if (this.stuckCounter === undefined) {
@@ -220,7 +229,7 @@ export default class Enemy {
           if (this.stuckCounter > 3) {
             // More aggressive unsticking for longer stucks
             console.log(`Enemy ${this.type} appears very stuck at (${this.x}, ${this.y}) - forcing stronger movement`);
-            this.x -= this.speed * 3;
+            this.x -= this.speed * 5; // More aggressive unsticking (changed from 3 to 5)
             this.y += (Math.random() - 0.5) * 10; // Random Y jitter
             
             // If extremely stuck (10+ attempts), teleport
@@ -233,7 +242,7 @@ export default class Enemy {
           } else {
             // Normal unstuck attempt
             console.log(`Enemy appears stuck - forcing movement (attempt #${this.stuckCounter})`);
-            this.x -= this.speed * 2;
+            this.x -= this.speed * 3; // More aggressive unsticking (changed from 2 to 3)
           }
         }
       } else {
@@ -250,22 +259,43 @@ export default class Enemy {
       // Ensure enemy stays within playable area
       this.y = Math.max(100, Math.min(500, this.y));
       
-      // Update visual elements
-      this.updateVisuals();
+      // Force active and visible states
+      this.active = true;
+      this.visible = true;
       
-      // Force visibility and depth for debugging
-      if (this.sprite) {
-        this.sprite.visible = true;
-        this.sprite.setDepth(100); // Very high depth to ensure it's visible
-      }
-      if (this.typeText) {
-        this.typeText.visible = true;
-        this.typeText.setDepth(101);
-      }
-      
-      // Logging for debug - position check every 60 frames
-      if (Math.random() < 0.016) {
-        console.log(`Enemy at position: (${this.x.toFixed(1)}, ${this.y.toFixed(1)}), active: ${this.active}, visible: ${this.visible}`);
+      // Update visual elements - ENSURE VISIBILITY
+      if (typeof this.updateVisuals === 'function') {
+        this.updateVisuals();
+      } else {
+        // Fallback update if updateVisuals is missing
+        if (this.container) {
+          this.container.x = this.x;
+          this.container.y = this.y;
+          this.container.visible = true;
+          this.container.setDepth(1000);
+        }
+        
+        if (this.sprite) {
+          this.sprite.visible = true;
+          this.sprite.setDepth(1000);
+        }
+        
+        if (this.healthBar) {
+          const healthPercent = Math.max(0, this.health / this.maxHealth || 1);
+          
+          if (this.healthBar.background) {
+            this.healthBar.background.x = this.x;
+            this.healthBar.background.y = this.y - 35;
+            this.healthBar.background.visible = true;
+          }
+          
+          if (this.healthBar.fill) {
+            this.healthBar.fill.width = 40 * healthPercent;
+            this.healthBar.fill.x = this.x - 20 + (this.healthBar.fill.width / 2);
+            this.healthBar.fill.y = this.y - 35;
+            this.healthBar.fill.visible = true;
+          }
+        }
       }
       
       // Check if enemy has reached left side
@@ -280,12 +310,23 @@ export default class Enemy {
   updateVisuals() {
     if (!this.active) return;
     
+    // Force enemy to be active
+    this.active = true;
+    this.visible = true;
+    
     // Update container position (main approach)
     if (this.container) {
       this.container.x = this.x;
       this.container.y = this.y;
       this.container.visible = true; // Force visibility
       this.container.setDepth(1000); // Extremely high depth to ensure visibility
+      
+      // Make container interactive if not already
+      if (!this.container.input) {
+        this.container.setInteractive();
+        this.container.input.hitArea.width = 60;
+        this.container.input.hitArea.height = 60;
+      }
     } 
     // Legacy fallback for sprite-only approach
     else if (this.sprite) {
@@ -293,6 +334,11 @@ export default class Enemy {
       this.sprite.y = this.y;
       this.sprite.visible = true;
       this.sprite.setDepth(1000);
+      
+      // Make sprite interactive if not already
+      if (!this.sprite.input) {
+        this.sprite.setInteractive();
+      }
       
       // If the sprite is a Phaser.GameObjects.Sprite, ensure it has the correct key
       if (this.sprite.setTexture && this.scene.textures.exists(this.spriteKey)) {
@@ -317,33 +363,11 @@ export default class Enemy {
     }
     
     // Update health bar - always separate from container
-    if (this.healthBar) {
-      const healthPercent = Math.max(0, this.health / this.maxHealth);
-      
-      // Update background
-      if (this.healthBar.background) {
-        this.healthBar.background.x = this.x;
-        this.healthBar.background.y = this.y - 35; // Higher position
-        this.healthBar.background.width = 40; // Wider
-        this.healthBar.background.height = 8; // Taller
-        this.healthBar.background.visible = true;
-        this.healthBar.background.setDepth(1002);
-      }
-      
-      // Update fill
-      if (this.healthBar.fill) {
-        this.healthBar.fill.width = 40 * healthPercent; // Wider
-        this.healthBar.fill.height = 8; // Taller
-        this.healthBar.fill.x = this.x - 20 + (this.healthBar.fill.width / 2);
-        this.healthBar.fill.y = this.y - 35; // Higher position
-        this.healthBar.fill.visible = true;
-        this.healthBar.fill.setDepth(1003);
-      }
-    }
+    this.updateHealthBar();
     
     // Debug log position occasionally
     if (Math.random() < 0.01) {
-      console.log(`Enemy at (${this.x.toFixed(0)}, ${this.y.toFixed(0)}), visible: ${this.container?.visible || this.sprite?.visible}`);
+      console.log(`Enemy at (${this.x.toFixed(0)}, ${this.y.toFixed(0)}), health: ${this.health.toFixed(1)}/${this.maxHealth}`);
     }
   }
   
@@ -368,126 +392,61 @@ export default class Enemy {
         this.destroy();
   }
   
-  takeDamage(amount, source) {
+  takeDamage(amount) {
+    // Skip if already inactive
     if (!this.active) return;
     
-    try {
-      // Apply weakness multiplier if applicable
-      let finalDamage = amount;
+    // Ensure minimum damage is applied
+    const actualDamage = Math.max(0.5, amount);
+    
+    // Apply damage resistance if applicable
+    let finalDamage = actualDamage;
+    if (this.damageResistance && this.damageResistance > 0) {
+      finalDamage = actualDamage * (1 - this.damageResistance);
+    }
+    
+    // Ensure minimum effective damage (at least 0.5)
+    finalDamage = Math.max(0.5, finalDamage);
+    
+    // IMPORTANT FIX: Special handling for enemies with low health
+    // This prevents enemies getting stuck at 1 HP
+    if (this.health <= 1.5) {
+      // Guarantee the enemy dies
+      finalDamage = Math.max(finalDamage, this.health * 2);
+      this.health = 0;
       
-      if (source?.type === this.weakAgainst) {
-        finalDamage = amount * this.weaknessMultiplier;
-        console.log(`${this.type} is weak against ${source.type}, damage multiplied: ${amount} -> ${finalDamage}`);
-      }
+      // Log the forced death for debugging
+      console.log(`Enemy ${this.type} forced death at ${this.health} HP`);
+    } else {
+      // Normal damage application
+      this.health -= finalDamage;
+    }
+    
+    // CRITICAL FIX: Ensure health never gets stuck at exactly 1
+    if (this.health > 0 && this.health < 1.1) {
+      // Always kill it - no randomness
+      this.health = 0;
+      console.log(`Enemy ${this.type} with <1.1 HP force killed`);
+    }
+    
+    // Update health bar if available
+    this.updateHealthBar();
+    
+    // Show damage text
+    this.showDamageText(finalDamage);
+    
+    // Check if enemy is defeated
+    if (this.health <= 0) {
+      // Make sure health is exactly 0
+      this.health = 0;
       
-      // If damage is coming from player click (no source), apply much higher damage
-      if (!source) {
-        finalDamage = Math.max(1, finalDamage); // Reduced from 2 to 1 for player clicks
-        // Ignore damage resistance for player clicks
-        console.log(`Player clicked enemy, applying high damage: ${finalDamage}`);
+      // Double check defeat
+      if (typeof this.defeat === 'function') {
+        this.defeat();
       } else {
-        // Only apply damage resistance to non-player damage
-        if (this.damageResistance && this.damageResistance > 0) {
-          const originalDamage = finalDamage;
-          finalDamage = Math.max(1, Math.floor(finalDamage * (1 - this.damageResistance)));
-          console.log(`Enemy resisted damage: ${originalDamage} -> ${finalDamage} (${Math.round(this.damageResistance * 100)}% resistance)`);
-        }
-      }
-      
-      // Apply the damage (minimum 1)
-      this.health -= Math.max(1, finalDamage);
-      
-      // Create damage text with larger font for player clicks
-      if (this.scene && typeof this.scene.add.text === 'function') {
-        const damageText = this.scene.add.text(this.x, this.y - 20, `-${finalDamage}`, {
-          fontSize: !source ? '24px' : '16px', // Larger text for player clicks
-          color: !source ? '#FF0000' : '#FF6B6B',
-          stroke: '#000000',
-          strokeThickness: !source ? 3 : 2
-        }).setOrigin(0.5);
-        
-        this.scene.tweens.add({
-          targets: damageText,
-          y: damageText.y - 40,
-          alpha: 0,
-          duration: 1000,
-          onComplete: () => damageText.destroy()
-        });
-      }
-      
-      // More noticeable flash effect for player clicks
-      if (this.sprite && this.scene && this.scene.tweens) {
-        this.scene.tweens.add({
-          targets: this.sprite,
-          alpha: !source ? 0.3 : 0.5, // More transparent flash for player clicks
-          scaleX: !source ? 1.2 : 1, // Add scale effect for player clicks
-          scaleY: !source ? 1.2 : 1,
-          duration: !source ? 150 : 100,
-          yoyo: true,
-        });
-      }
-      
-      console.log(`Enemy ${this.id} took ${finalDamage} damage, health: ${this.health}/${this.maxHealth}`);
-      
-      // Update health bar
-      this.updateVisuals();
-      
-      // Check if enemy is defeated
-      if (this.health <= 0) {
-        console.log(`Enemy ${this.id} defeated!`);
-        if (this.scene.gameState) {
-          // Update coins
-          this.scene.gameState.coins += this.value;
-          
-          // Create floating coin value text that stays longer
-          const coinText = this.scene.add.text(this.x, this.y, `+${this.value}`, {
-            fontSize: '24px',
-            color: '#FFD700',
-            stroke: '#000000',
-            strokeThickness: 3
-          }).setOrigin(0.5)
-          .setDepth(10);
-          
-          // Animate the coin text
-          this.scene.tweens.add({
-            targets: coinText,
-            y: coinText.y - 50,
-            alpha: 0,
-            duration: 3000, // Increased from 2000 to 3000
-            onComplete: () => coinText.destroy()
-          });
-          
-          // Update coins display - call the updateFarmCoins method directly
-          if (this.scene.updateFarmCoins) {
-            this.scene.updateFarmCoins(this.value);
-          }
-          
-          if (this.isBoss) {
-            const bossText = this.scene.add.text(this.x, this.y - 30, 'BOSS DEFEATED!', {
-              fontSize: '24px',
-              color: '#FF00FF',
-              stroke: '#000000',
-              strokeThickness: 4
-            }).setOrigin(0.5)
-            .setDepth(11);
-            
-            // Animate boss text
-            this.scene.tweens.add({
-              targets: bossText,
-              y: bossText.y - 30,
-              alpha: 0,
-              duration: 2000,
-              onComplete: () => bossText.destroy()
-            });
-          }
-        }
-        
-        // Play defeat animation and destroy
-        this.defeatAnimation();
+        // Fallback if defeat method is missing
         this.destroy();
       }
-    } catch (error) {
-      console.error('Error in takeDamage:', error);
     }
   }
   
@@ -712,5 +671,127 @@ export default class Enemy {
     } catch (error) {
       console.error("Error cleaning up enemy sprites:", error);
     }
+  }
+  
+  // Add updateHealthBar method to ensure health bar is properly updated
+  updateHealthBar() {
+    if (!this.healthBar || !this.active || !this.scene) return;
+    
+    // Calculate health percentage
+    const healthPercent = Math.max(0, this.health / this.maxHealth);
+    
+    // Update background
+    if (this.healthBar.background) {
+      this.healthBar.background.x = this.x;
+      this.healthBar.background.y = this.y - 35;
+      this.healthBar.background.width = 40;
+      this.healthBar.background.height = 8;
+      this.healthBar.background.visible = true;
+      this.healthBar.background.setDepth(1002);
+    }
+    
+    // Update fill
+    if (this.healthBar.fill) {
+      this.healthBar.fill.width = 40 * healthPercent;
+      this.healthBar.fill.height = 8;
+      this.healthBar.fill.x = this.x - 20 + (this.healthBar.fill.width / 2);
+      this.healthBar.fill.y = this.y - 35;
+      this.healthBar.fill.visible = true;
+      this.healthBar.fill.setDepth(1003);
+      
+      // Change color based on health
+      if (healthPercent < 0.3) {
+        this.healthBar.fill.fillColor = 0xFF0000; // Red for low health
+      } else if (healthPercent < 0.6) {
+        this.healthBar.fill.fillColor = 0xFFFF00; // Yellow for medium health
+      } else {
+        this.healthBar.fill.fillColor = 0x00FF00; // Green for high health
+      }
+    }
+    
+    // Pulse effect on damage
+    if (this.healthBar.fill && this.healthBar.fill.alpha !== undefined) {
+      this.scene.tweens.add({
+        targets: this.healthBar.fill,
+        alpha: 0.5,
+        duration: 100,
+        yoyo: true,
+        onComplete: () => {
+          if (this.healthBar && this.healthBar.fill) {
+            this.healthBar.fill.alpha = 1;
+          }
+        }
+      });
+    }
+  }
+  
+  // Add a method to show damage text
+  showDamageText(amount) {
+    if (!this.scene || !this.active) return;
+    
+    try {
+      // Convert amount to a readable format
+      const damageText = amount.toFixed(1);
+      
+      // Create the damage text
+      const text = this.scene.add.text(this.x, this.y - 20, `-${damageText}`, {
+        fontSize: '16px',
+        fontFamily: 'Arial',
+        color: '#FF0000',
+        stroke: '#000000',
+        strokeThickness: 2
+      }).setOrigin(0.5);
+      
+      // Animate the text
+      this.scene.tweens.add({
+        targets: text,
+        y: this.y - 60,
+        alpha: 0,
+        scale: 1.5,
+        duration: 800,
+        onComplete: () => text.destroy()
+      });
+    } catch (error) {
+      console.error("Error showing damage text:", error);
+    }
+  }
+  
+  // Add this method to handle enemy defeat
+  defeat() {
+    if (!this.active) return;
+    
+    console.log(`Enemy ${this.type} defeated at (${this.x.toFixed(1)}, ${this.y.toFixed(1)})`);
+    
+    // Make sure the enemy is dead
+    this.health = 0;
+    
+    // Add coins to player
+    if (this.scene && this.scene.gameState) {
+      this.scene.gameState.farmCoins += this.value;
+      
+      // Update UI elements for score
+      if (typeof this.scene.updateFarmCoins === 'function') {
+        this.scene.updateFarmCoins(this.value);
+      }
+      
+      // Update score
+      this.scene.gameState.score += this.value * 10;
+      if (typeof this.scene.updateScoreText === 'function') {
+        this.scene.updateScoreText();
+      }
+      
+      // Show floating text for score
+      if (typeof this.scene.showFloatingText === 'function') {
+        this.scene.showFloatingText(this.x, this.y - 20, `+${this.value * 10}`, 0xFFFF00);
+      }
+    }
+    
+    // Play defeat animation
+    if (typeof this.defeatAnimation === 'function') {
+      this.defeatAnimation();
+    }
+    
+    // Destroy this enemy
+    this.destroy();
   }
 } 

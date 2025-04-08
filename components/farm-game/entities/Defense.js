@@ -97,6 +97,11 @@ export default class Defense {
     // Reduce attack cooldown time - ensure we're using the proper property name
     if (this.cooldownRemaining > 0) {
       this.cooldownRemaining -= 16.67; // Approximately 60 frames per second
+      
+      // Don't let cooldown get stuck at small values - clean reset to 0
+      if (this.cooldownRemaining < 1) {
+        this.cooldownRemaining = 0;
+      }
     }
     
     // Debug
@@ -128,52 +133,36 @@ export default class Defense {
   }
   
   checkForEnemiesInRange() {
-    // IMPORTANT: Aggressive enemy targeting to make sure mages never ignore enemies
-    
     // Initialize cooldownRemaining if it doesn't exist
     if (this.cooldownRemaining === undefined) {
       this.cooldownRemaining = 0;
     }
     
-    // Skip if on cooldown but show ready status
+    // Skip if on cooldown
     if (this.cooldownRemaining > 0) {
-      // Set "ready" appearance when cooldown almost done
-      if (this.cooldownRemaining < 500 && this.sprite && !this.readyState) {
-        this.readyState = true;
-        if (this.scene && this.scene.tweens) {
-          this.scene.tweens.add({
-            targets: this.sprite,
-            scaleX: 1.1,
-            scaleY: 1.1,
-            duration: 300,
-            yoyo: true,
-            repeat: 0
-          });
-        }
-      }
       return;
     }
     
-    // Reset ready state
-    this.readyState = false;
-    
     // Check if scene has enemies
-    if (!this.scene) return;
+    if (!this.scene || !this.scene.enemies) return;
     
-    // Initialize enemies array if it doesn't exist
+    // If no enemies, create empty array
     if (!this.scene.enemies) {
       this.scene.enemies = [];
       return;
     }
     
     let foundEnemy = false;
-    let closestDistance = Infinity;
-    let closestEnemy = null;
+    let bestTarget = null;
+    let bestScore = -Infinity;
     
-    // Find closest enemy in range - aggressive checking with multiple position options
+    // AGGRESSIVE SEARCH - Find best enemy to target using a scoring system
     for (let i = 0; i < this.scene.enemies.length; i++) {
       const enemy = this.scene.enemies[i];
-      if (!enemy || !enemy.active) continue;
+      if (!enemy) continue;
+      
+      // Skip inactive enemies (unless this is the only enemy)
+      if (!enemy.active && this.scene.enemies.length > 1) continue;
       
       // Try multiple ways to get position - be very thorough
       const enemyX = enemy.x || 
@@ -186,54 +175,102 @@ export default class Defense {
       // Skip enemies without position
       if (enemyX === null || enemyY === null) continue;
       
+      // Calculate distance
       const dx = enemyX - this.x;
       const dy = enemyY - this.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
       
-      // If this is a valid target and in range
-      if (distance <= this.range && distance < closestDistance) {
-        // Check if we can target this enemy type
-        if (this.targetTypes.length === 0 || 
-            this.targetTypes.includes(enemy.type) || 
-            this.targetTypes.includes('all')) {
-          closestDistance = distance;
-          closestEnemy = enemy;
-          foundEnemy = true;
+      // Skip enemies that are extremely far away
+      if (distance > this.range * 2) continue;
+      
+      // Check if we can target this enemy type - be more permissive
+      let canTarget = this.targetTypes.length === 0 || 
+                      this.targetTypes.includes(enemy.type) || 
+                      this.targetTypes.includes('all');
+      
+      // In desperate situations (few enemies), target anyway
+      if (!canTarget && this.scene.enemies.length <= 3) {
+        canTarget = true;
+      }
+      
+      // Skip if we can't target this type and we're enforcing type rules
+      if (!canTarget) continue;
+      
+      // Enemy is found
+      foundEnemy = true;
+      
+      // Calculate targeting score - higher is better
+      let score = 0;
+      
+      // Factor 1: Distance penalty (closer is better)
+      score -= distance * 0.5;
+      
+      // Factor 2: Low health bonus (prioritize finishing off enemies)
+      if (enemy.health && enemy.maxHealth) {
+        const healthPercent = enemy.health / enemy.maxHealth;
+        
+        // Huge bonus for nearly dead enemies
+        if (healthPercent <= 0.2) {
+          score += 1000;
         }
+        // Good bonus for weakened enemies
+        else if (healthPercent <= 0.5) {
+          score += 500;
+        }
+      }
+      
+      // Factor 3: Matching type bonus
+      if (this.targetTypes.includes(enemy.type)) {
+        score += 300;
+      }
+      
+      // Factor 4: In range bonus
+      if (distance <= this.range) {
+        score += 200;
+      }
+      
+      // Factor 5: Getting close to left side (emergency priority)
+      if (enemyX < 200) {
+        score += 2000; // Very high emergency priority
+      }
+      
+      // Update best target if this enemy has a better score
+      if (score > bestScore) {
+        bestScore = score;
+        bestTarget = enemy;
       }
     }
     
-    // Attack if found - NEVER ignore a valid target!
-    if (foundEnemy && closestEnemy) {
-      this.attack(closestEnemy);
+    // Attack best target if found
+    if (foundEnemy && bestTarget) {
+      // Just attack without showing any visual line - this fixes the React update error
+      this.attack(bestTarget);
       
-      // Show targeting visuals
-      this.showTargetLine(closestEnemy);
-      
-      // Debug info
-      if (this.debugMode) {
-        console.log(`Defense attacking enemy at ${closestEnemy.x},${closestEnemy.y} from ${this.x},${this.y}`);
-      }
-    } else {
-      // Perform a scanning animation to show the mage is actively looking
-      this.performScanAnimation();
+      // We're removing all visual feedback lines here to prevent React errors
+      // No line connections, no tweens that could cause re-renders
     }
   }
   
   attack(enemy) {
-    if (!this.active || !enemy || !enemy.active) return false;
+    if (!this.active) return false;
     
     // Initialize cooldownRemaining if it doesn't exist
     if (this.cooldownRemaining === undefined) {
       this.cooldownRemaining = 0;
     }
     
-    const currentTime = this.scene.time.now;
+    const currentTime = this.scene ? this.scene.time.now : 0;
     
-    // Skip if on cooldown, but ensure proper cooldown state first
+    // Skip if on cooldown
     if (this.cooldownRemaining > 0) {
       return false;
     }
+    
+    // If no enemy provided or invalid, return false
+    if (!enemy) return false;
+    
+    // Force enemy to be active - this ensures we can attack even if the enemy was previously marked inactive
+    enemy.active = true;
     
     // Ensure enemy has proper position values
     const enemyX = enemy.x || (enemy.sprite ? enemy.sprite.x : 0) || (enemy.container ? enemy.container.x : 0);
@@ -244,23 +281,79 @@ export default class Defense {
       return false;
     }
     
-    // Check if enemy is in range - using more reliable distance calculation
+    // Calculate distance
     const dx = enemyX - this.x;
     const dy = enemyY - this.y;
     const distance = Math.sqrt(dx * dx + dy * dy);
     
-    if (distance > this.range) {
+    // RELAXED RANGE CHECK - Allow attacking even if slightly out of normal range
+    // This makes mages more aggressive and less likely to skip enemies
+    const attackRange = this.range * 1.25; // 25% increased range
+    
+    if (distance > attackRange) {
+      // Only log occasionally to avoid spam
+      if (Math.random() < 0.01) {
+        console.log(`Enemy out of increased range: ${distance.toFixed(1)} > ${attackRange} for ${this.type}`);
+      }
       return false;
     }
     
-    // Additional check for enemy type - be more permissive with types when needed
-    if (this.targetTypes.length > 0 && !this.targetTypes.includes(enemy.type) && 
-        !this.targetTypes.includes('all')) {
-      return false;
+    // Calculate damage with special logic for low-health enemies
+    let damageAmount = this.damage;
+    
+    // IMPORTANT FIX: Always kill enemies with low health
+    // This prevents enemies getting stuck at 1 HP
+    if (enemy.health <= 2) {
+      // GUARANTEED KILL: Set damage higher than remaining health
+      damageAmount = enemy.health * 3; // Triple the damage for low health enemies
+      
+      // Force health to zero for critical hits
+      if (enemy.health <= 1.1) {
+        enemy.health = 0; // Force to zero
+      }
+      
+      // Display critical hit message
+      this.showDamageText(enemy, "CRITICAL!", 0xFFFF00);
     }
     
-    // Apply damage
-    enemy.takeDamage(this.damage);
+    // Apply damage to enemy - try multiple approaches to ensure it works
+    try {
+      // First try the standard takeDamage method
+      if (typeof enemy.takeDamage === 'function') {
+        enemy.takeDamage(damageAmount);
+      } 
+      // If that fails, apply damage directly
+      else {
+        enemy.health -= damageAmount;
+        
+        // If health is zero or below, destroy the enemy
+        if (enemy.health <= 0) {
+          enemy.health = 0;
+          
+          // Try different destruction methods
+          if (typeof enemy.defeat === 'function') {
+            enemy.defeat();
+          } else if (typeof enemy.destroy === 'function') {
+            enemy.destroy();
+          }
+        }
+      }
+      
+      // Force health bar update
+      if (typeof enemy.updateHealthBar === 'function') {
+        enemy.updateHealthBar();
+      } else if (enemy.healthBar) {
+        // Manual health bar update
+        const healthPercent = Math.max(0, enemy.health / enemy.maxHealth);
+        
+        if (enemy.healthBar.fill) {
+          enemy.healthBar.fill.width = 40 * healthPercent;
+          enemy.healthBar.fill.x = enemyX - 20 + (enemy.healthBar.fill.width / 2);
+        }
+      }
+    } catch (error) {
+      console.error("Error applying damage to enemy:", error);
+    }
     
     // Reset cooldown to full duration
     this.cooldownRemaining = this.cooldown || 2000;
@@ -273,55 +366,59 @@ export default class Defense {
         this.sprite.setTexture('ABS_attack');
         
         // Cast animation effect
-        this.scene.tweens.add({
-          targets: this.sprite,
-          scaleX: 1.2,
-          scaleY: 1.2,
-          duration: 200,
-          yoyo: true,
-          onComplete: () => {
-            // Switch back to idle sprite
-            if (this.sprite && this.sprite.active) {
-              this.sprite.setTexture('ABS_idle');
+        if (this.scene && this.scene.tweens) {
+          this.scene.tweens.add({
+            targets: this.sprite,
+            scaleX: 1.2,
+            scaleY: 1.2,
+            duration: 200,
+            yoyo: true,
+            onComplete: () => {
+              // Switch back to idle sprite
+              if (this.sprite && this.sprite.active) {
+                this.sprite.setTexture('ABS_idle');
+              }
             }
-          }
-        });
+          });
+        }
       }
       
       // Launch fireball
       this.launchFireball(enemy, 'blue');
       
       // Show spell effect
-      this.showDamageText(enemy, "FREEZE!", 0x0088FF);
+      this.showDamageText(enemy, `${damageAmount.toFixed(1)}`, 0x0088FF);
     } else if (this.type === 'dog') {
       // NOOT penguin mage attack animation
       if (this.sprite) {
         this.sprite.setTexture('NOOT_attack');
         
         // Cast animation effect
-        this.scene.tweens.add({
-          targets: this.sprite,
-          scaleX: 1.2,
-          scaleY: 1.2,
-          duration: 200,
-          yoyo: true,
-          onComplete: () => {
-            // Switch back to idle sprite
-            if (this.sprite && this.sprite.active) {
-              this.sprite.setTexture('NOOT_idle');
+        if (this.scene && this.scene.tweens) {
+          this.scene.tweens.add({
+            targets: this.sprite,
+            scaleX: 1.2,
+            scaleY: 1.2,
+            duration: 200,
+            yoyo: true,
+            onComplete: () => {
+              // Switch back to idle sprite
+              if (this.sprite && this.sprite.active) {
+                this.sprite.setTexture('NOOT_idle');
+              }
             }
-          }
-        });
+          });
+        }
       }
       
       // Launch fireball
       this.launchFireball(enemy, 'red');
       
       // Show spell effect
-      this.showDamageText(enemy, "BURN!", 0xFF4400);
+      this.showDamageText(enemy, `${damageAmount.toFixed(1)}`, 0xFF4400);
     }
     
-    // Create attack effect (visual-only effects)
+    // Add simple attack effect
     this.createAttackEffect(enemy);
     
     return true;
@@ -397,38 +494,24 @@ export default class Defense {
   }
   
   // Show damage text floating up
-  showDamageText(x, y, amount, color = 0xFF0000) {
+  showDamageText(target, amount, color = 0xFF0000) {
     try {
       // Skip if scene is invalid
       if (!this.scene) return;
 
-      // Convert color number to hex string
-      const colorString = this.convertToHexString(color);
-
-      const text = this.scene.add.text(x, y, amount, {
-        fontFamily: 'Arial',
-        fontSize: '16px',
-        color: colorString
-      }).setOrigin(0.5);
-
-      // Animate text
-      this.scene.tweens.add({
-        targets: text,
-        y: y - 30,
-        alpha: 0,
-        duration: 1000,
-        onComplete: () => text.destroy()
-      });
-    } catch (error) {
-      console.error("Error showing damage text:", error);
-    }
-  }
-  
-  // Show damage text floating up
-  showDamageText(x, y, amount, color = 0xFF0000) {
-    try {
-      // Skip if scene is invalid
-      if (!this.scene) return;
+      // Get the target position
+      let x, y;
+      if (typeof target === 'object' && target !== null) {
+        // If target is an enemy object
+        x = target.x;
+        y = target.y;
+      } else {
+        // If x,y coordinates were passed directly
+        x = target;
+        y = amount;
+        amount = color;
+        color = arguments[3] || 0xFF0000;
+      }
 
       // Convert color number to hex string directly
       let colorHex = '#FF0000'; // Default red
@@ -439,7 +522,9 @@ export default class Defense {
       const text = this.scene.add.text(x, y, amount, {
         fontFamily: 'Arial',
         fontSize: '16px',
-        color: colorHex
+        color: colorHex,
+        stroke: '#000000',
+        strokeThickness: 2
       }).setOrigin(0.5);
 
       // Animate text

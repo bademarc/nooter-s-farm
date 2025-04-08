@@ -1,5 +1,8 @@
 'use client';
 
+// Set up a global flag to prevent recursive/overlapping updates
+let isUpdating = false;
+
 // Ensure we only run Phaser-specific code on the client
 const isBrowser = typeof window !== 'undefined';
 
@@ -242,8 +245,30 @@ if (isBrowser) {
         }
         
         create() {
-          console.log("GameScene create started");
           try {
+            console.log("GameScene create started");
+            
+            // Initialize the defense range indicator early
+            this.defenseRangeIndicator = this.add.circle(0, 0, 150, 0xFFFFFF, 0.2);
+            this.defenseRangeIndicator.setStrokeStyle(2, 0xFFFFFF);
+            this.defenseRangeIndicator.setVisible(false);
+            
+            // Define the range functions early
+            this.showDefenseRange = (x, y, radius) => {
+              if (this.defenseRangeIndicator) {
+                this.defenseRangeIndicator.x = x;
+                this.defenseRangeIndicator.y = y;
+                this.defenseRangeIndicator.setRadius(radius);
+                this.defenseRangeIndicator.setVisible(true);
+              }
+            };
+            
+            this.hideDefenseRange = () => {
+              if (this.defenseRangeIndicator) {
+                this.defenseRangeIndicator.setVisible(false);
+              }
+            };
+            
             // Debug texture loading
             this.verifyTextureLoading();
             
@@ -311,45 +336,47 @@ if (isBrowser) {
             
             // Set up input handling
             this.input.on('pointerdown', (pointer) => {
-              if (!this.gameState.isActive) {
-                console.log("Game not active, ignoring click");
-                return;
+              console.log("Game clicked at", pointer.x, pointer.y, "tool mode:", this.toolMode);
+              
+              // If game hasn't started, ignore clicks
+              if (!this.gameState.isActive) return;
+              
+              // Check if clicked on an enemy - only in attack mode
+              if (this.toolMode === 'attack') {
+                const clickedEnemy = this.getEnemyAtPosition(pointer.x, pointer.y);
+                if (clickedEnemy) {
+                  // Apply damage to the enemy
+                  clickedEnemy.takeDamage(this.gameState.clickDamage || 1);
+                  
+                  // Show attack effect
+                  this.showFloatingText(clickedEnemy.x, clickedEnemy.y - 20, 
+                    `-${(this.gameState.clickDamage || 1).toFixed(1)}`, 0xFF0000);
+                  
+                  return; // Done with this click
+                }
               }
               
-              // Skip if clicking in toolbar area
-              if (pointer.y > 520) {
-                console.log("Click in toolbar area, ignoring");
-                return;
+              // Handle planting crops
+              if (this.toolMode === 'plant' && this.gameState.farmCoins >= 5) {
+                if (this.isPointInFarmArea(pointer.x, pointer.y)) {
+                  this.plantCrop(pointer.x, pointer.y);
+                } else {
+                  // Show error message if trying to plant outside farm area
+                  this.showFloatingText(pointer.x, pointer.y, "Plant on LEFT side only!", 0xFF0000);
+                }
+                return; // Done with this click
               }
               
-              // Grid position for placement
-              const gridX = Math.floor(pointer.x / this.gridCellSize) * this.gridCellSize + (this.gridCellSize / 2);
-              const gridY = Math.floor(pointer.y / this.gridCellSize) * this.gridCellSize + (this.gridCellSize / 2);
-              
-              console.log(`Click at (${pointer.x}, ${pointer.y}), grid: (${gridX}, ${gridY}), mode: ${this.toolMode}`);
-              
-              // Handle different modes
-              if (this.toolMode === 'plant') {
-                // Crop planting mode
-                if (this.gameState.farmCoins >= 5 && this.isPointInFarmArea(pointer.x, pointer.y)) {
-                  this.plantCrop(gridX, gridY);
-                } else if (!this.isPointInFarmArea(pointer.x, pointer.y)) {
-                  this.showFloatingText(pointer.x, pointer.y, "Plant in GREEN area only!", 0xFF0000);
+              // Handle placing defenses
+              if (this.toolMode === 'scarecrow' || this.toolMode === 'dog') {
+                // Make sure placeDefense method exists
+                if (typeof this.placeDefense === 'function') {
+                  this.placeDefense(this.toolMode, pointer.x, pointer.y);
                 } else {
-                  this.showFloatingText(pointer.x, pointer.y, "Need 5 coins to plant!", 0xFFFF00);
+                  console.error("placeDefense method is not defined");
+                  this.showFloatingText(pointer.x, pointer.y, "Can't place defense - error!", 0xFF0000);
                 }
-              } else if (this.toolMode === 'scarecrow' || this.toolMode === 'dog') {
-                // Defense placement mode
-                this.placeDefense(this.toolMode, gridX, gridY);
-              } else {
-                // Attack mode - check if clicked on enemy
-                const enemy = this.getEnemyAtPosition(pointer.x, pointer.y);
-                if (enemy) {
-                  console.log("Enemy clicked!");
-                  // The damage is already applied in getEnemyAtPosition
-                } else {
-                  this.showFloatingText(pointer.x, pointer.y, "Click on enemies to attack", 0xFFFFFF);
-                }
+                return; // Done with this click
               }
             });
             
@@ -560,43 +587,23 @@ if (isBrowser) {
             
             // Add keyboard shortcuts
             this.input.keyboard.on('keydown-P', () => {
-              // Toggle crop planting mode
-              if (this.currentDefenseType) {
-                this.currentDefenseType = null;
-                this.showFloatingText(400, 300, "MODE: Attack enemies", 0xFFFFFF);
-              } else {
-                this.showFloatingText(400, 300, "MODE: Plant crops (5 coins)", 0x00FF00);
-              }
+              // Set tool mode to plant
+              this.setToolMode('plant');
             });
             
             this.input.keyboard.on('keydown-ONE', () => {
-              // Toggle scarecrow mode with updated cost
-              if (this.currentDefenseType === 'scarecrow') {
-                this.currentDefenseType = null;
-                this.showFloatingText(400, 300, "MODE: Attack enemies", 0xFFFFFF);
-              } else {
-                this.currentDefenseType = 'scarecrow';
-                this.showFloatingText(400, 300, "MODE: Place scarecrow (35 coins)", 0x00FFFF);
-              }
+              // Set tool mode to scarecrow
+              this.setToolMode('scarecrow');
             });
             
             this.input.keyboard.on('keydown-TWO', () => {
-              // Toggle dog mode with updated cost
-              if (this.currentDefenseType === 'dog') {
-                this.currentDefenseType = null;
-                this.showFloatingText(400, 300, "MODE: Attack enemies", 0xFFFFFF);
-              } else {
-                this.currentDefenseType = 'dog';
-                this.showFloatingText(400, 300, "MODE: Place dog (50 coins)", 0x00FFFF);
-              }
+              // Set tool mode to dog
+              this.setToolMode('dog');
             });
             
             this.input.keyboard.on('keydown-ESC', () => {
-              // Cancel all placement modes
-              if (this.currentDefenseType) {
-                this.currentDefenseType = null;
-                this.showFloatingText(400, 300, "MODE: Attack enemies", 0xFFFFFF);
-              }
+              // Reset to attack mode
+              this.setToolMode('attack');
             });
             
           } catch (error) {
@@ -607,32 +614,173 @@ if (isBrowser) {
         setupInputHandlers() {
           try {
             console.log("Setting up input handlers");
+            
+            // Add keyboard shortcuts for tool selection
+            this.input.keyboard.on('keydown-P', () => {
+              console.log("P key pressed - switching to plant mode");
+              this.setToolMode('plant');
+            });
+            
+            this.input.keyboard.on('keydown-ONE', () => {
+              console.log("1 key pressed - switching to scarecrow mode");
+              this.setToolMode('scarecrow');
+            });
+            
+            this.input.keyboard.on('keydown-TWO', () => {
+              console.log("2 key pressed - switching to dog mode");
+              this.setToolMode('dog');
+            });
+            
+            this.input.keyboard.on('keydown-ESC', () => {
+              console.log("ESC key pressed - switching to attack mode");
+              this.setToolMode('attack');
+            });
+            
+            // Add handler for mousemove to update placement preview
+            this.input.on('pointermove', (pointer) => {
+              // If we're in placement mode and the game is active
+              if (this.gameState.isActive && 
+                 (this.toolMode === 'plant' || 
+                  this.toolMode === 'scarecrow' || 
+                  this.toolMode === 'dog')) {
+                  
+                // Update placement preview based on tool mode
+                this.updatePlacementPreview(pointer);
+              }
+            });
+            
             // Add click handler for crop planting and enemy damage
             this.input.on('pointerdown', (pointer) => {
-              console.log("Game clicked");
+              console.log("Game clicked at", pointer.x, pointer.y, "tool mode:", this.toolMode);
               
               // If game hasn't started, ignore clicks
               if (!this.gameState.isActive) return;
               
-              // Check if clicked on an enemy
-              const clickedEnemy = this.getEnemyAtPosition(pointer.x, pointer.y);
-              if (clickedEnemy) {
-                // Apply damage to the enemy
-                const defeated = clickedEnemy.damage(this.gameState.clickDamage);
-                if (defeated) {
-                  // Award coins for defeating enemy
-                  this.updateFarmCoins(clickedEnemy.value);
-                  // Add to score
-                  this.gameState.score += 10;
-                  this.updateScoreText();
+              // Check if clicked on an enemy - only in attack mode
+              if (this.toolMode === 'attack') {
+                const clickedEnemy = this.getEnemyAtPosition(pointer.x, pointer.y);
+                if (clickedEnemy) {
+                  // Apply damage to the enemy
+                  clickedEnemy.takeDamage(this.gameState.clickDamage || 1);
+                  
+                  // Show attack effect
+                  this.showFloatingText(clickedEnemy.x, clickedEnemy.y - 20, 
+                    `-${(this.gameState.clickDamage || 1).toFixed(1)}`, 0xFF0000);
+                  
+                  return; // Done with this click
                 }
-              } else if (this.gameState.canPlant && this.gameState.farmCoins >= 5) {
-                // Plant crop if we have enough coins
-                this.plantCrop(pointer.x, pointer.y);
+              }
+              
+              // Handle planting crops
+              if (this.toolMode === 'plant') {
+                if (this.isPointInFarmArea(pointer.x, pointer.y)) {
+                  if (this.gameState.farmCoins >= 5) {
+                    this.plantCrop(pointer.x, pointer.y);
+                  } else {
+                    // Show error message if not enough coins
+                    this.showFloatingText(pointer.x, pointer.y, "Need 5 coins!", 0xFF0000);
+                  }
+                } else {
+                  // Show error message if trying to plant outside farm area
+                  this.showFloatingText(pointer.x, pointer.y, "Plant on LEFT side only!", 0xFF0000);
+                }
+                return; // Done with this click
+              }
+              
+              // Handle placing defenses
+              if (this.toolMode === 'scarecrow' || this.toolMode === 'dog') {
+                // Check if position is valid (right side of screen)
+                if (pointer.x < 200) {
+                  this.showFloatingText(pointer.x, pointer.y, "Place on RIGHT side only!", 0xFF0000);
+                  return;
+                }
+                
+                // Calculate cost based on defense type
+                const cost = this.toolMode === 'scarecrow' ? 35 : 50;
+                
+                // Check if player has enough coins
+                if (this.gameState.farmCoins < cost) {
+                  this.showFloatingText(pointer.x, pointer.y, `Need ${cost} coins!`, 0xFF0000);
+                  return;
+                }
+                
+                // Make sure placeDefense method exists
+                if (typeof this.placeDefense === 'function') {
+                  this.placeDefense(this.toolMode, pointer.x, pointer.y);
+                } else {
+                  console.error("placeDefense method is not defined");
+                  this.showFloatingText(pointer.x, pointer.y, "Can't place defense - error!", 0xFF0000);
+                }
+                return; // Done with this click
               }
             });
           } catch (error) {
             console.error("Error setting up input handlers:", error);
+          }
+        }
+        
+        // Add a new method to update placement preview
+        updatePlacementPreview(pointer) {
+          try {
+            // Skip if game is inactive
+            if (!this.gameState.isActive) return;
+            
+            // For crop planting preview
+            if (this.toolMode === 'plant') {
+              // Check if in valid farm area
+              const isValidPosition = this.isPointInFarmArea(pointer.x, pointer.y);
+              
+              // Calculate grid position
+              const gridCellSize = this.gridCellSize || 32;
+              const gridX = Math.floor(pointer.x / gridCellSize) * gridCellSize + (gridCellSize / 2);
+              const gridY = Math.floor(pointer.y / gridCellSize) * gridCellSize + (gridCellSize / 2);
+              
+              // Highlight the target cell
+              if (!this.placementPreview) {
+                this.placementPreview = this.add.rectangle(gridX, gridY, gridCellSize, gridCellSize, 
+                  isValidPosition ? 0x00FF00 : 0xFF0000, 0.3);
+              } else {
+                this.placementPreview.x = gridX;
+                this.placementPreview.y = gridY;
+                this.placementPreview.fillColor = isValidPosition ? 0x00FF00 : 0xFF0000;
+                this.placementPreview.setVisible(true);
+              }
+            }
+            
+            // For defense placement preview
+            else if (this.toolMode === 'scarecrow' || this.toolMode === 'dog') {
+              // Check if position is valid (right side)
+              const isValidPosition = pointer.x >= 200;
+              
+              // Update range circle position and color
+              if (this.placementCircle) {
+                this.placementCircle.x = pointer.x;
+                this.placementCircle.y = pointer.y;
+                this.placementCircle.setStrokeStyle(2, 
+                  isValidPosition ? 
+                  (this.toolMode === 'scarecrow' ? 0x0088FF : 0xFF4400) : 
+                  0xFF0000);
+                this.placementCircle.setVisible(true);
+              }
+              
+              // Show defense preview sprite if it doesn't exist
+              const spriteKey = this.toolMode === 'scarecrow' ? 'ABS_idle' : 'NOOT_idle';
+              if (!this.defensePreview && this.textures.exists(spriteKey)) {
+                this.defensePreview = this.add.image(pointer.x, pointer.y, spriteKey);
+                this.defensePreview.setDisplaySize(48, 48);
+                this.defensePreview.setAlpha(0.7);
+              } 
+              // Update existing preview
+              else if (this.defensePreview) {
+                this.defensePreview.x = pointer.x;
+                this.defensePreview.y = pointer.y;
+                this.defensePreview.setTexture(spriteKey);
+                this.defensePreview.setVisible(true);
+                this.defensePreview.setAlpha(isValidPosition ? 0.7 : 0.4);
+              }
+            }
+          } catch (error) {
+            console.error("Error updating placement preview:", error);
           }
         }
         
@@ -644,16 +792,22 @@ if (isBrowser) {
             const enemy = this.enemies[i];
             if (!enemy || !enemy.active) continue;
             
-            if (enemy.sprite && enemy.sprite.getBounds().contains(x, y)) {
-              // Apply damage - use upgraded click damage
-              const baseDamage = this.gameState.clickDamage || 0.5;
-              const damageDealt = baseDamage;
-              
-              enemy.takeDamage(damageDealt);
-              
-              // Show damage text
-              this.showFloatingText(enemy.x, enemy.y - 20, `-${damageDealt.toFixed(1)}`, 0xFF0000);
-              
+            // Check if enemy is close enough to click point (use larger hit area for better UX)
+            const dx = enemy.x - x;
+            const dy = enemy.y - y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance < 30) { // 30 pixel click radius
+              return enemy;
+            }
+            
+            // Legacy check for sprite bounds if available
+            if (enemy.sprite && enemy.sprite.getBounds && enemy.sprite.getBounds().contains(x, y)) {
+              return enemy;
+            }
+            
+            // Check container bounds if available
+            if (enemy.container && enemy.container.getBounds && enemy.container.getBounds().contains(x, y)) {
               return enemy;
             }
           }
@@ -939,9 +1093,9 @@ if (isBrowser) {
           const enemyTypes = ['rabbit', 'bird'];
           const enemyType = enemyTypes[Math.floor(Math.random() * enemyTypes.length)];
           
-          // Calculate spawn position (from the right side)
+          // Calculate spawn position (from the right side) - randomize both X and Y
           const spawnY = Phaser.Math.Between(100, 500);
-          const spawnX = 850; // Just off-screen to the right
+          const spawnX = Phaser.Math.Between(850, 900); // Randomize X position off-screen
           
           // Add a visual indicator at spawn point (for debugging)
           const spawnIndicator = this.add.circle(spawnX, spawnY, 10, 0xFF0000, 0.7);
@@ -1004,23 +1158,38 @@ if (isBrowser) {
         
         // Force the next wave to start
         forceNextWave() {
-          // Only allow forcing next wave if the current wave is finished spawning
-          if (this.isSpawningEnemies) {
-            console.log("Can't force next wave, still spawning enemies");
-            return;
+          try {
+            console.log("Force next wave called");
+            
+            // Allow forcing next wave even if the current wave is still spawning
+            if (this.isSpawningEnemies) {
+              console.log("Interrupting current spawning to start next wave");
+              this.isSpawningEnemies = false;
+              
+              // Clear any pending spawn events
+              if (this.spawnEvent) {
+                this.spawnEvent.remove();
+                this.spawnEvent = null;
+              }
+            }
+            
+            // End current wave
+            this.waveInProgress = false;
+            
+            // Increase wave counter
+            this.gameState.wave++;
+            this.updateWaveText();
+            
+            // Start next wave
+            this.startWave();
+            
+            console.log(`Forced start of wave ${this.gameState.wave}`);
+            
+            // Show notification
+            this.showFloatingText(400, 300, `WAVE ${this.gameState.wave} STARTING!`, 0xFFFF00);
+          } catch (error) {
+            console.error("Error forcing next wave:", error);
           }
-          
-          // End current wave
-          this.waveInProgress = false;
-          
-          // Increase wave counter
-          this.gameState.wave++;
-          this.updateWaveText();
-          
-          // Start next wave
-          this.startWave();
-          
-          console.log(`Forced start of wave ${this.gameState.wave}`);
         }
         
         createToolbar() {
@@ -1152,6 +1321,44 @@ if (isBrowser) {
             
             // Hide range indicators
             this.hideDefenseRange();
+            
+            // Cancel any existing placement preview
+            if (this.placementPreview) {
+              this.placementPreview.destroy();
+              this.placementPreview = null;
+            }
+            
+            // Hide any existing placement circles
+            if (this.placementCircle) {
+              this.placementCircle.setVisible(false);
+            }
+            
+            // Start showing placement preview if planting or placing defenses
+            if (mode === 'plant' || mode === 'scarecrow' || mode === 'dog') {
+              // For defenses, show the range circle that follows the cursor
+              if (mode === 'scarecrow' || mode === 'dog') {
+                const range = mode === 'scarecrow' ? 200 : 150;
+                
+                // Create circle if it doesn't exist
+                if (!this.placementCircle) {
+                  this.placementCircle = this.add.circle(0, 0, range, 0xFFFFFF, 0.2);
+                  this.placementCircle.setStrokeStyle(2, mode === 'scarecrow' ? 0x0088FF : 0xFF4400);
+                }
+                
+                // Update circle properties
+                this.placementCircle.setRadius(range);
+                this.placementCircle.setStrokeStyle(2, mode === 'scarecrow' ? 0x0088FF : 0xFF4400);
+                this.placementCircle.setVisible(true);
+                
+                // Make the circle follow the pointer
+                this.input.on('pointermove', (pointer) => {
+                  if (this.toolMode === mode && this.placementCircle) {
+                    this.placementCircle.x = pointer.x;
+                    this.placementCircle.y = pointer.y;
+                  }
+                });
+              }
+            }
             
             // Update button colors to show active state
             if (this.toolbarButtons) {
@@ -1360,23 +1567,22 @@ if (isBrowser) {
           
           // Show a circular range indicator for defenses
           this.showDefenseRange = (x, y, radius) => {
-            // Create range indicator if it doesn't exist
-            if (!this.rangeIndicator) {
-              this.rangeIndicator = this.add.circle(x, y, radius, 0x0088FF, 0.2);
-              this.rangeIndicator.setStrokeStyle(1, 0x0088FF, 0.5);
+            // Create the range indicator if it doesn't exist
+            if (!this.defenseRangeIndicator) {
+              this.defenseRangeIndicator = this.add.circle(x, y, radius, 0xFFFFFF, 0.1);
+              this.defenseRangeIndicator.setStrokeStyle(2, 0x0000FF);
             } else {
               // Update existing indicator
-              this.rangeIndicator.x = x;
-              this.rangeIndicator.y = y;
-              this.rangeIndicator.radius = radius;
-              this.rangeIndicator.visible = true;
+              this.defenseRangeIndicator.setPosition(x, y);
+              this.defenseRangeIndicator.setRadius(radius);
+              this.defenseRangeIndicator.setVisible(true);
             }
           };
           
           // Hide the range indicator
           this.hideDefenseRange = () => {
-            if (this.rangeIndicator) {
-              this.rangeIndicator.visible = false;
+            if (this.defenseRangeIndicator) {
+              this.defenseRangeIndicator.setVisible(false);
             }
           };
           
@@ -1546,18 +1752,48 @@ if (isBrowser) {
 
         update(time, delta) {
           try {
-            // Skip if game is inactive
-            if (!this.gameState || !this.gameState.isActive) {
+            // Skip if game is inactive or if an update is already in progress
+            if (!this.gameState || !this.gameState.isActive || isUpdating) {
               return;
             }
             
-            // Update enemies
+            // Set flag to prevent recursive updates
+            isUpdating = true;
+            
+            // Update enemies - forced update every frame
             if (this.enemies && this.enemies.length > 0) {
               // Using forEach with catch error for safety
               this.enemies.forEach(enemy => {
                 try {
                   if (enemy && enemy.update) {
                     enemy.update();
+                    
+                    // Force enemy position to move faster to the left
+                    enemy.x -= 0.5; // Extra movement each frame
+                    
+                    // Ensure enemy is visibly updated
+                    if (enemy.container) {
+                      enemy.container.x = enemy.x;
+                      enemy.container.y = enemy.y;
+                      enemy.container.visible = true;
+                      enemy.container.setDepth(100);
+                    }
+                    
+                    // Update health bar position
+                    if (enemy.healthBar) {
+                      if (enemy.healthBar.background) {
+                        enemy.healthBar.background.x = enemy.x;
+                        enemy.healthBar.background.y = enemy.y - 35;
+                        enemy.healthBar.background.visible = true;
+                      }
+                      if (enemy.healthBar.fill) {
+                        const healthPercent = Math.max(0, enemy.health / enemy.maxHealth);
+                        enemy.healthBar.fill.width = 40 * healthPercent;
+                        enemy.healthBar.fill.x = enemy.x - 20 + (enemy.healthBar.fill.width / 2);
+                        enemy.healthBar.fill.y = enemy.y - 35;
+                        enemy.healthBar.fill.visible = true;
+                      }
+                    }
                   }
                 } catch (enemyError) {
                   console.error("Error updating enemy:", enemyError);
@@ -1565,7 +1801,7 @@ if (isBrowser) {
               });
             }
             
-            // Update defenses
+            // Update defenses - force update every frame
             this.updateDefenseAttacks();
             
             // Check if all enemies are gone and we've spawned all for this wave
@@ -1589,57 +1825,132 @@ if (isBrowser) {
               this.updateFarmCoins(waveBonus);
               this.showFloatingText(400, 350, `+${waveBonus} coins bonus!`, 0xFFFF00);
             }
+            
+            // Clear flag when done
+            isUpdating = false;
           } catch (error) {
+            // Make sure flag is cleared even if there's an error
+            isUpdating = false;
             console.error("Error in update loop:", error);
           }
         }
         
         updateDefenseAttacks() {
-          if (!this.defenses || !this.enemies || !this.gameState.isActive) {
+          if (!this.defenses || !this.gameState || !this.gameState.isActive) {
+            return;
+          }
+          
+          // Always initialize enemies array if it doesn't exist
+          if (!this.enemies) {
+            this.enemies = [];
             return;
           }
           
           // Process each defense
           this.defenses.forEach(defense => {
-            // Skip if defense has no attack method
-            if (!defense.attack) {
+            // Skip if defense has no attack method or is inactive
+            if (!defense || !defense.active || !defense.attack) {
               return;
             }
             
-            // Get enemy within range
-            const enemy = this.getEnemyInRange(defense);
+            // Use our targeting methods in sequence to find an enemy
+            let targetEnemy = null;
+            
+            // First try with findLowHealthEnemy if it exists
+            if (typeof this.findLowHealthEnemy === 'function') {
+              targetEnemy = this.findLowHealthEnemy(defense);
+            }
+            
+            // If no low health enemy found and getClosestEnemy exists, try that
+            if (!targetEnemy && typeof this.getClosestEnemy === 'function') {
+              targetEnemy = this.getClosestEnemy(defense);
+            }
+            
+            // If we still don't have a target, use defense's own targeting if available
+            if (!targetEnemy && typeof defense.checkForEnemiesInRange === 'function') {
+              defense.checkForEnemiesInRange();
+              return; // Defense will handle the attack itself
+            }
             
             // Attack if enemy found
-            if (enemy) {
-              defense.attack(enemy);
+            if (targetEnemy) {
+              defense.attack(targetEnemy);
             }
           });
         }
         
-        // Find an enemy within range of a defense
-        getEnemyInRange(defense) {
-          if (!this.enemies || !defense) {
+        // Find enemy with lowest health for priority targeting
+        findLowHealthEnemy(defense) {
+          if (!defense || !this.enemies || this.enemies.length === 0) {
             return null;
           }
           
-          // Loop through enemies
+          let lowestHealthEnemy = null;
+          let lowestHealth = Infinity;
+          
+          // Look for low health enemies first
           for (let i = 0; i < this.enemies.length; i++) {
             const enemy = this.enemies[i];
+            if (!enemy) continue;
             
-            // Skip inactive enemies
-            if (!enemy || !enemy.active) {
-              continue;
-            }
+            // Force enemy to be active - this fixes the issue with inactive enemies
+            enemy.active = true;
             
             // Calculate distance
             const dx = enemy.x - defense.x;
             const dy = enemy.y - defense.y;
             const distance = Math.sqrt(dx * dx + dy * dy);
             
-            // Check if in range
-            if (distance <= defense.range) {
-              return enemy;
+            // Use a much larger range for targeting low health enemies
+            // This helps mages to finish off enemies anywhere on screen
+            if (distance <= defense.range * 1.5) {
+              // Prioritize very low health enemies to ensure kills
+              // Broadened the range of what's considered "low health"
+              if (enemy.health <= 3) {
+                // The lower the health, the higher the priority
+                const priority = 4 - enemy.health; // Give priority boost to lowest health
+                
+                if (enemy.health < lowestHealth || 
+                   (enemy.health === lowestHealth && distance < defense.range)) {
+                  lowestHealthEnemy = enemy;
+                  lowestHealth = enemy.health;
+                }
+              }
             }
+          }
+          
+          return lowestHealthEnemy;
+        }
+        
+        // Get closest enemy regardless of range
+        getClosestEnemy(defense) {
+          if (!defense || !this.enemies || this.enemies.length === 0) {
+            return null;
+          }
+          
+          let closestEnemy = null;
+          let closestDistance = Infinity;
+          
+          // Find closest enemy
+          for (let i = 0; i < this.enemies.length; i++) {
+            const enemy = this.enemies[i];
+            if (!enemy || !enemy.active) continue;
+            
+            // Calculate distance
+            const dx = enemy.x - defense.x;
+            const dy = enemy.y - defense.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            // Track closest enemy
+            if (distance < closestDistance) {
+              closestDistance = distance;
+              closestEnemy = enemy;
+            }
+          }
+          
+          // Only return if within reasonable distance (1.5x normal range)
+          if (closestEnemy && closestDistance <= defense.range * 1.5) {
+            return closestEnemy;
           }
           
           return null;
@@ -1676,6 +1987,52 @@ if (isBrowser) {
             
             console.log(`Upgrade panel ${isVisible ? 'opened' : 'closed'}`);
           }
+        }
+
+        // Find an enemy within range of a defense
+        getEnemyInRange(defense) {
+          if (!defense || !this.enemies || this.enemies.length === 0) {
+            return null;
+          }
+          
+          let closestEnemy = null;
+          let closestDistance = Infinity;
+          let weakestEnemy = null;
+          let lowestHealth = Infinity;
+          
+          // Loop through all enemies to find potential targets
+          for (let i = 0; i < this.enemies.length; i++) {
+            const enemy = this.enemies[i];
+            if (!enemy || !enemy.active) {
+              continue;
+            }
+            
+            // Calculate distance from defense to enemy
+            const dx = enemy.x - defense.x;
+            const dy = enemy.y - defense.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            // Check if enemy is in range and the defense can target this enemy type
+            const inRange = distance <= defense.range * 1.2; // 20% increased range
+            if (inRange) {
+              // Check if this defense can target this enemy type - be more permissive
+              let canTarget = defense.targetTypes.length === 0 || 
+                            defense.targetTypes.includes(enemy.type) || 
+                            defense.targetTypes.includes('all');
+                            
+              // In desperate situations (few enemies), target anyway
+              if (!canTarget && this.enemies.length <= 2) {
+                canTarget = true;
+              }
+              
+              if (canTarget && distance < closestDistance) {
+                closestDistance = distance;
+                closestEnemy = enemy;
+              }
+            }
+          }
+          
+          return closestEnemy;
         }
       }
       
