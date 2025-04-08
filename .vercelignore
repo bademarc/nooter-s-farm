@@ -5,7 +5,8 @@
 
 # next.js
 /.next/
-/out/
+# Do not ignore out directory for static export
+# /out/
 
 # production
 /build
@@ -25,4 +26,3 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-.vercel

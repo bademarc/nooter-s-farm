@@ -1,9 +1,11 @@
 {
+  "version": 2,
   "buildCommand": "next build",
   "outputDirectory": "out",
   "devCommand": "next dev",
   "installCommand": "npm install --legacy-peer-deps",
   "rewrites": [
+    { "source": "/guide", "destination": "/guide.html" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 } 
