@@ -36,6 +36,28 @@ export default class Enemy {
       this.color = 0x3498db;
       this.weakAgainst = 'scarecrow';
       this.weaknessMultiplier = 1.5; // Reduced from 2.0
+    } else if (type === 'fox') {
+      // Base properties for fox - stealthy and evasive
+      this.baseSpeed = 2.5; // Faster than other enemies
+      this.baseHealth = 5; // Good health
+      this.baseValue = 12; // Higher reward value
+      
+      // Scale with wave
+      this.speed = this.baseSpeed + (currentWave * 0.25); // Higher speed scaling
+      this.health = Math.floor(this.baseHealth * waveScaling);
+      this.maxHealth = this.health;
+      this.value = Math.floor(this.baseValue * waveScaling);
+      
+      this.color = 0xff9933; // Orange for fox
+      this.weakAgainst = 'wizard'; // Weak against advanced defense
+      this.weaknessMultiplier = 2.0; // Higher weakness multiplier
+      
+      // Special fox abilities
+      this.canDodge = true; // Can dodge attacks
+      this.dodgeChance = 0.25; // 25% chance to dodge
+      this.stealthDuration = 0; // Tracks stealth duration
+      this.stealthCooldown = 6000; // Cooldown between stealth attempts
+      this.lastStealthTime = 0; // Last time stealth was activated
     } else {
       // Base properties - increased health
       this.baseSpeed = 1.5;
@@ -342,6 +364,25 @@ export default class Enemy {
       if (this.x < 0) {
         this.reachedEnd();
       }
+      
+      // Fox special ability: Stealth mode
+      if (this.type === 'fox' && !this.stealthActive && 
+          currentTime - this.lastStealthTime > this.stealthCooldown &&
+          Math.random() < 0.01) { // 1% chance per update to go stealth when off cooldown
+        
+        this.activateStealth(currentTime);
+      }
+      
+      // Update stealth duration if active
+      if (this.stealthActive) {
+        if (currentTime - this.stealthStartTime > this.stealthDuration) {
+          this.deactivateStealth();
+        } else {
+          // Reduced visibility during stealth
+          if (this.sprite) this.sprite.alpha = 0.4;
+          if (this.container) this.container.alpha = 0.4;
+        }
+      }
     } catch (error) {
       console.error(`Error updating enemy ${this.type}:`, error);
     }
@@ -433,75 +474,88 @@ export default class Enemy {
   }
   
   takeDamage(amount) {
-    // Skip if already inactive
-    if (!this.active) return;
-    
-    // Force active status
-    this.active = true;
-    
-    // Ensure minimum damage is applied - INCREASED to ensure enemies die
-    const actualDamage = Math.max(1.0, amount);
-    
-    // Log damage for debugging
-    console.log(`Enemy ${this.type} taking ${actualDamage} damage, current health: ${this.health}`);
-    
-    // Apply damage resistance if applicable, but ensure minimum damage
-    let finalDamage = actualDamage;
-    if (this.damageResistance && this.damageResistance > 0) {
-      finalDamage = actualDamage * (1 - this.damageResistance);
-      finalDamage = Math.max(1, finalDamage); // Always do at least 1 damage
-    }
-    
-    // IMPORTANT FIX: Special handling for enemies with low health
-    // This prevents enemies getting stuck at 1 HP
-    if (this.health <= 3) {
-      // Guarantee the enemy dies with a critical hit
-      finalDamage = this.health * 2; // Double damage to ensure death
-      console.log(`Critical hit on low health enemy! Doing ${finalDamage} damage`);
-    }
-    
-    // Apply damage - ensure immediate health reduction
-    this.health -= finalDamage;
-    
-    // CRITICAL FIX: Ensure health never gets stuck at exactly 1
-    if (this.health > 0 && this.health < 1.5) {
-      // Always kill it - no randomness
-      this.health = 0;
-      console.log(`Enemy ${this.type} with <1.5 HP force killed`);
-    }
-    
-    // Update health bar if available
-    if (typeof this.updateHealthBar === 'function') {
-      this.updateHealthBar();
-    }
-    
-    // Show damage text
-    if (typeof this.showDamageText === 'function') {
-      this.showDamageText(finalDamage);
-    }
-    
-    // Check if enemy is defeated - STRONGLY ENSURE DEATH
-    if (this.health <= 0) {
-      // Make sure health is exactly 0
-      this.health = 0;
-      
-      // Debug log
-      console.log(`Enemy defeated by takeDamage, health = ${this.health}`);
-      
-      // Double check defeat paths
-      if (typeof this.defeat === 'function') {
-        console.log("Calling enemy defeat method");
-        this.defeat();
-      } else {
-        // Fallback if defeat method is missing
-        console.log("No defeat method, calling destroy directly");
-        this.destroy();
+    try {
+      // Early return if dead or immune
+      if (this.health <= 0 || !this.active) {
+        console.log(`Enemy already defeated or inactive, health: ${this.health}`);
+        return false;
       }
       
-      return true; // Indicate successful kill
+      // Check for dodge (some enemies might have dodge chance)
+      if (this.dodgeChance && Math.random() < this.dodgeChance) {
+        // Dodge successful
+        this.showDodgeEffect();
+        return false;
+      }
+      
+      // Calculate actual damage (incorporate defense if any)
+      const actualDamage = this.damageResistance ? amount * (1 - this.damageResistance) : amount;
+      
+      // Apply damage
+      this.health -= actualDamage;
+      
+      // Log damage taken
+      console.log(`${this.type} enemy took ${actualDamage.toFixed(1)} damage. Health now: ${this.health.toFixed(1)}/${this.maxHealth}`);
+      
+      // Update health bar
+      this.updateHealthBar();
+      
+      // Show hit effect
+      this.showHitEffect();
+      
+      // Check if defeated - ensure health is exactly 0 to avoid floating point issues
+      if (this.health <= 0) {
+        console.log(`Enemy ${this.type} defeated by damage! Setting health to 0.`);
+        this.health = 0;
+        this.defeated();
+        return true;
+      }
+      
+      // Additional safety check for very low health (potential floating point issues)
+      if (this.health < 0.1) {
+        console.log(`Enemy ${this.type} has very low health (${this.health.toFixed(3)}). Forcing defeat.`);
+        this.health = 0;
+        this.defeated();
+        return true;
+      }
+      
+      return false;
+    } catch (error) {
+      console.error("Error in enemy takeDamage:", error);
+      return false;
     }
-    
-    return false; // Enemy still alive
+  }
+  
+  // Show a visual effect when enemy is hit
+  showHitEffect() {
+    try {
+      if (!this.scene || !this.active || !this.sprite) return;
+      
+      // Flash the sprite red
+      this.sprite.setTint(0xFF0000);
+      
+      // Reset the tint after a short delay
+      this.scene.time.delayedCall(100, () => {
+        if (this.sprite && this.sprite.clearTint) {
+          this.sprite.clearTint();
+        }
+      });
+      
+      // Add a hit impact circle that expands and fades
+      const hitImpact = this.scene.add.circle(this.x, this.y, 10, 0xFFFFFF, 0.7);
+      
+      // Animate the impact effect
+      this.scene.tweens.add({
+        targets: hitImpact,
+        alpha: 0,
+        radius: 25,
+        duration: 300,
+        onComplete: () => hitImpact.destroy()
+      });
+      
+    } catch (error) {
+      console.error("Error in showHitEffect:", error);
+    }
   }
   
   endGame() {
@@ -811,7 +865,7 @@ export default class Enemy {
   }
   
   // Add this method to handle enemy defeat
-  defeat() {
+  defeated() {
     if (!this.active) return;
     
     console.log(`Enemy ${this.type} defeated at (${this.x.toFixed(1)}, ${this.y.toFixed(1)})`);
@@ -850,5 +904,115 @@ export default class Enemy {
     
     // Destroy this enemy
     this.destroy();
+  }
+  
+  // Add fox-specific methods
+  showDodgeEffect() {
+    if (!this.scene) return;
+    
+    try {
+      // Create a yellow flash effect
+      const flash = this.scene.add.graphics();
+      flash.fillStyle(0xffaa22, 0.4);
+      flash.fillCircle(this.x, this.y, 30);
+      
+      // Animate and destroy
+      this.scene.tweens.add({
+        targets: flash,
+        alpha: 0,
+        scale: 1.5,
+        duration: 300,
+        onComplete: () => {
+          flash.destroy();
+        }
+      });
+      
+      // Slight position shift to show dodge movement
+      const angle = Math.random() * Math.PI * 2;
+      const dodgeDistance = 20;
+      
+      // Dodge animation
+      this.scene.tweens.add({
+        targets: this,
+        x: this.x + Math.cos(angle) * dodgeDistance,
+        y: this.y + Math.sin(angle) * dodgeDistance,
+        duration: 100,
+        yoyo: true
+      });
+    } catch (error) {
+      console.error("Error showing dodge effect:", error);
+    }
+  }
+  
+  activateStealth(currentTime) {
+    try {
+      this.stealthActive = true;
+      this.stealthStartTime = currentTime;
+      this.lastStealthTime = currentTime;
+      this.stealthDuration = 3000; // 3 seconds of stealth
+      
+      // Increase speed during stealth
+      this.speed *= 1.5;
+      
+      // Visual effect for stealth activation
+      if (this.scene) {
+        // Create stealth activation effect
+        const effect = this.scene.add.graphics();
+        effect.fillStyle(0xaaaaaa, 0.5);
+        effect.fillCircle(this.x, this.y, 40);
+        
+        // Animate and destroy
+        this.scene.tweens.add({
+          targets: effect,
+          alpha: 0,
+          scale: 1.5,
+          duration: 500,
+          onComplete: () => {
+            effect.destroy();
+          }
+        });
+        
+        // Show stealth text
+        if (typeof this.scene.showFloatingText === 'function') {
+          this.scene.showFloatingText(this.x, this.y - 40, "STEALTH MODE!", 0xaaaaaa);
+        }
+      }
+    } catch (error) {
+      console.error("Error activating stealth:", error);
+    }
+  }
+  
+  deactivateStealth() {
+    try {
+      this.stealthActive = false;
+      
+      // Reset speed
+      this.speed = (this.baseSpeed + ((this.scene.gameState?.wave || 1) * 0.25));
+      
+      // Reset visibility
+      if (this.sprite) this.sprite.alpha = 1;
+      if (this.container) this.container.alpha = 1;
+      
+      // Visual effect for coming out of stealth
+      if (this.scene) {
+        // Create reveal effect
+        const reveal = this.scene.add.graphics();
+        reveal.fillStyle(0xff9933, 0.3);
+        reveal.fillCircle(this.x, this.y, 30);
+        
+        // Animate and destroy
+        this.scene.tweens.add({
+          targets: reveal,
+          alpha: 0,
+          scale: 1.3,
+          duration: 300,
+          onComplete: () => {
+            reveal.destroy();
+          }
+        });
+      }
+    } catch (error) {
+      console.error("Error deactivating stealth:", error);
+    }
   }
 } 

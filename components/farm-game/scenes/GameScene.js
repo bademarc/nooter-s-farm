@@ -1126,16 +1126,17 @@ if (isBrowser) {
           try {
             const text = this.add.text(x, y, message, {
               fontFamily: 'Arial',
-              fontSize: '16px',
-              color: '#' + color.toString(16).padStart(6, '0')
+              fontSize: '20px',
+              color: color.toString(16).padStart(6, '0'),
+              stroke: '#000000',
+              strokeThickness: 3
             }).setOrigin(0.5);
             
-            // Animate the text
             this.tweens.add({
               targets: text,
               y: y - 50,
               alpha: 0,
-              duration: 1500,
+              duration: 2000,
               onComplete: () => text.destroy()
             });
           } catch (error) {
@@ -1286,24 +1287,119 @@ if (isBrowser) {
         // Start a new wave of enemies - make waves more difficult over time
         startWave() {
           try {
-            // Calculate number of enemies based on wave - increased scaling
-            const baseEnemyCount = 3;
-            const enemyCountScaling = 3; // Increased from 2
-            const enemyCount = baseEnemyCount + (this.gameState.wave * enemyCountScaling);
+            if (!this.gameState.isActive) return;
             
-            // Reset wave state
-            this.isSpawningEnemies = true;
-            this.waveInProgress = true;
+            // Update wave counter
+            this.gameState.wave++;
+            this.waveText.setText(`Wave: ${this.gameState.wave}`);
+            
+            console.log(`Starting wave ${this.gameState.wave}`);
+            
+            // Determine number of enemies based on wave number - IMPROVED SCALING
+            let numEnemies = Math.min(50, Math.floor(3 + (this.gameState.wave * 1.5)));
+            
+            // Improved wave scaling with better progression
+            if (this.gameState.wave > 10) {
+              numEnemies = Math.min(75, Math.floor(20 + (this.gameState.wave - 10) * 2));
+            }
+            
+            // Calculate enemy types based on wave
+            const enemyTypes = this.calculateEnemyTypes(this.gameState.wave);
+            
+            // Store wave data
+            this.totalEnemiesInWave = numEnemies;
             this.enemiesSpawned = 0;
-            this.totalEnemiesInWave = enemyCount;
+            this.waveInProgress = true;
             
-            console.log(`Starting wave ${this.gameState.wave} with ${enemyCount} enemies`);
+            // Show wave start text with the available showFloatingText method
+            this.showFloatingText(400, 300, `WAVE ${this.gameState.wave} STARTING!`, 0xFFFF00);
+            
+            // Add wave bonus - increased coins for higher waves
+            const waveBonus = Math.floor(10 + (this.gameState.wave * 5));
+            this.updateFarmCoins(waveBonus);
+            this.showFloatingText(400, 100, `Wave ${this.gameState.wave} Bonus: +${waveBonus} coins!`, 0xFFFF00);
+            
+            // Set up spawning loop based on wave difficulty
+            const spawnInterval = Math.max(500, 2000 - (this.gameState.wave * 100)); // Faster spawns in later waves
+            
+            // Clear any existing spawn timer
+            if (this.spawnTimer) {
+              this.spawnTimer.remove();
+            }
             
             // Start spawning enemies
-            this.spawnEnemies();
+            this.spawnTimer = this.time.addEvent({
+              delay: spawnInterval,
+              callback: () => {
+                if (this.enemiesSpawned < this.totalEnemiesInWave) {
+                  // Select an enemy type from available types
+                  const enemyType = this.selectEnemyType(enemyTypes);
+                  
+                  // Spawn the enemy
+                  this.spawnEnemy(enemyType);
+                  this.enemiesSpawned++;
+                } else {
+                  // All enemies spawned, stop timer
+                  this.spawnTimer.remove();
+                  this.spawnTimer = null;
+                }
+              },
+              callbackScope: this,
+              loop: true
+            });
           } catch (error) {
             console.error("Error starting wave:", error);
           }
+        }
+        
+        // New method to determine enemy types based on wave
+        calculateEnemyTypes(wave) {
+          const types = {
+            bird: { weight: 70, minWave: 1 },
+            rabbit: { weight: 70, minWave: 1 },
+            fox: { weight: 0, minWave: 3 }
+          };
+          
+          // Adjust weights based on wave progression
+          if (wave >= 3) {
+            // Start introducing foxes at wave 3
+            types.fox.weight = Math.min(40, (wave - 2) * 10);
+          }
+          
+          if (wave >= 5) {
+            // More foxes in later waves
+            types.fox.weight = Math.min(50, 30 + (wave - 5) * 5);
+          }
+          
+          // Boss waves have more advanced enemies
+          if (wave % 5 === 0) {
+            types.fox.weight += 20;
+          }
+          
+          return types;
+        }
+        
+        // Helper to select enemy type based on weights
+        selectEnemyType(enemyTypes) {
+          // Filter types available at current wave
+          const availableTypes = Object.entries(enemyTypes)
+            .filter(([type, data]) => this.gameState.wave >= data.minWave && data.weight > 0);
+          
+          if (availableTypes.length === 0) return 'rabbit'; // Fallback
+          
+          // Calculate total weight
+          const totalWeight = availableTypes.reduce((sum, [_, data]) => sum + data.weight, 0);
+          
+          // Random selection based on weight
+          let random = Math.random() * totalWeight;
+          
+          for (const [type, data] of availableTypes) {
+            random -= data.weight;
+            if (random <= 0) return type;
+          }
+          
+          // Fallback to first available type
+          return availableTypes[0][0];
         }
         
         // Spawn enemies for the current wave
@@ -1392,6 +1488,104 @@ if (isBrowser) {
           }
         }
         
+        // Spawn a single enemy of the specified type
+        spawnEnemy(type = null) {
+          try {
+            // Skip if scene is inactive or paused
+            if (!this.gameState || !this.gameState.isActive || this.gameState.isPaused) {
+              console.log("Game inactive or paused, not spawning enemy");
+              return;
+            }
+            
+            // If no type specified, choose randomly based on wave
+            if (!type) {
+              const wave = this.gameState.wave;
+              
+              // Determine enemy type probabilities based on wave number
+              let birdChance = 0.6;
+              let rabbitChance = 0.4;
+              let deerChance = 0;
+              let boarChance = 0;
+              
+              // Adjust probabilities based on wave number
+              if (wave > 3) {
+                birdChance = 0.5;
+                rabbitChance = 0.3;
+                deerChance = 0.2;
+              }
+              if (wave > 6) {
+                birdChance = 0.35;
+                rabbitChance = 0.35;
+                deerChance = 0.25;
+                boarChance = 0.05;
+              }
+              if (wave > 9) {
+                birdChance = 0.3;
+                rabbitChance = 0.3;
+                deerChance = 0.3;
+                boarChance = 0.1;
+              }
+              
+              // Special case for boss waves
+              if (wave % 5 === 0 && Math.random() < 0.2) {
+                type = 'boar'; // 20% chance for a boar on boss waves
+              } else {
+                // Determine type based on calculated probabilities
+                const roll = Math.random();
+                if (roll < birdChance) {
+                  type = 'bird';
+                } else if (roll < birdChance + rabbitChance) {
+                  type = 'rabbit';
+                } else if (roll < birdChance + rabbitChance + deerChance) {
+                  type = 'deer';
+                } else {
+                  type = 'boar';
+                }
+              }
+            }
+            
+            // Get current wave
+            const wave = this.gameState.wave || 1;
+            
+            // Calculate spawn position (always start from right edge)
+            const x = 800 + (Math.random() * 50); // Add some randomness to entry position
+            
+            // Calculate random y position within the playable area
+            const y = 150 + (Math.random() * 300);
+            
+            // Use the Enemy class from registry
+            const EnemyClass = this.registry.get('EnemyClass');
+            if (!EnemyClass) {
+              console.error("Enemy class not available in registry");
+              return;
+            }
+            
+            // Create the enemy
+            const enemy = new EnemyClass(this, type, x, y);
+            
+            // Add to enemies array
+            if (!this.enemies) {
+              this.enemies = [];
+            }
+            this.enemies.push(enemy);
+            
+            // Update enemy count
+            this.enemiesSpawned++;
+            
+            // Update wave progress UI if available
+            if (typeof this.updateWaveProgressUI === 'function') {
+              this.updateWaveProgressUI();
+            }
+            
+            console.log(`Spawned ${type} enemy at (${x}, ${y})`);
+            
+            return enemy;
+          } catch (error) {
+            console.error("Error in spawnEnemy:", error);
+            return null;
+          }
+        }
+        
         // Force the next wave to start
         forceNextWave() {
           try {
@@ -1430,8 +1624,8 @@ if (isBrowser) {
         
         createToolbar() {
           try {
-            // Create a larger background for the toolbar to accommodate the attack button
-            const toolbarBg = this.add.rectangle(160, 550, 320, 50, 0x333333, 0.8);
+            // Create a larger background for the toolbar to accommodate all buttons
+            const toolbarBg = this.add.rectangle(200, 550, 400, 50, 0x333333, 0.8);
             
             // Add attack button
             const attackButton = this.add.rectangle(40, 550, 60, 40, 0xFF4400);
@@ -1522,12 +1716,85 @@ if (isBrowser) {
               }).setOrigin(0.5);
             }
             
-            // Add upgrade button
-            const upgradeButton = this.add.rectangle(320, 550, 60, 40, 0x555500);
+            // Advanced defenses - only if unlocked in the upgrade system
+            let wizardButton, cannonButton;
+            
+            // ALWAYS show the wizard button regardless of upgrade system
+            // Add wizard button
+            wizardButton = this.add.rectangle(320, 550, 60, 40, 0x990099);
+            wizardButton.setInteractive();
+            wizardButton.on('pointerdown', () => {
+              // Select defense without auto-placing
+              this.pendingDefenseType = 'wizard';
+              this.pendingDefensePlacement = true;
+              this.setToolMode('wizard');
+              
+              // Show message to indicate selection
+              this.showFloatingText(400, 300, "Wizard selected - Click map to place", 0xFF00FF);
+              
+              console.log("Wizard selected, waiting for placement click");
+            });
+            
+            // Use wizard image or emoji
+            if (this.textures.exists('wizard_idle')) {
+              const wizardImage = this.add.image(320, 550, 'wizard_idle');
+              wizardImage.setDisplaySize(32, 32);
+            } else {
+              // Fallback to emoji if image doesn't exist
+              const wizardText = this.add.text(320, 550, '🧙', {
+                fontFamily: 'Arial',
+                fontSize: '24px'
+              }).setOrigin(0.5);
+            }
+            
+            // Add wizard cost
+            this.add.text(320, 570, '100', {
+              fontFamily: 'Arial',
+              fontSize: '12px',
+              color: '#FFFF00'
+            }).setOrigin(0.5);
+            
+            // ALWAYS show the cannon button regardless of upgrade system
+            // Add cannon button
+            cannonButton = this.add.rectangle(390, 550, 60, 40, 0x990000);
+            cannonButton.setInteractive();
+            cannonButton.on('pointerdown', () => {
+              // Select defense without auto-placing
+              this.pendingDefenseType = 'cannon';
+              this.pendingDefensePlacement = true;
+              this.setToolMode('cannon');
+              
+              // Show message to indicate selection
+              this.showFloatingText(400, 300, "Cannon selected - Click map to place", 0xFF0000);
+              
+              console.log("Cannon selected, waiting for placement click");
+            });
+            
+            // Use cannon image or emoji
+            if (this.textures.exists('cannon_idle')) {
+              const cannonImage = this.add.image(390, 550, 'cannon_idle');
+              cannonImage.setDisplaySize(32, 32);
+            } else {
+              // Fallback to emoji if image doesn't exist
+              const cannonText = this.add.text(390, 550, '💣', {
+                fontFamily: 'Arial',
+                fontSize: '24px'
+              }).setOrigin(0.5);
+            }
+            
+            // Add cannon cost
+            this.add.text(390, 570, '150', {
+              fontFamily: 'Arial',
+              fontSize: '12px',
+              color: '#FFFF00'
+            }).setOrigin(0.5);
+            
+            // Add upgrade button - moved to the right end
+            const upgradeButton = this.add.rectangle(460, 550, 60, 40, 0x555500);
             upgradeButton.setInteractive();
             upgradeButton.on('pointerdown', () => this.toggleUpgradePanel());
             
-            const upgradeText = this.add.text(320, 550, '⚙️', {
+            const upgradeText = this.add.text(460, 550, '⚙️', {
               fontFamily: 'Arial',
               fontSize: '24px'
             }).setOrigin(0.5);
@@ -1538,8 +1805,20 @@ if (isBrowser) {
               plant: cropButton,
               scarecrow: scarecrowButton,
               dog: dogButton,
-              upgrade: upgradeButton
+              upgrade: upgradeButton,
+              wizard: wizardButton,
+              cannon: cannonButton
             };
+            
+            // Add advanced defense buttons if unlocked
+            if (this.upgradeSystem) {
+              if (this.upgradeSystem.unlockedDefenses.wizard && wizardButton) {
+                this.toolbarButtons.wizard = wizardButton;
+              }
+              if (this.upgradeSystem.unlockedDefenses.cannon && cannonButton) {
+                this.toolbarButtons.cannon = cannonButton;
+              }
+            }
             
             // Add costs/labels underneath
             this.add.text(40, 570, 'Attack', {
@@ -1566,200 +1845,17 @@ if (isBrowser) {
               color: '#FFFF00'
             }).setOrigin(0.5);
             
+            // Add upgrade label
+            this.add.text(460, 570, 'Upgrade', {
+              fontFamily: 'Arial',
+              fontSize: '12px',
+              color: '#FFFFFF'
+            }).setOrigin(0.5);
+            
             // Set initial tool to attack mode
             this.setToolMode('attack');
           } catch (error) {
             console.error("Error creating toolbar:", error);
-          }
-        }
-
-        // Set the current tool mode (attack, plant, or defense)
-        setToolMode(mode) {
-          try {
-            console.log(`Setting tool mode to: ${mode}`);
-            
-            // Update tool mode
-            this.toolMode = mode;
-            
-            // Hide range indicators
-            this.hideDefenseRange();
-            
-            // Cancel any existing placement preview
-            if (this.placementPreview) {
-              this.placementPreview.destroy();
-              this.placementPreview = null;
-            }
-            
-            // Hide any existing placement circles
-            if (this.placementCircle) {
-              this.placementCircle.setVisible(false);
-            }
-            
-            // Reset placement state if switching to attack or plant mode
-            if (mode === 'attack' || mode === 'plant') {
-              this.pendingDefensePlacement = false;
-              
-              // Destroy defense preview
-              if (this.defensePreview) {
-                this.defensePreview.destroy();
-                this.defensePreview = null;
-              }
-            }
-            
-            // Start showing placement preview if planting or placing defenses
-            if (mode === 'plant' || mode === 'scarecrow' || mode === 'dog') {
-              // For defenses, show the range circle that follows the cursor
-              if (mode === 'scarecrow' || mode === 'dog') {
-                const range = mode === 'scarecrow' ? 200 : 150;
-                
-                // Create circle if it doesn't exist
-                if (!this.placementCircle) {
-                  this.placementCircle = this.add.circle(0, 0, range, 0xFFFFFF, 0.2);
-                  this.placementCircle.setStrokeStyle(2, mode === 'scarecrow' ? 0x0088FF : 0xFF4400);
-                }
-                
-                // Update circle properties
-                this.placementCircle.setRadius(range);
-                this.placementCircle.setStrokeStyle(2, mode === 'scarecrow' ? 0x0088FF : 0xFF4400);
-                this.placementCircle.setVisible(true);
-                
-                // Make the circle follow the pointer
-                this.input.on('pointermove', (pointer) => {
-                  if ((this.toolMode === mode || this.pendingDefensePlacement) && this.placementCircle) {
-                    this.placementCircle.x = pointer.x;
-                    this.placementCircle.y = pointer.y;
-                  }
-                });
-              }
-            }
-            
-            // Update button colors to show active state
-            if (this.toolbarButtons) {
-              Object.keys(this.toolbarButtons).forEach(key => {
-                const isActive = key === mode;
-                if (this.toolbarButtons[key]) {
-                  this.toolbarButtons[key].fillColor = isActive ? this.getToolColor(key, true) : this.getToolColor(key, false);
-                }
-              });
-            }
-            
-            // Show info text based on mode
-            let infoText = "";
-            let textColor = 0xFFFFFF;
-            
-            switch (mode) {
-              case 'attack':
-                infoText = "ATTACK MODE: Click on enemies";
-                textColor = 0xFF4400;
-                break;
-              case 'plant':
-                infoText = "PLANT MODE: Plant crops (5 coins)";
-                textColor = 0x00FF00;
-                break;
-              case 'scarecrow':
-                infoText = "ABS ICE MAGE: Click again to place (35 coins)";
-                textColor = 0x0088FF;
-                break;
-              case 'dog':
-                infoText = "NOOT FIRE MAGE: Click again to place (50 coins)";
-                textColor = 0xFF8800;
-                break;
-            }
-            
-            // Show mode change message in center of screen
-            this.showFloatingText(400, 300, infoText, textColor);
-            
-            console.log(`Tool mode set to: ${mode}`);
-          } catch (error) {
-            console.error("Error setting tool mode:", error);
-          }
-        }
-        
-        // Get color for tool buttons
-        getToolColor(tool, isActive) {
-          // Default inactive colors
-          const colors = {
-            attack: 0x660000,
-            plant: 0x006600,
-            scarecrow: 0x000066,
-            dog: 0x660000,
-            upgrade: 0x555500
-          };
-          
-          // Active colors are brighter
-          const activeColors = {
-            attack: 0xFF4400,
-            plant: 0x00FF00,
-            scarecrow: 0x0088FF,
-            dog: 0xFF8800,
-            upgrade: 0xFFFF00
-          };
-          
-          return isActive ? (activeColors[tool] || 0xFFFFFF) : (colors[tool] || 0x333333);
-        }
-
-        verifyTextureLoading() {
-          try {
-            // Check if textures are loaded
-            const textures = [
-              'enemy_bird', 'enemy_rabbit', 'enemy_boss',
-              'Fruit_tree3', 'Moss_tree3', 'fireball', 'iceball'
-            ];
-            
-            textures.forEach(texture => {
-              if (this.textures.exists(texture)) {
-                console.log(`✅ Texture '${texture}' loaded successfully`);
-                
-                // Debug: show texture at known position
-                const debugSprite = this.add.sprite(100 + textures.indexOf(texture) * 50, 100, texture);
-                debugSprite.setDisplaySize(32, 32);
-                debugSprite.setAlpha(0.5);
-                this.time.delayedCall(5000, () => {
-                  debugSprite.destroy();
-                });
-              } else {
-                console.error(`❌ Texture '${texture}' NOT FOUND`);
-                
-                // Create fallback texture if needed
-                if (texture === 'fireball') {
-                  const fireGraphics = this.make.graphics();
-                  fireGraphics.fillStyle(0xFF4400, 1);
-                  fireGraphics.fillCircle(16, 16, 16);
-                  fireGraphics.fillStyle(0xFF8866, 0.4);
-                  fireGraphics.fillCircle(16, 16, 20);
-                  fireGraphics.generateTexture('fireball', 40, 40);
-                  console.log('Created fallback texture for fireball');
-                } else if (texture === 'iceball') {
-                  const iceGraphics = this.make.graphics();
-                  iceGraphics.fillStyle(0x0088FF, 1);
-                  iceGraphics.fillCircle(16, 16, 16);
-                  iceGraphics.fillStyle(0x66BBFF, 0.4);
-                  iceGraphics.fillCircle(16, 16, 20);
-                  iceGraphics.generateTexture('iceball', 40, 40);
-                  console.log('Created fallback texture for iceball');
-                }
-                
-                // Create visual indicator for missing texture
-                const errorText = this.add.text(100 + textures.indexOf(texture) * 50, 100, '❌', {
-                  fontSize: '24px',
-                  fontFamily: 'Arial',
-                  color: '#FF0000'
-                }).setOrigin(0.5);
-                this.time.delayedCall(5000, () => {
-                  errorText.destroy();
-                });
-              }
-            });
-            
-            // Add visible debug indicator at spawn position
-            const spawnPoint = this.add.circle(850, 300, 10, 0xFF0000);
-            spawnPoint.setAlpha(0.7);
-            this.time.delayedCall(5000, () => {
-              spawnPoint.destroy();
-            });
-            
-          } catch (error) {
-            console.error("Error verifying textures:", error);
           }
         }
 
@@ -2221,6 +2317,9 @@ if (isBrowser) {
             // Update defenses' attacks separately to ensure they attack
             this.updateDefenseAttacks();
             
+            // Update and process crops
+            this.updateCrops();
+            
             // Check if all enemies are gone and we've spawned all for this wave
             if (!this.isSpawningEnemies && this.enemies.length === 0 && this.waveInProgress) {
               this.waveInProgress = false;
@@ -2596,41 +2695,80 @@ if (isBrowser) {
 
         showDefensePlacementIndicator(pointer, type) {
           try {
-            // Make the planting indicator visible
-            this.plantingIndicator.visible = true;
+            // Get defense cost to check affordability
+            const cost = type === 'scarecrow' ? 35 : 
+                         type === 'dog' ? 50 : 
+                         type === 'wizard' ? 100 : 
+                         type === 'cannon' ? 150 : 0;
             
-            // Adjust size based on type
-            const size = type === 'scarecrow' ? 250 : 200; // Match the actual range of the mage
+            // Only allow placement on right side of map
+            const canAfford = this.gameState.farmCoins >= cost;
+            const validSide = pointer.x >= 200; // Only allow on right side
             
-            // Update indicator position to follow pointer
-            this.plantingIndicator.x = pointer.x;
-            this.plantingIndicator.y = pointer.y;
-            this.plantingIndicator.width = this.plantingIndicator.height = size * 2; // Double for full diameter
+            // Set indicator color based on affordability and placement area
+            let color = 0xFF0000; // Default red for invalid
             
-            // Update color based on defense type
-            const strokeColor = type === 'scarecrow' ? 0x0088FF : 0xFF4400;
-            const fillColor = type === 'scarecrow' ? 0x0088FF : 0xFF4400;
-            this.plantingIndicator.setStrokeStyle(2, strokeColor);
-            this.plantingIndicator.fillColor = fillColor;
-            this.plantingIndicator.fillAlpha = 0.1;
+            if (validSide) {
+              color = canAfford ? 0x00FF00 : 0xFFFF00; // Green if affordable, yellow if valid position but can't afford
+            }
             
-            // Show help text for where defenses can be placed
-            this.plantingHelpText.visible = true;
-            this.plantingHelpText.x = 400;
-            this.plantingHelpText.y = 50;
+            // Don't show if clicking in toolbar area
+            if (pointer.y > 520) {
+              if (this.plantingIndicator) this.plantingIndicator.visible = false;
+              if (this.plantingHelpText) this.plantingHelpText.visible = false;
+              return;
+            }
             
-            // Update help text color
-            const textColor = type === 'scarecrow' ? '#0088FF' : '#FF4400';
-            const defenseName = type === 'scarecrow' ? 'Ice Mage' : 'Fire Mage';
-            this.plantingHelpText.setText(`Place ${defenseName} on the RIGHT side of the map`);
-            this.plantingHelpText.setColor(textColor);
+            // Create or update indicator
+            if (!this.plantingIndicator) {
+              this.plantingIndicator = this.add.rectangle(pointer.x, pointer.y, 40, 40, color, 0.4);
+              this.plantingIndicator.setStrokeStyle(2, color);
+            } else {
+              this.plantingIndicator.x = pointer.x;
+              this.plantingIndicator.y = pointer.y;
+              this.plantingIndicator.fillColor = color;
+              this.plantingIndicator.strokeColor = color;
+              this.plantingIndicator.visible = true;
+            }
             
-            // Check if placement is valid (right side of screen)
-            if (pointer.x < 200) {
-              // Invalid position
-              this.plantingIndicator.fillColor = 0xFF0000;
-              this.plantingIndicator.setStrokeStyle(2, 0xFF0000);
-              this.plantingIndicator.fillAlpha = 0.3;
+            // Set indicator text based on defense type
+            let text = "";
+            let textColor = "#FFFFFF";
+            
+            if (!validSide) {
+              text = "Place on RIGHT side only";
+              textColor = "#FF0000";
+            } else if (!canAfford) {
+              text = `Need ${cost} coins`;
+              textColor = "#FFFF00";
+            } else {
+              // Set text based on defense type
+              if (type === 'scarecrow') {
+                text = "ABS Ice Mage (35 coins)";
+                textColor = "#00AAFF";
+              } else if (type === 'dog') {
+                text = "NOOT Fire Mage (50 coins)";
+                textColor = "#FF4400";
+              } else if (type === 'wizard') {
+                text = "Wizard (100 coins)";
+                textColor = "#FF00FF";
+              } else if (type === 'cannon') {
+                text = "Cannon (150 coins)";
+                textColor = "#FF0000";
+              }
+            }
+            
+            // Update help text
+            if (!this.plantingHelpText) {
+              this.plantingHelpText = this.add.text(400, 50, text, {
+                fontFamily: 'Arial',
+                fontSize: '18px',
+                color: textColor
+              }).setOrigin(0.5);
+            } else {
+              this.plantingHelpText.setText(text);
+              this.plantingHelpText.setColor(textColor);
+              this.plantingHelpText.visible = true;
             }
           } catch (error) {
             console.error("Error showing defense placement indicator:", error);
@@ -2686,6 +2824,445 @@ if (isBrowser) {
               "Move cursor near a mage with SPECIAL ready!",
               0xFFFFFF
             );
+          }
+        }
+
+        setToolMode(mode) {
+          try {
+            console.log(`Setting tool mode to: ${mode}`);
+            
+            // Update tool mode
+            this.toolMode = mode;
+            
+            // Hide range indicators
+            this.hideDefenseRange();
+            
+            // Cancel any existing placement preview
+            if (this.placementPreview) {
+              this.placementPreview.destroy();
+              this.placementPreview = null;
+            }
+            
+            // Hide any existing placement circles
+            if (this.placementCircle) {
+              this.placementCircle.setVisible(false);
+            }
+            
+            // Reset placement state if switching to attack or plant mode
+            if (mode === 'attack' || mode === 'plant') {
+              this.pendingDefensePlacement = false;
+              
+              // Destroy defense preview
+              if (this.defensePreview) {
+                this.defensePreview.destroy();
+                this.defensePreview = null;
+              }
+            }
+            
+            // Start showing placement preview if planting or placing defenses
+            if (mode === 'plant' || this.isDefenseMode(mode)) {
+              // For defenses, show the range circle that follows the cursor
+              if (this.isDefenseMode(mode)) {
+                let range = 200; // Default range
+                let color = 0x0088FF; // Default color
+                
+                // Set range and color based on defense type
+                if (mode === 'scarecrow') {
+                  range = 250;
+                  color = 0x0088FF; // Blue for ABS
+                } else if (mode === 'dog') {
+                  range = 200;
+                  color = 0xFF4400; // Red for NOOT
+                } else if (mode === 'wizard') {
+                  range = 300;
+                  color = 0xFF00FF; // Purple for wizard
+                } else if (mode === 'cannon') {
+                  range = 350;
+                  color = 0xFF0000; // Red for cannon
+                }
+                
+                // Create circle if it doesn't exist
+                if (!this.placementCircle) {
+                  this.placementCircle = this.add.circle(0, 0, range, 0xFFFFFF, 0.2);
+                  this.placementCircle.setStrokeStyle(2, color);
+                }
+                
+                // Update circle properties
+                this.placementCircle.setRadius(range);
+                this.placementCircle.setStrokeStyle(2, color);
+                this.placementCircle.setVisible(true);
+                
+                // Make the circle follow the pointer
+                this.input.on('pointermove', (pointer) => {
+                  if ((this.toolMode === mode || this.pendingDefensePlacement) && this.placementCircle) {
+                    this.placementCircle.x = pointer.x;
+                    this.placementCircle.y = pointer.y;
+                  }
+                });
+              }
+            }
+            
+            // Update button highlighting in toolbar
+            if (this.toolbarButtons) {
+              Object.keys(this.toolbarButtons).forEach(key => {
+                const isActive = key === mode;
+                if (this.toolbarButtons[key]) {
+                  this.toolbarButtons[key].fillColor = this.getToolColor(key, isActive);
+                }
+              });
+            }
+            
+            // Show info text based on mode
+            let infoText = "";
+            let textColor = 0xFFFFFF;
+            
+            switch (mode) {
+              case 'attack':
+                infoText = "ATTACK MODE: Click on enemies";
+                textColor = 0xFF4400;
+                break;
+              case 'plant':
+                infoText = "PLANT MODE: Plant crops (5 coins)";
+                textColor = 0x00FF00;
+                break;
+              case 'scarecrow':
+                infoText = "ABS ICE MAGE: Click to place (35 coins)";
+                textColor = 0x0088FF;
+                break;
+              case 'dog':
+                infoText = "NOOT FIRE MAGE: Click to place (50 coins)";
+                textColor = 0xFF8800;
+                break;
+              case 'wizard':
+                infoText = "WIZARD: Click to place (100 coins)";
+                textColor = 0xFF00FF;
+                break;
+              case 'cannon':
+                infoText = "CANNON: Click to place (150 coins)";
+                textColor = 0xFF0000;
+                break;
+            }
+            
+            // Show mode change message in center of screen
+            this.showFloatingText(400, 300, infoText, textColor);
+            
+            console.log(`Tool mode set to: ${mode}`);
+          } catch (error) {
+            console.error("Error setting tool mode:", error);
+          }
+        }
+
+        // Helper method to check if a mode is a defense mode
+        isDefenseMode(mode) {
+          return ['scarecrow', 'dog', 'wizard', 'cannon'].includes(mode);
+        }
+
+        // Get color for tool buttons
+        getToolColor(tool, isActive) {
+          const colors = {
+            attack: 0x444444,
+            plant: 0x444444,
+            scarecrow: 0x444444,
+            dog: 0x444444,
+            upgrade: 0xFFFF00
+          };
+          
+          const activeColors = {
+            attack: 0xFF0000,
+            plant: 0x00FF00,
+            scarecrow: 0x0088FF,
+            dog: 0xFF4400,
+            upgrade: 0xFFFF00
+          };
+          
+          return isActive ? (activeColors[tool] || 0xFFFFFF) : (colors[tool] || 0x333333);
+        }
+
+        placeDefense(x, y, type) {
+          try {
+            console.log(`Placing defense: ${type} at ${x}, ${y}`);
+            
+            // Only allow placement on right side
+            if (x < 200) {
+              this.showFloatingText(x, y, "Place on RIGHT side only!", 0xFF0000);
+              return false;
+            }
+            
+            // Check defense costs
+            const cost = type === 'scarecrow' ? 35 : 
+                         type === 'dog' ? 50 : 
+                         type === 'wizard' ? 100 : 
+                         type === 'cannon' ? 150 : 0;
+            
+            // Check if player has enough coins
+            if (this.gameState.farmCoins < cost) {
+              this.showFloatingText(x, y, `Need ${cost} coins!`, 0xFF0000);
+              return false;
+            }
+            
+            // Add the defense
+            if (!this.defenses) {
+              this.defenses = [];
+            }
+            
+            // Import Defense class if available
+            const DefenseClass = this.registry.get('DefenseClass');
+            
+            // Create the defense using the class or fallback to basic rectangle
+            let defense;
+            
+            if (DefenseClass) {
+              defense = new DefenseClass(this, type, x, y);
+            } else {
+              // Fallback if DefenseClass isn't available
+              defense = {
+                type,
+                x,
+                y,
+                active: true,
+                range: type === 'scarecrow' ? 250 : 
+                       type === 'dog' ? 200 : 
+                       type === 'wizard' ? 300 : 
+                       type === 'cannon' ? 350 : 200,
+                sprite: this.add.rectangle(x, y, 40, 40, 
+                  type === 'scarecrow' ? 0x0088FF : 
+                  type === 'dog' ? 0xFF4400 : 
+                  type === 'wizard' ? 0xFF00FF : 
+                  type === 'cannon' ? 0xFF0000 : 0x666666)
+              };
+              
+              // Add defense type text
+              const emojiMap = {
+                'scarecrow': '🧙‍♂️',
+                'dog': '🧙‍♀️',
+                'wizard': '🧙',
+                'cannon': '💣'
+              };
+              
+              const emoji = emojiMap[type] || '❓';
+              defense.label = this.add.text(x, y, emoji, {
+                fontSize: '24px',
+                fontFamily: 'Arial'
+              }).setOrigin(0.5);
+            }
+            
+            // Add to defenses array
+            this.defenses.push(defense);
+            
+            // Deduct coins
+            this.updateFarmCoins(-cost);
+            
+            // Show confirmation text
+            const defenseNames = {
+              'scarecrow': 'ABS Ice Mage',
+              'dog': 'NOOT Fire Mage',
+              'wizard': 'Wizard',
+              'cannon': 'Cannon'
+            };
+            
+            const defenseName = defenseNames[type] || type;
+            this.showFloatingText(x, y - 50, `${defenseName} placed!`, 0x00FF00);
+            
+            console.log(`Placed ${type} defense at ${x}, ${y}`);
+            
+            // Reset the tool mode to attack
+            if (this.pendingDefensePlacement) {
+              this.pendingDefensePlacement = false;
+              
+              // Hide placement indicators
+              if (this.plantingIndicator) {
+                this.plantingIndicator.visible = false;
+              }
+              
+              if (this.plantingHelpText) {
+                this.plantingHelpText.visible = false;
+              }
+              
+              if (this.placementCircle) {
+                this.placementCircle.visible = false;
+              }
+            }
+            
+            return true;
+          } catch (error) {
+            console.error("Error placing defense:", error);
+            return false;
+          }
+        }
+
+        verifyTextureLoading() {
+          try {
+            // Check if textures are loaded
+            const textures = [
+              'enemy_bird', 'enemy_rabbit', 'enemy_boss',
+              'Fruit_tree3', 'Moss_tree3', 'fireball', 'iceball'
+            ];
+            
+            textures.forEach(texture => {
+              if (this.textures.exists(texture)) {
+                console.log(`✅ Texture '${texture}' loaded successfully`);
+                
+                // Debug: show texture at known position
+                const debugSprite = this.add.sprite(100 + textures.indexOf(texture) * 50, 100, texture);
+                debugSprite.setDisplaySize(32, 32);
+                debugSprite.setAlpha(0.5);
+                this.time.delayedCall(5000, () => {
+                  debugSprite.destroy();
+                });
+              } else {
+                console.error(`❌ Texture '${texture}' NOT FOUND`);
+                
+                // Create fallback texture if needed
+                if (texture === 'fireball') {
+                  const fireGraphics = this.make.graphics();
+                  fireGraphics.fillStyle(0xFF4400, 1);
+                  fireGraphics.fillCircle(16, 16, 16);
+                  fireGraphics.fillStyle(0xFF8866, 0.4);
+                  fireGraphics.fillCircle(16, 16, 20);
+                  fireGraphics.generateTexture('fireball', 40, 40);
+                  console.log('Created fallback texture for fireball');
+                } else if (texture === 'iceball') {
+                  const iceGraphics = this.make.graphics();
+                  iceGraphics.fillStyle(0x0088FF, 1);
+                  iceGraphics.fillCircle(16, 16, 16);
+                  iceGraphics.fillStyle(0x66BBFF, 0.4);
+                  iceGraphics.fillCircle(16, 16, 20);
+                  iceGraphics.generateTexture('iceball', 40, 40);
+                  console.log('Created fallback texture for iceball');
+                }
+                
+                // Create visual indicator for missing texture
+                const errorText = this.add.text(100 + textures.indexOf(texture) * 50, 100, '❌', {
+                  fontSize: '24px',
+                  fontFamily: 'Arial',
+                  color: '#FF0000'
+                }).setOrigin(0.5);
+                this.time.delayedCall(5000, () => {
+                  errorText.destroy();
+                });
+              }
+            });
+            
+            // Add visible debug indicator at spawn position
+            const spawnPoint = this.add.circle(850, 300, 10, 0xFF0000);
+            spawnPoint.setAlpha(0.7);
+            this.time.delayedCall(5000, () => {
+              spawnPoint.destroy();
+            });
+            
+          } catch (error) {
+            console.error("Error verifying textures:", error);
+          }
+        }
+
+        // Display large wave start text animation in the center of the screen
+        showWaveStartText(waveNumber) {
+          try {
+            // Create large centered text
+            const waveText = this.add.text(400, 300, `WAVE ${waveNumber}`, {
+              fontFamily: 'Arial',
+              fontSize: '48px',
+              color: '#FFFF00',
+              stroke: '#000000',
+              strokeThickness: 5,
+              align: 'center'
+            }).setOrigin(0.5);
+            
+            // Set initial scale and alpha
+            waveText.setScale(0.5);
+            waveText.setAlpha(0);
+            
+            // Create animation sequence
+            this.tweens.add({
+              targets: waveText,
+              scale: 1.2,
+              alpha: 1,
+              duration: 1000,
+              ease: 'Bounce.easeOut',
+              onComplete: () => {
+                // Second animation to fade out
+                this.tweens.add({
+                  targets: waveText,
+                  scale: 1.5,
+                  alpha: 0,
+                  duration: 800,
+                  delay: 500,
+                  onComplete: () => waveText.destroy()
+                });
+              }
+            });
+            
+            // Add additional flair - particles or effect if supported
+            if (this.particles) {
+              const emitter = this.particles.createEmitter({
+                x: 400,
+                y: 300,
+                speed: { min: -100, max: 100 },
+                scale: { start: 0.5, end: 0 },
+                blendMode: 'ADD',
+                lifespan: 1000,
+                quantity: 20
+              });
+              
+              // Stop and destroy after a short time
+              this.time.delayedCall(2000, () => {
+                emitter.stop();
+                this.time.delayedCall(1000, () => emitter.remove());
+              });
+            }
+          } catch (error) {
+            console.error("Error showing wave start text:", error);
+          }
+        }
+
+        // Update and process crops - ensure they are harvestable
+        updateCrops() {
+          try {
+            // Skip if crops object doesn't exist or is empty
+            if (!this.crops || Object.keys(this.crops).length === 0) {
+              return;
+            }
+            
+            // Process each crop
+            Object.values(this.crops).forEach(crop => {
+              if (!crop || !crop.isActive) return;
+              
+              // Call crop's update method if it exists
+              if (typeof crop.update === 'function') {
+                crop.update();
+              }
+              
+              // CRITICAL FIX: Make sure harvestable crops respond to clicks
+              if (crop.isHarvestable && crop.setInteractive && !crop.input) {
+                crop.setInteractive({ useHandCursor: true });
+                
+                // Re-bind pointerdown event if it was lost
+                crop.on('pointerdown', () => {
+                  if (crop.isHarvestable) {
+                    // Ensure we directly call the harvest method with proper this context
+                    crop.harvest();
+                    
+                    // Show floating text as additional feedback
+                    const yieldAmount = crop.calculateYield ? crop.calculateYield() : crop.value || 2;
+                    this.showFloatingText(crop.x, crop.y, `+${yieldAmount}`, 0xFFFF00);
+                    
+                    console.log(`Manually harvested crop at ${crop.x},${crop.y} for ${yieldAmount} coins`);
+                  }
+                });
+              }
+              
+              // Make sure the harvestable indicator is visible
+              if (crop.isHarvestable && crop.harvestIndicator) {
+                crop.harvestIndicator.setVisible(true);
+              }
+              
+              // Debug: randomly log crop status
+              if (Math.random() < 0.001) {
+                console.log(`Crop at ${crop.x},${crop.y}: Active=${crop.isActive}, Harvestable=${crop.isHarvestable}, GrowthProgress=${crop.growthProgress}/${crop.maxGrowth}`);
+              }
+            });
+          } catch (error) {
+            console.error("Error updating crops:", error);
           }
         }
       }

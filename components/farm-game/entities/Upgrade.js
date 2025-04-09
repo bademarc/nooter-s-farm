@@ -10,7 +10,9 @@ export default class Upgrade {
       cropYield: 1,       // How much coins crops generate
       scarecrowPower: 1,  // Scarecrow defense power
       dogPower: 1,        // Dog defense power
-      cropGrowth: 1       // How fast crops grow
+      cropGrowth: 1,      // How fast crops grow
+      wizardPower: 1,     // Wizard defense power - advanced defense
+      cannonPower: 1      // Cannon defense power - advanced defense
     };
     
     // Define max levels for each upgrade
@@ -19,7 +21,9 @@ export default class Upgrade {
       cropYield: 5,
       scarecrowPower: 3,
       dogPower: 3,
-      cropGrowth: 3
+      cropGrowth: 3,
+      wizardPower: 3,     // Added for wizard
+      cannonPower: 3      // Added for cannon
     };
     
     // Define costs for each upgrade level
@@ -28,15 +32,17 @@ export default class Upgrade {
       cropYield: [75, 150, 250, 400, 700],
       scarecrowPower: [100, 250, 500],
       dogPower: [120, 280, 550],
-      cropGrowth: [80, 180, 350]
+      cropGrowth: [80, 180, 350],
+      wizardPower: [200, 400, 650],  // Higher cost for advanced defense
+      cannonPower: [250, 500, 750]   // Higher cost for advanced defense
     };
     
     // Define unlocked status for advanced defenses
     this.unlockedDefenses = {
       scarecrow: true,  // Basic defense, starts unlocked
       dog: true,        // Basic defense, starts unlocked
-      wizard: false,    // Advanced defense, needs to be unlocked
-      cannon: false     // Advanced defense, needs to be unlocked
+      wizard: true,    // Advanced defense, needs to be unlocked
+      cannon: true     // Advanced defense, needs to be unlocked
     };
     
     // Define unlock conditions for advanced defenses
@@ -66,6 +72,10 @@ export default class Upgrade {
         return 1 + (level * 0.6); // Starts at 1.6, +0.6 per level
       case 'cropGrowth':
         return 1 + (level * 0.2); // Starts at 1.2, +0.2 per level
+      case 'wizardPower':
+        return 1 + (level * 0.7); // Starts at 1.7, +0.7 per level (stronger than base defenses)
+      case 'cannonPower':
+        return 1 + (level * 0.8); // Starts at 1.8, +0.8 per level (strongest defense upgrade)
       default:
         return 1;
     }
@@ -147,11 +157,17 @@ export default class Upgrade {
         break;
       case 'scarecrowPower':
       case 'dogPower':
+      case 'wizardPower':
+      case 'cannonPower':
         // Update all existing defenses of this type
         if (this.scene.defenses) {
           this.scene.defenses.forEach(defense => {
             if (defense && defense.type === type.replace('Power', '')) {
-              defense.damage = value;
+              if (typeof defense.updatePower === 'function') {
+                defense.updatePower(value);
+              } else {
+                defense.damage = value;
+              }
             }
           });
         }
@@ -263,8 +279,20 @@ export default class Upgrade {
     const spacing = 10;
     let currentY = startY;
     
-    // Create upgrade buttons
-    Object.keys(this.levels).forEach((type, index) => {
+    // Get list of available upgrades (filter out advanced defense power upgrades if not unlocked)
+    const availableUpgrades = Object.keys(this.levels).filter(type => {
+      // Always show base upgrades
+      if (!type.includes('Power') || type === 'scarecrowPower' || type === 'dogPower' || type === 'cropGrowth') {
+        return true;
+      }
+      
+      // For advanced defense power upgrades, check if defense is unlocked
+      const defenseType = type.replace('Power', '');
+      return this.isDefenseUnlocked(defenseType);
+    });
+    
+    // Create upgrade buttons for available upgrades
+    availableUpgrades.forEach((type, index) => {
       const buttonY = currentY;
       
       // Button background
@@ -351,11 +379,15 @@ export default class Upgrade {
       case 'cropYield':
         return 'Crop Yield';
       case 'scarecrowPower':
-        return 'Scarecrow Power';
+        return 'ABS Mage Power';
       case 'dogPower':
-        return 'Dog Power';
+        return 'NOOT Mage Power';
       case 'cropGrowth':
         return 'Crop Growth Rate';
+      case 'wizardPower':
+        return 'Wizard Power';
+      case 'cannonPower':
+        return 'Cannon Power';
       default:
         return type;
     }
