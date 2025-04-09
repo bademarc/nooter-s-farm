@@ -512,8 +512,8 @@ const FarmGameInner = ({ farmCoins, addFarmCoins }) => {
           <div className="bg-black/30 p-4 rounded-lg">
             <p className="mb-2">👆 Click enemies to attack</p>
             <p className="mb-2">P - Plant crops mode</p>
-            <p className="mb-2">1 - Place scarecrow (35 coins)</p>
-            <p className="mb-2">2 - Place dog (50 coins)</p>
+            <p className="mb-2">1 - Place ABSTER Mage (35 coins)</p>
+            <p className="mb-2">2 - Place NOOT Mage (50 coins)</p>
           </div>
           
           {isClient && (

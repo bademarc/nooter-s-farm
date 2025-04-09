@@ -34,6 +34,7 @@ class GameSceneImpl {
     this.initialClickProcessed = false;
     this.allowPlanting = false;
     this.upgradeSystem = null;
+    this.pendingDefensePlacement = false; // New flag to track if we're waiting for placement click
   }
   
   // Add stub methods for safety
@@ -89,6 +90,7 @@ if (isBrowser) {
           this.enemiesSpawned = 0;
           this.totalEnemiesInWave = 0;
           this.upgradeSystem = null;
+          this.pendingDefensePlacement = false; // New flag to track if we're waiting for placement click
         }
         
         init(data) {
@@ -246,6 +248,56 @@ if (isBrowser) {
         
         create() {
           try {
+            console.log("GameScene create start");
+            
+            // Prepare game state
+            this.gameState = {
+              wave: 1,
+              score: 0,
+              farmCoins: 50,
+              isActive: false,
+              lives: 3,
+              clickDamage: 1,
+            };
+            
+            // Create dynamic textures for fireballs if they don't exist
+            if (!this.textures.exists('fireball_red')) {
+              try {
+                // Create red fireball (for fire mage)
+                const redGraphics = this.make.graphics();
+                redGraphics.fillStyle(0xFF4400, 1); // Core
+                redGraphics.fillCircle(16, 16, 10);
+                redGraphics.fillStyle(0xFF8866, 0.7); // Mid glow
+                redGraphics.fillCircle(16, 16, 14);
+                redGraphics.fillStyle(0xFF9977, 0.3); // Outer glow
+                redGraphics.fillCircle(16, 16, 20);
+                redGraphics.generateTexture('fireball_red', 40, 40);
+                console.log('Created red fireball texture');
+              } catch (error) {
+                console.error("Error creating red fireball texture:", error);
+              }
+            }
+            
+            if (!this.textures.exists('fireball_blue')) {
+              try {
+                // Create blue iceball (for ice mage)
+                const blueGraphics = this.make.graphics();
+                blueGraphics.fillStyle(0x0088FF, 1); // Core
+                blueGraphics.fillCircle(16, 16, 10);
+                blueGraphics.fillStyle(0x66BBFF, 0.7); // Mid glow
+                blueGraphics.fillCircle(16, 16, 14);
+                blueGraphics.fillStyle(0x99CCFF, 0.3); // Outer glow
+                blueGraphics.fillCircle(16, 16, 20);
+                blueGraphics.generateTexture('fireball_blue', 40, 40);
+                console.log('Created blue iceball texture');
+              } catch (error) {
+                console.error("Error creating blue iceball texture:", error);
+              }
+            }
+            
+            // Initialize global flag for update loop
+            isUpdating = false;
+            
             console.log("GameScene create started");
             
             // Initialize the defense range indicator early
@@ -290,6 +342,8 @@ if (isBrowser) {
             // Initialize defense mode
             this.currentDefenseType = null; // null = not in defense placement mode
             this.toolMode = 'attack'; // Default mode: attack, not plant
+            this.pendingDefensePlacement = false;
+            this.pendingDefenseType = null;
             
             // Create toolbar for easier selection
             this.createToolbar();
@@ -310,38 +364,19 @@ if (isBrowser) {
             }).setOrigin(0.5);
             this.plantingHelpText.visible = false;
             
-            // Add pointer move handler for planting indicator
-            this.input.on('pointermove', (pointer) => {
+            // Create a global click handler for the main game area
+            const gameArea = this.add.rectangle(400, 300, 800, 500, 0, 0);
+            gameArea.setInteractive();
+            gameArea.on('pointerdown', (pointer) => {
               // Skip if clicking in toolbar area
-              if (pointer.y > 520) {
-                this.plantingIndicator.visible = false;
-                this.plantingHelpText.visible = false;
-                return;
-              }
+              if (pointer.y > 520) return;
               
-              if (this.gameState.isActive) {
-                if (this.toolMode === 'plant') {
-                  // Crop planting mode
-                  this.showCropPlacementIndicator(pointer);
-                } else if (this.toolMode === 'scarecrow' || this.toolMode === 'dog') {
-                  // Defense placement mode
-                  this.showDefensePlacementIndicator(pointer, this.toolMode);
-                } else {
-                  // Attack mode - hide indicators
-                  this.plantingIndicator.visible = false;
-                  this.plantingHelpText.visible = false;
-                }
-              }
-            });
-            
-            // Set up input handling
-            this.input.on('pointerdown', (pointer) => {
-              console.log("Game clicked at", pointer.x, pointer.y, "tool mode:", this.toolMode);
-              
-              // If game hasn't started, ignore clicks
+              // Skip if game not active
               if (!this.gameState.isActive) return;
               
-              // Check if clicked on an enemy - only in attack mode
+              console.log("Game area clicked at", pointer.x, pointer.y, "tool mode:", this.toolMode);
+              
+              // ATTACK MODE - Check for enemies
               if (this.toolMode === 'attack') {
                 const clickedEnemy = this.getEnemyAtPosition(pointer.x, pointer.y);
                 if (clickedEnemy) {
@@ -351,32 +386,110 @@ if (isBrowser) {
                   // Show attack effect
                   this.showFloatingText(clickedEnemy.x, clickedEnemy.y - 20, 
                     `-${(this.gameState.clickDamage || 1).toFixed(1)}`, 0xFF0000);
-                  
-                  return; // Done with this click
+                    
+                  // Create attack effect
+                  this.createClickAttackEffect(clickedEnemy.x, clickedEnemy.y);
+                  return;
                 }
               }
               
-              // Handle planting crops
-              if (this.toolMode === 'plant' && this.gameState.farmCoins >= 5) {
+              // CROP PLANTING MODE
+              if (this.toolMode === 'plant') {
                 if (this.isPointInFarmArea(pointer.x, pointer.y)) {
-                  this.plantCrop(pointer.x, pointer.y);
+                  if (this.gameState.farmCoins >= 5) {
+                    this.plantCrop(pointer.x, pointer.y);
+                  } else {
+                    this.showFloatingText(pointer.x, pointer.y, "Need 5 coins!", 0xFF0000);
+                  }
                 } else {
-                  // Show error message if trying to plant outside farm area
                   this.showFloatingText(pointer.x, pointer.y, "Plant on LEFT side only!", 0xFF0000);
                 }
-                return; // Done with this click
+                return;
               }
               
-              // Handle placing defenses
-              if (this.toolMode === 'scarecrow' || this.toolMode === 'dog') {
-                // Make sure placeDefense method exists
+              // DEFENSE PLACEMENT MODE - For both scarecrow and dog
+              if (this.pendingDefensePlacement && this.pendingDefenseType) {
+                // Check valid placement area
+                if (pointer.x < 200) {
+                  this.showFloatingText(pointer.x, pointer.y, "Place on RIGHT side only!", 0xFF0000);
+                  return;
+                }
+                
+                // Calculate cost
+                const cost = this.pendingDefenseType === 'scarecrow' ? 35 : 50;
+                
+                // Check if enough coins
+                if (this.gameState.farmCoins < cost) {
+                  this.showFloatingText(pointer.x, pointer.y, `Need ${cost} coins!`, 0xFF0000);
+                  return;
+                }
+                
+                // Place the defense
                 if (typeof this.placeDefense === 'function') {
-                  this.placeDefense(this.toolMode, pointer.x, pointer.y);
+                  // Place defense
+                  const defense = this.placeDefense(this.pendingDefenseType, pointer.x, pointer.y);
+                  
+                  // Show success message and range indicator
+                  if (defense) {
+                    const defenseName = this.pendingDefenseType === 'scarecrow' ? 'Ice Mage' : 'Fire Mage';
+                    const color = this.pendingDefenseType === 'scarecrow' ? 0x0088FF : 0xFF4400;
+                    this.showFloatingText(pointer.x, pointer.y - 30, `${defenseName} placed!`, color);
+                    
+                    // Create range visual effect
+                    const range = this.pendingDefenseType === 'scarecrow' ? 250 : 200;
+                    const rangeEffect = this.add.circle(pointer.x, pointer.y, range, color, 0.2);
+                    rangeEffect.setStrokeStyle(2, color);
+                    this.tweens.add({
+                      targets: rangeEffect,
+                      alpha: 0,
+                      scale: 1.2,
+                      duration: 1500,
+                      onComplete: () => rangeEffect.destroy()
+                    });
+                    
+                    // Deduct cost
+                    this.updateFarmCoins(-cost);
+                  }
+                  
+                  // Reset flags
+                  this.pendingDefensePlacement = false;
+                  this.pendingDefenseType = null;
+                  
+                  // Return to attack mode
+                  this.setToolMode('attack');
+                  
+                  // Hide placement indicator
+                  this.plantingIndicator.visible = false;
+                  this.plantingHelpText.visible = false;
                 } else {
                   console.error("placeDefense method is not defined");
                   this.showFloatingText(pointer.x, pointer.y, "Can't place defense - error!", 0xFF0000);
                 }
-                return; // Done with this click
+                return;
+              }
+            });
+            
+            // Add pointer move handler for planting indicator
+            this.input.on('pointermove', (pointer) => {
+              // Skip if clicking in toolbar area
+              if (pointer.y > 520) {
+                this.plantingIndicator.visible = false;
+                this.plantingHelpText.visible = false;
+                return;
+              }
+              
+              if (this.gameState && this.gameState.isActive) {
+                if (this.toolMode === 'plant') {
+                  // Crop planting mode
+                  this.showCropPlacementIndicator(pointer);
+                } else if (this.pendingDefensePlacement) {
+                  // Defense placement mode
+                  this.showDefensePlacementIndicator(pointer, this.pendingDefenseType);
+                } else {
+                  // Attack mode - hide indicators
+                  this.plantingIndicator.visible = false;
+                  this.plantingHelpText.visible = false;
+                }
               }
             });
             
@@ -390,6 +503,18 @@ if (isBrowser) {
             } else {
               console.error("UpgradeClass not available");
             }
+            
+            // Add keyboard handling for special attacks
+            this.input.keyboard.on('keydown-S', () => {
+              this.triggerSpecialAttack();
+            });
+            
+            // Add right-click handler for special attacks
+            this.input.on('pointerdown', (pointer) => {
+              if (pointer.rightButtonDown()) {
+                this.triggerSpecialAttack();
+              }
+            });
             
             console.log("GameScene created successfully");
           } catch (error) {
@@ -604,8 +729,27 @@ if (isBrowser) {
             this.input.keyboard.on('keydown-ESC', () => {
               // Reset to attack mode
               this.setToolMode('attack');
+              this.pendingDefensePlacement = false; // Cancel placement on ESC
             });
             
+            // Add special attack instructions
+            this.specialAttackText = this.add.text(400, 20, "Press 'S' or Right-Click near a mage to use Special Attack", {
+              fontFamily: 'Arial',
+              fontSize: '14px',
+              color: '#FFFFFF',
+              stroke: '#000000',
+              strokeThickness: 3
+            }).setOrigin(0.5);
+            this.specialAttackText.setDepth(400);
+            
+            // Make it pulse to draw attention
+            this.tweens.add({
+              targets: this.specialAttackText,
+              alpha: 0.7,
+              duration: 1000,
+              yoyo: true,
+              repeat: -1
+            });
           } catch (error) {
             console.error("Error creating UI:", error);
           }
@@ -615,48 +759,19 @@ if (isBrowser) {
           try {
             console.log("Setting up input handlers");
             
-            // Add keyboard shortcuts for tool selection
-            this.input.keyboard.on('keydown-P', () => {
-              console.log("P key pressed - switching to plant mode");
-              this.setToolMode('plant');
-            });
-            
-            this.input.keyboard.on('keydown-ONE', () => {
-              console.log("1 key pressed - switching to scarecrow mode");
-              this.setToolMode('scarecrow');
-            });
-            
-            this.input.keyboard.on('keydown-TWO', () => {
-              console.log("2 key pressed - switching to dog mode");
-              this.setToolMode('dog');
-            });
-            
-            this.input.keyboard.on('keydown-ESC', () => {
-              console.log("ESC key pressed - switching to attack mode");
-              this.setToolMode('attack');
-            });
-            
-            // Add handler for mousemove to update placement preview
-            this.input.on('pointermove', (pointer) => {
-              // If we're in placement mode and the game is active
-              if (this.gameState.isActive && 
-                 (this.toolMode === 'plant' || 
-                  this.toolMode === 'scarecrow' || 
-                  this.toolMode === 'dog')) {
-                  
-                // Update placement preview based on tool mode
-                this.updatePlacementPreview(pointer);
-              }
-            });
-            
-            // Add click handler for crop planting and enemy damage
-            this.input.on('pointerdown', (pointer) => {
-              console.log("Game clicked at", pointer.x, pointer.y, "tool mode:", this.toolMode);
+            // Create a global click handler for the main game area
+            const gameArea = this.add.rectangle(400, 300, 800, 500, 0, 0);
+            gameArea.setInteractive();
+            gameArea.on('pointerdown', (pointer) => {
+              // Skip if clicking in toolbar area
+              if (pointer.y > 520) return;
               
-              // If game hasn't started, ignore clicks
+              // Skip if game not active
               if (!this.gameState.isActive) return;
               
-              // Check if clicked on an enemy - only in attack mode
+              console.log("Game area clicked at", pointer.x, pointer.y, "tool mode:", this.toolMode);
+              
+              // ATTACK MODE - Check for enemies
               if (this.toolMode === 'attack') {
                 const clickedEnemy = this.getEnemyAtPosition(pointer.x, pointer.y);
                 if (clickedEnemy) {
@@ -666,56 +781,154 @@ if (isBrowser) {
                   // Show attack effect
                   this.showFloatingText(clickedEnemy.x, clickedEnemy.y - 20, 
                     `-${(this.gameState.clickDamage || 1).toFixed(1)}`, 0xFF0000);
-                  
-                  return; // Done with this click
+                    
+                  // Create attack effect
+                  this.createClickAttackEffect(clickedEnemy.x, clickedEnemy.y);
+                  return;
                 }
               }
               
-              // Handle planting crops
+              // CROP PLANTING MODE
               if (this.toolMode === 'plant') {
                 if (this.isPointInFarmArea(pointer.x, pointer.y)) {
                   if (this.gameState.farmCoins >= 5) {
                     this.plantCrop(pointer.x, pointer.y);
                   } else {
-                    // Show error message if not enough coins
                     this.showFloatingText(pointer.x, pointer.y, "Need 5 coins!", 0xFF0000);
                   }
                 } else {
-                  // Show error message if trying to plant outside farm area
                   this.showFloatingText(pointer.x, pointer.y, "Plant on LEFT side only!", 0xFF0000);
                 }
-                return; // Done with this click
+                return;
               }
               
-              // Handle placing defenses
-              if (this.toolMode === 'scarecrow' || this.toolMode === 'dog') {
-                // Check if position is valid (right side of screen)
+              // DEFENSE PLACEMENT MODE - For both scarecrow and dog
+              if (this.pendingDefensePlacement && this.pendingDefenseType) {
+                // Check valid placement area
                 if (pointer.x < 200) {
                   this.showFloatingText(pointer.x, pointer.y, "Place on RIGHT side only!", 0xFF0000);
                   return;
                 }
                 
-                // Calculate cost based on defense type
-                const cost = this.toolMode === 'scarecrow' ? 35 : 50;
+                // Calculate cost
+                const cost = this.pendingDefenseType === 'scarecrow' ? 35 : 50;
                 
-                // Check if player has enough coins
+                // Check if enough coins
                 if (this.gameState.farmCoins < cost) {
                   this.showFloatingText(pointer.x, pointer.y, `Need ${cost} coins!`, 0xFF0000);
                   return;
                 }
                 
-                // Make sure placeDefense method exists
+                // Place the defense
                 if (typeof this.placeDefense === 'function') {
-                  this.placeDefense(this.toolMode, pointer.x, pointer.y);
+                  // Place defense
+                  const defense = this.placeDefense(this.pendingDefenseType, pointer.x, pointer.y);
+                  
+                  // Show success message and range indicator
+                  if (defense) {
+                    const defenseName = this.pendingDefenseType === 'scarecrow' ? 'Ice Mage' : 'Fire Mage';
+                    const color = this.pendingDefenseType === 'scarecrow' ? 0x0088FF : 0xFF4400;
+                    this.showFloatingText(pointer.x, pointer.y - 30, `${defenseName} placed!`, color);
+                    
+                    // Create range visual effect
+                    const range = this.pendingDefenseType === 'scarecrow' ? 250 : 200;
+                    const rangeEffect = this.add.circle(pointer.x, pointer.y, range, color, 0.2);
+                    rangeEffect.setStrokeStyle(2, color);
+                    this.tweens.add({
+                      targets: rangeEffect,
+                      alpha: 0,
+                      scale: 1.2,
+                      duration: 1500,
+                      onComplete: () => rangeEffect.destroy()
+                    });
+                    
+                    // Deduct cost
+                    this.updateFarmCoins(-cost);
+                  }
+                  
+                  // Reset flags
+                  this.pendingDefensePlacement = false;
+                  this.pendingDefenseType = null;
+                  
+                  // Return to attack mode
+                  this.setToolMode('attack');
+                  
+                  // Hide placement indicator
+                  this.plantingIndicator.visible = false;
+                  this.plantingHelpText.visible = false;
                 } else {
                   console.error("placeDefense method is not defined");
                   this.showFloatingText(pointer.x, pointer.y, "Can't place defense - error!", 0xFF0000);
                 }
-                return; // Done with this click
+                return;
+              }
+            });
+            
+            // Add pointer move handler for planting indicator
+            this.input.on('pointermove', (pointer) => {
+              // Skip if clicking in toolbar area
+              if (pointer.y > 520) {
+                this.plantingIndicator.visible = false;
+                this.plantingHelpText.visible = false;
+                return;
+              }
+              
+              if (this.gameState && this.gameState.isActive) {
+                if (this.toolMode === 'plant') {
+                  // Crop planting mode
+                  this.showCropPlacementIndicator(pointer);
+                } else if (this.pendingDefensePlacement) {
+                  // Defense placement mode
+                  this.showDefensePlacementIndicator(pointer, this.pendingDefenseType);
+                } else {
+                  // Attack mode - hide indicators
+                  this.plantingIndicator.visible = false;
+                  this.plantingHelpText.visible = false;
+                }
               }
             });
           } catch (error) {
             console.error("Error setting up input handlers:", error);
+          }
+        }
+        
+        // Create visual effect for click attack
+        createClickAttackEffect(x, y) {
+          try {
+            // Create a burst effect
+            const burst = this.add.circle(x, y, 10, 0xFF0000, 0.7);
+            burst.setStrokeStyle(2, 0xFFFFFF);
+            
+            // Animate the burst
+            this.tweens.add({
+              targets: burst,
+              scale: 2,
+              alpha: 0,
+              duration: 300,
+              onComplete: () => burst.destroy()
+            });
+            
+            // Add some sparkles
+            for (let i = 0; i < 6; i++) {
+              const angle = Math.random() * Math.PI * 2;
+              const distance = 15 + Math.random() * 10;
+              const sparkX = x + Math.cos(angle) * distance;
+              const sparkY = y + Math.sin(angle) * distance;
+              
+              const spark = this.add.circle(sparkX, sparkY, 2, 0xFFFFFF, 1);
+              
+              this.tweens.add({
+                targets: spark,
+                x: sparkX + Math.cos(angle) * 10,
+                y: sparkY + Math.sin(angle) * 10,
+                alpha: 0,
+                scale: 0.5,
+                duration: 200,
+                onComplete: () => spark.destroy()
+              });
+            }
+          } catch (error) {
+            console.error("Error creating click attack effect:", error);
           }
         }
         
@@ -786,28 +999,28 @@ if (isBrowser) {
         
         // Helper method to detect clicked enemies
         getEnemyAtPosition(x, y) {
-          if (!this.enemies) return null;
+          if (!this.enemies || !Array.isArray(this.enemies)) return null;
           
-          for (let i = 0; i < this.enemies.length; i++) {
-            const enemy = this.enemies[i];
+          // Increase click radius for easier enemy selection
+          const clickRadius = 40; // Larger radius makes it easier to click enemies
+          
+          // Find the first enemy that contains the point
+          for (const enemy of this.enemies) {
+            // Skip inactive enemies
             if (!enemy || !enemy.active) continue;
             
-            // Check if enemy is close enough to click point (use larger hit area for better UX)
-            const dx = enemy.x - x;
-            const dy = enemy.y - y;
+            // Get enemy position
+            const enemyX = enemy.x || (enemy.container && enemy.container.x) || (enemy.sprite && enemy.sprite.x);
+            const enemyY = enemy.y || (enemy.container && enemy.container.y) || (enemy.sprite && enemy.sprite.y);
+            
+            if (!enemyX || !enemyY) continue;
+            
+            // Check distance
+            const dx = x - enemyX;
+            const dy = y - enemyY;
             const distance = Math.sqrt(dx * dx + dy * dy);
             
-            if (distance < 30) { // 30 pixel click radius
-              return enemy;
-            }
-            
-            // Legacy check for sprite bounds if available
-            if (enemy.sprite && enemy.sprite.getBounds && enemy.sprite.getBounds().contains(x, y)) {
-              return enemy;
-            }
-            
-            // Check container bounds if available
-            if (enemy.container && enemy.container.getBounds && enemy.container.getBounds().contains(x, y)) {
+            if (distance <= clickRadius) {
               return enemy;
             }
           }
@@ -942,9 +1155,23 @@ if (isBrowser) {
               color: '#000000'
             }).setOrigin(0.5);
             
-            // Make the button interactive
+            // Make the button interactive - ensure it has proper depth
             this.startButton.setInteractive();
-            this.startButton.on('pointerdown', () => this.startGame());
+            this.startButton.setDepth(1000);
+            this.startText.setDepth(1001);
+            
+            // Add click handler directly to both rectangle and text
+            this.startButton.on('pointerdown', () => {
+              console.log("Start button clicked (rectangle)");
+              this.startGame();
+            });
+            
+            // Also make text interactive as a backup
+            this.startText.setInteractive();
+            this.startText.on('pointerdown', () => {
+              console.log("Start button clicked (text)");
+              this.startGame();
+            });
             
             // Add hover effect
             this.startButton.on('pointerover', () => {
@@ -954,6 +1181,15 @@ if (isBrowser) {
             this.startButton.on('pointerout', () => {
               this.startButton.fillColor = 0xFFFFFF;
             });
+            
+            // Make sure button is prominent
+            this.startButton.width = 200;
+            this.startButton.height = 60;
+            
+            // Add a more obvious border
+            this.startButton.setStrokeStyle(4, 0x000000);
+            
+            console.log("Start button created and events attached");
           } catch (error) {
             console.error("Error showing start button:", error);
           }
@@ -961,7 +1197,7 @@ if (isBrowser) {
         
         startGame() {
           try {
-            console.log("Start button clicked");
+            console.log("Start button clicked - starting game");
             
             // Remove start button
             if (this.startButton) {
@@ -993,7 +1229,7 @@ if (isBrowser) {
               this.upgradeSystem.createUI();
             }
             
-            console.log("Starting game");
+            console.log("Game started successfully");
           } catch (error) {
             console.error("Error starting game:", error);
           }
@@ -1200,7 +1436,10 @@ if (isBrowser) {
             // Add attack button
             const attackButton = this.add.rectangle(40, 550, 60, 40, 0xFF4400);
             attackButton.setInteractive();
-            attackButton.on('pointerdown', () => this.setToolMode('attack'));
+            attackButton.on('pointerdown', () => {
+              this.pendingDefensePlacement = false; // Reset placement flag
+              this.setToolMode('attack');
+            });
             
             const attackText = this.add.text(40, 550, '👆', {
               fontFamily: 'Arial',
@@ -1210,7 +1449,10 @@ if (isBrowser) {
             // Add crop button
             const cropButton = this.add.rectangle(110, 550, 60, 40, 0x006600);
             cropButton.setInteractive();
-            cropButton.on('pointerdown', () => this.setToolMode('plant'));
+            cropButton.on('pointerdown', () => {
+              this.pendingDefensePlacement = false; // Reset placement flag
+              this.setToolMode('plant');
+            });
             
             // IMPORTANT: Always use tree images for crops - NEVER change this!
             if (this.textures.exists('Fruit_tree3')) {
@@ -1227,7 +1469,17 @@ if (isBrowser) {
             // Add scarecrow button (ABS mage)
             const scarecrowButton = this.add.rectangle(180, 550, 60, 40, 0x000066);
             scarecrowButton.setInteractive();
-            scarecrowButton.on('pointerdown', () => this.setToolMode('scarecrow'));
+            scarecrowButton.on('pointerdown', () => {
+              // Select defense without auto-placing
+              this.pendingDefenseType = 'scarecrow';
+              this.pendingDefensePlacement = true;
+              this.setToolMode('scarecrow');
+              
+              // Show message to indicate selection
+              this.showFloatingText(400, 300, "ABS Ice Mage selected - Click map to place", 0x0088FF);
+              
+              console.log("Scarecrow selected, waiting for placement click");
+            });
             
             // Use ABS image instead of emoji
             const absImageKey = 'ABS_idle';
@@ -1245,7 +1497,17 @@ if (isBrowser) {
             // Add dog button (NOOT mage)
             const dogButton = this.add.rectangle(250, 550, 60, 40, 0x660000);
             dogButton.setInteractive();
-            dogButton.on('pointerdown', () => this.setToolMode('dog'));
+            dogButton.on('pointerdown', () => {
+              // Select defense without auto-placing
+              this.pendingDefenseType = 'dog';
+              this.pendingDefensePlacement = true;
+              this.setToolMode('dog');
+              
+              // Show message to indicate selection
+              this.showFloatingText(400, 300, "NOOT Fire Mage selected - Click map to place", 0xFF4400);
+              
+              console.log("Dog selected, waiting for placement click");
+            });
             
             // Use NOOT image instead of emoji
             const nootImageKey = 'NOOT_idle';
@@ -1316,7 +1578,7 @@ if (isBrowser) {
           try {
             console.log(`Setting tool mode to: ${mode}`);
             
-            // Update toolMode
+            // Update tool mode
             this.toolMode = mode;
             
             // Hide range indicators
@@ -1331,6 +1593,17 @@ if (isBrowser) {
             // Hide any existing placement circles
             if (this.placementCircle) {
               this.placementCircle.setVisible(false);
+            }
+            
+            // Reset placement state if switching to attack or plant mode
+            if (mode === 'attack' || mode === 'plant') {
+              this.pendingDefensePlacement = false;
+              
+              // Destroy defense preview
+              if (this.defensePreview) {
+                this.defensePreview.destroy();
+                this.defensePreview = null;
+              }
             }
             
             // Start showing placement preview if planting or placing defenses
@@ -1352,7 +1625,7 @@ if (isBrowser) {
                 
                 // Make the circle follow the pointer
                 this.input.on('pointermove', (pointer) => {
-                  if (this.toolMode === mode && this.placementCircle) {
+                  if ((this.toolMode === mode || this.pendingDefensePlacement) && this.placementCircle) {
                     this.placementCircle.x = pointer.x;
                     this.placementCircle.y = pointer.y;
                   }
@@ -1384,11 +1657,11 @@ if (isBrowser) {
                 textColor = 0x00FF00;
                 break;
               case 'scarecrow':
-                infoText = "ABS ICE MAGE: Place defenses (35 coins)";
+                infoText = "ABS ICE MAGE: Click again to place (35 coins)";
                 textColor = 0x0088FF;
                 break;
               case 'dog':
-                infoText = "NOOT FIRE MAGE: Place defenses (50 coins)";
+                infoText = "NOOT FIRE MAGE: Click again to place (50 coins)";
                 textColor = 0xFF8800;
                 break;
             }
@@ -1760,16 +2033,103 @@ if (isBrowser) {
             // Set flag to prevent recursive updates
             isUpdating = true;
             
-            // Update enemies - forced update every frame
+            // CRITICAL FIX: Ensure all enemies are active and can be targeted
+            if (this.enemies && this.enemies.length > 0) {
+              this.enemies.forEach(enemy => {
+                if (enemy) {
+                  // Force enemy to be active
+                  enemy.active = true;
+                  enemy.visible = true;
+                  
+                  // Ensure enemy has proper position if missing
+                  if (typeof enemy.x !== 'number' || typeof enemy.y !== 'number') {
+                    if (enemy.container) {
+                      enemy.x = enemy.container.x;
+                      enemy.y = enemy.container.y;
+                    } else if (enemy.sprite) {
+                      enemy.x = enemy.sprite.x;
+                      enemy.y = enemy.sprite.y;
+                    }
+                  }
+                }
+              });
+            }
+            
+            // CRITICAL FIX: Update all projectiles
+            if (this.projectiles && this.projectiles.length > 0) {
+              // Create a copy of the array to safely modify during iteration
+              const projectilesToUpdate = [...this.projectiles];
+              
+              // Update each projectile
+              projectilesToUpdate.forEach(projectile => {
+                if (projectile && typeof projectile.update === 'function') {
+                  try {
+                    // Call the projectile's update method with delta time
+                    projectile.update(delta / 1000); // Convert to seconds if needed by some projectiles
+                  } catch (error) {
+                    console.error("Error updating projectile:", error);
+                    // Clean up errored projectile
+                    if (projectile.destroy) {
+                      projectile.destroy();
+                    }
+                  }
+                } else if (projectile) {
+                  // If no update method but has movement properties, apply basic movement
+                  if (typeof projectile.vx === 'number' && typeof projectile.vy === 'number') {
+                    projectile.x += projectile.vx;
+                    projectile.y += projectile.vy;
+                    
+                    // Basic cleanup if offscreen
+                    if (projectile.x < 0 || projectile.x > 800 || projectile.y < 0 || projectile.y > 600) {
+                      projectile.destroy();
+                    }
+                  }
+                }
+              });
+              
+              // Clean up the projectiles array to remove destroyed objects
+              this.projectiles = this.projectiles.filter(p => p && p.active !== false);
+            }
+            
+            // CRITICAL FIX: Make clickable enemies more responsive
+            if (this.enemies && this.enemies.length > 0) {
+              this.enemies.forEach(enemy => {
+                if (enemy && enemy.container) {
+                  // Ensure container is interactive with large hit area
+                  enemy.container.setSize(80, 80);
+                  enemy.container.setInteractive();
+                  
+                  // Force all sprites to be interactive too
+                  if (enemy.sprite) {
+                    enemy.sprite.setInteractive({ useHandCursor: true });
+                  }
+                }
+              });
+            }
+            
+            // Calculate frame-independent movement factor
+            // default to 16.67ms (60fps) if delta is unavailable 
+            const deltaFactor = delta ? delta / 16.67 : 1.0;
+            
+            // Update enemies - frame-rate independent movement
             if (this.enemies && this.enemies.length > 0) {
               // Using forEach with catch error for safety
               this.enemies.forEach(enemy => {
                 try {
                   if (enemy && enemy.update) {
-                    enemy.update();
+                    enemy.update(delta);
                     
-                    // Force enemy position to move faster to the left
-                    enemy.x -= 0.5; // Extra movement each frame
+                    // Original base speed is defined in the Enemy class (around 1.5-2.0)
+                    // We apply frame-independent movement based on delta time
+                    const frameIndependentSpeed = 0.5 * deltaFactor;
+                    
+                    // Force enemy position to move at consistent speed regardless of frame rate
+                    enemy.x -= frameIndependentSpeed;
+                    
+                    // ANTI-STACKING: Add random Y movement 
+                    if (Math.random() < 0.1) {
+                      enemy.y += (Math.random() - 0.5) * 2;
+                    }
                     
                     // Ensure enemy is visibly updated
                     if (enemy.container) {
@@ -1801,7 +2161,64 @@ if (isBrowser) {
               });
             }
             
+            // CRITICAL FIX: Reset all defense cooldowns if they're stuck
+            // This ensures mages can attack regularly
+            if (this.defenses && this.defenses.length > 0 && Math.random() < 0.05) {
+              // Occasionally reset all cooldowns to ensure attacks happen
+              this.defenses.forEach(defense => {
+                if (defense && defense.active) {
+                  // Reset cooldown if it's been too long since last attack
+                  if (this.scene && this.scene.time && this.scene.time.now - (defense.lastAttackTime || 0) > 5000) {
+                    defense.cooldownRemaining = 0;
+                    console.log(`Resetting stuck cooldown for ${defense.type} defense`);
+                  }
+                }
+              });
+            }
+            
             // Update defenses - force update every frame
+            if (this.defenses && this.defenses.length > 0) {
+              // Call update on each defense
+              this.defenses.forEach(defense => {
+                try {
+                  if (defense && defense.active && typeof defense.update === 'function') {
+                    defense.update();
+                    
+                    // Log occasional debug information
+                    if (Math.random() < 0.001) {
+                      console.log(`Defense at (${defense.x}, ${defense.y}) active: ${defense.active}, cooldown: ${defense.cooldownRemaining || 0}`);
+                      
+                      // Count visible enemies in range
+                      if (this.enemies && this.enemies.length > 0) {
+                        let enemiesInRange = 0;
+                        this.enemies.forEach(enemy => {
+                          if (enemy && enemy.active) {
+                            const dx = enemy.x - defense.x;
+                            const dy = enemy.y - defense.y;
+                            const distance = Math.sqrt(dx * dx + dy * dy);
+                            if (distance <= defense.range * 1.5) {
+                              enemiesInRange++;
+                            }
+                          }
+                        });
+                        console.log(`Defense at (${defense.x}, ${defense.y}) has ${enemiesInRange} enemies in range out of ${this.enemies.length} total`);
+                      }
+                    }
+                  }
+                } catch (defenseError) {
+                  console.error("Error updating defense:", defenseError);
+                }
+              });
+            }
+            
+            // CRITICAL FIX: Super aggressive direct forced attacks
+            // This bypass ensures mages ALWAYS attack regardless of other conditions
+            this.superForceDefensesToAttack();
+            
+            // Force defenses to attack every frame - AGGRESSIVE APPROACH
+            this.forceDefensesToAttack();
+            
+            // Update defenses' attacks separately to ensure they attack
             this.updateDefenseAttacks();
             
             // Check if all enemies are gone and we've spawned all for this wave
@@ -1843,38 +2260,16 @@ if (isBrowser) {
           // Always initialize enemies array if it doesn't exist
           if (!this.enemies) {
             this.enemies = [];
-            return;
           }
           
-          // Process each defense
+          // Force each defense to find and attack enemies
           this.defenses.forEach(defense => {
-            // Skip if defense has no attack method or is inactive
-            if (!defense || !defense.active || !defense.attack) {
-              return;
-            }
-            
-            // Use our targeting methods in sequence to find an enemy
-            let targetEnemy = null;
-            
-            // First try with findLowHealthEnemy if it exists
-            if (typeof this.findLowHealthEnemy === 'function') {
-              targetEnemy = this.findLowHealthEnemy(defense);
-            }
-            
-            // If no low health enemy found and getClosestEnemy exists, try that
-            if (!targetEnemy && typeof this.getClosestEnemy === 'function') {
-              targetEnemy = this.getClosestEnemy(defense);
-            }
-            
-            // If we still don't have a target, use defense's own targeting if available
-            if (!targetEnemy && typeof defense.checkForEnemiesInRange === 'function') {
-              defense.checkForEnemiesInRange();
-              return; // Defense will handle the attack itself
-            }
-            
-            // Attack if enemy found
-            if (targetEnemy) {
-              defense.attack(targetEnemy);
+            if (defense && defense.active) {
+              // Ensure defense can attack any enemy type
+              defense.targetTypes = []; // Empty array = can target any enemy
+              
+              // Force attack attempt
+              defense.attackNearestEnemy(true);
             }
           });
         }
@@ -1888,7 +2283,7 @@ if (isBrowser) {
           let lowestHealthEnemy = null;
           let lowestHealth = Infinity;
           
-          // Look for low health enemies first
+          // Look for low health enemies first - use a wider range
           for (let i = 0; i < this.enemies.length; i++) {
             const enemy = this.enemies[i];
             if (!enemy) continue;
@@ -1903,12 +2298,14 @@ if (isBrowser) {
             
             // Use a much larger range for targeting low health enemies
             // This helps mages to finish off enemies anywhere on screen
-            if (distance <= defense.range * 1.5) {
+            const extendedRange = defense.range * 1.75; // Increased from 1.5
+            
+            if (distance <= extendedRange) {
               // Prioritize very low health enemies to ensure kills
-              // Broadened the range of what's considered "low health"
-              if (enemy.health <= 3) {
+              // Count all enemies with less than 5 health as low health
+              if (enemy.health <= 5) { // Increased from 3
                 // The lower the health, the higher the priority
-                const priority = 4 - enemy.health; // Give priority boost to lowest health
+                const priority = 6 - enemy.health; // Give priority boost to lowest health
                 
                 if (enemy.health < lowestHealth || 
                    (enemy.health === lowestHealth && distance < defense.range)) {
@@ -1917,6 +2314,11 @@ if (isBrowser) {
                 }
               }
             }
+          }
+          
+          // If we found a low health enemy, log it occasionally for debugging
+          if (lowestHealthEnemy && Math.random() < 0.05) {
+            console.log(`Defense at (${defense.x}, ${defense.y}) found low health enemy with ${lowestHealth.toFixed(1)} HP`);
           }
           
           return lowestHealthEnemy;
@@ -1931,25 +2333,63 @@ if (isBrowser) {
           let closestEnemy = null;
           let closestDistance = Infinity;
           
-          // Find closest enemy
+          // Find closest enemy - more aggressive search
           for (let i = 0; i < this.enemies.length; i++) {
             const enemy = this.enemies[i];
-            if (!enemy || !enemy.active) continue;
+            
+            // Skip completely invalid enemies
+            if (!enemy) continue;
+            
+            // Force enemy to be active for targeting
+            enemy.active = true;
+            
+            // Ensure enemy has valid position
+            if (typeof enemy.x !== 'number' || typeof enemy.y !== 'number') {
+              // Try to find position in alternative properties
+              if (enemy.sprite && typeof enemy.sprite.x === 'number' && typeof enemy.sprite.y === 'number') {
+                enemy.x = enemy.sprite.x;
+                enemy.y = enemy.sprite.y;
+              } else if (enemy.container && typeof enemy.container.x === 'number' && typeof enemy.container.y === 'number') {
+                enemy.x = enemy.container.x;
+                enemy.y = enemy.container.y;
+              } else {
+                // Skip enemies without position
+                continue;
+              }
+            }
             
             // Calculate distance
             const dx = enemy.x - defense.x;
             const dy = enemy.y - defense.y;
             const distance = Math.sqrt(dx * dx + dy * dy);
             
-            // Track closest enemy
-            if (distance < closestDistance) {
+            // Check if this enemy is a valid target - more permissive type checking
+            let canTarget = !defense.targetTypes || 
+                           defense.targetTypes.length === 0 || 
+                           defense.targetTypes.includes(enemy.type) || 
+                           defense.targetTypes.includes('all');
+            
+            // In desperate situations (few enemies), target anyway
+            if (!canTarget && this.enemies.length <= 3) {
+              canTarget = true;
+            }
+            
+            // Update closest enemy tracking
+            if (canTarget && distance < closestDistance) {
               closestDistance = distance;
               closestEnemy = enemy;
             }
           }
           
-          // Only return if within reasonable distance (1.5x normal range)
-          if (closestEnemy && closestDistance <= defense.range * 1.5) {
+          // Only return if within reasonable distance (extended range)
+          // Use a larger extended range for better targeting
+          const extendedRange = defense.range * 2.0; // Increased from 1.5
+          
+          if (closestEnemy && closestDistance <= extendedRange) {
+            // Log occasionally for debugging
+            if (Math.random() < 0.05) {
+              console.log(`Defense at (${defense.x}, ${defense.y}) found closest enemy at distance ${closestDistance.toFixed(1)}px`);
+            }
             return closestEnemy;
           }
           
@@ -2033,6 +2473,220 @@ if (isBrowser) {
           }
           
           return closestEnemy;
+        }
+
+        // New method to force defenses to attack enemies
+        forceDefensesToAttack() {
+          // Skip if no defenses or enemies
+          if (!this.defenses || !this.enemies || this.defenses.length === 0 || this.enemies.length === 0) {
+            return;
+          }
+          
+          // Loop through each defense
+          for (let i = 0; i < this.defenses.length; i++) {
+            const defense = this.defenses[i];
+            if (!defense || !defense.active) continue;
+            
+            // Skip if defense is on cooldown
+            if (defense.cooldownRemaining && defense.cooldownRemaining > 0) {
+              continue;
+            }
+            
+            // Force all enemies to be active
+            this.enemies.forEach(enemy => {
+              if (enemy) {
+                enemy.active = true;
+              }
+            });
+            
+            // Direct attack - find the closest enemy and attack it
+            let closestEnemy = null;
+            let closestDistance = Infinity;
+            
+            // Find closest enemy
+            for (let j = 0; j < this.enemies.length; j++) {
+              const enemy = this.enemies[j];
+              if (!enemy) continue;
+              
+              // Calculate distance
+              const dx = enemy.x - defense.x;
+              const dy = enemy.y - defense.y;
+              const distance = Math.sqrt(dx * dx + dy * dy);
+              
+              // Use a very generous range for targeting
+              const maxRange = 500; // Almost entire screen width
+              
+              if (distance < closestDistance && distance <= maxRange) {
+                closestDistance = distance;
+                closestEnemy = enemy;
+              }
+            }
+            
+            // If found an enemy, force attack it
+            if (closestEnemy) {
+              // Force direct attack regardless of range or type
+              if (typeof defense.attack === 'function') {
+                defense.attack(closestEnemy);
+                
+                // Log attack occasionally
+                if (Math.random() < 0.05) {
+                  console.log(`FORCED attack from ${defense.type} at (${defense.x}, ${defense.y}) on enemy at (${closestEnemy.x}, ${closestEnemy.y})`);
+                }
+              }
+            }
+          }
+        }
+
+        // CRITICAL FIX: Ultra aggressive direct attack method - highest priority
+        superForceDefensesToAttack() {
+          if (!this.defenses || !this.enemies || this.defenses.length === 0 || this.enemies.length === 0) {
+            return;
+          }
+          
+          // For each defense, directly attack the first enemy
+          this.defenses.forEach(defense => {
+            // Skip invalid defenses
+            if (!defense || !defense.active) return;
+            
+            // Skip if on cooldown
+            if (defense.cooldownRemaining > 0) return;
+            
+            // Pick ANY enemy to attack, priority to the closest
+            let targetEnemy = null;
+            let minDistance = Infinity;
+            
+            // Find ANY valid enemy
+            for (let i = 0; i < this.enemies.length; i++) {
+              const enemy = this.enemies[i];
+              if (!enemy) continue;
+              
+              // Force enemy to be active - critical fix
+              enemy.active = true;
+              enemy.visible = true;
+              
+              // Calculate distance
+              const dx = enemy.x - defense.x;
+              const dy = enemy.y - defense.y;
+              const distance = Math.sqrt(dx * dx + dy * dy);
+              
+              // Update closest enemy
+              if (distance < minDistance) {
+                minDistance = distance;
+                targetEnemy = enemy;
+              }
+            }
+            
+            // If we found any enemy, attack it regardless of range
+            if (targetEnemy) {
+              // Directly modify defense properties to ensure attack works
+              defense.cooldownRemaining = 0;
+              defense.lastAttackTime = 0;
+              
+              // Force attack by directly accessing the method
+              if (typeof defense.attack === 'function') {
+                const success = defense.attack(targetEnemy);
+                
+                if (success && Math.random() < 0.1) {
+                  console.log(`SUPER FORCED attack from ${defense.type} at (${defense.x}, ${defense.y}) to enemy at (${targetEnemy.x}, ${targetEnemy.y})`);
+                }
+              }
+            }
+          });
+        }
+
+        showDefensePlacementIndicator(pointer, type) {
+          try {
+            // Make the planting indicator visible
+            this.plantingIndicator.visible = true;
+            
+            // Adjust size based on type
+            const size = type === 'scarecrow' ? 250 : 200; // Match the actual range of the mage
+            
+            // Update indicator position to follow pointer
+            this.plantingIndicator.x = pointer.x;
+            this.plantingIndicator.y = pointer.y;
+            this.plantingIndicator.width = this.plantingIndicator.height = size * 2; // Double for full diameter
+            
+            // Update color based on defense type
+            const strokeColor = type === 'scarecrow' ? 0x0088FF : 0xFF4400;
+            const fillColor = type === 'scarecrow' ? 0x0088FF : 0xFF4400;
+            this.plantingIndicator.setStrokeStyle(2, strokeColor);
+            this.plantingIndicator.fillColor = fillColor;
+            this.plantingIndicator.fillAlpha = 0.1;
+            
+            // Show help text for where defenses can be placed
+            this.plantingHelpText.visible = true;
+            this.plantingHelpText.x = 400;
+            this.plantingHelpText.y = 50;
+            
+            // Update help text color
+            const textColor = type === 'scarecrow' ? '#0088FF' : '#FF4400';
+            const defenseName = type === 'scarecrow' ? 'Ice Mage' : 'Fire Mage';
+            this.plantingHelpText.setText(`Place ${defenseName} on the RIGHT side of the map`);
+            this.plantingHelpText.setColor(textColor);
+            
+            // Check if placement is valid (right side of screen)
+            if (pointer.x < 200) {
+              // Invalid position
+              this.plantingIndicator.fillColor = 0xFF0000;
+              this.plantingIndicator.setStrokeStyle(2, 0xFF0000);
+              this.plantingIndicator.fillAlpha = 0.3;
+            }
+          } catch (error) {
+            console.error("Error showing defense placement indicator:", error);
+          }
+        }
+
+        // Add this new method after the "addHelperFunctions" method
+        triggerSpecialAttack() {
+          // Ensure we have defenses to work with
+          if (!this.defenses || this.defenses.length === 0) {
+            return;
+          }
+          
+          // Try to find the closest defense to the pointer
+          const pointer = this.input.activePointer;
+          let closestDefense = null;
+          let closestDistance = 100; // Maximum distance to consider "selected"
+          
+          // Find closest defense
+          for (const defense of this.defenses) {
+            if (!defense || !defense.active) continue;
+            
+            const dx = defense.x - pointer.x;
+            const dy = defense.y - pointer.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance < closestDistance) {
+              closestDistance = distance;
+              closestDefense = defense;
+            }
+          }
+          
+          // If we found a defense close to the cursor, trigger its special attack
+          if (closestDefense && typeof closestDefense.performSpecialAttack === 'function') {
+            const result = closestDefense.performSpecialAttack();
+            
+            // Provide feedback if special attack was used
+            if (result) {
+              const color = closestDefense.type === 'scarecrow' ? 0x00FFFF : 0xFF6600;
+              const text = closestDefense.type === 'scarecrow' ? 'ICE STORM!' : 'FIRE BLAST!';
+              
+              // Show floating text above the mage
+              this.showFloatingText(closestDefense.x, closestDefense.y - 60, text, color);
+              
+              // Add screen shake for dramatic effect
+              this.cameras.main.shake(300, 0.005);
+            }
+          } else {
+            // Inform player how to use special attacks
+            this.showFloatingText(
+              this.input.activePointer.x,
+              this.input.activePointer.y - 30,
+              "Move cursor near a mage with SPECIAL ready!",
+              0xFFFFFF
+            );
+          }
         }
       }
       

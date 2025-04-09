@@ -56,10 +56,27 @@ const Game = () => {
         antialias: true,
         roundPixels: true
       },
+      // Add fps limiting to ensure consistent speed on all devices
+      fps: {
+        target: 60,        // Lock to 60 FPS
+        forceSetTimeOut: true, // Use more aggressive FPS capping
+        min: 30,           // Don't go below 30 FPS
+        deltaHistory: 10   // Track frame history for smoother movement
+      },
+      // Use strict timing mode for better frame rate consistency
+      disableContextMenu: true,
+      banner: false,
       autoFocus: true
     };
 
     const game = new Phaser.Game(config);
+    
+    // Add a global helper to normalize movement for high refresh rates
+    window.normalizeMovement = (baseSpeed, delta) => {
+      const targetFrameTime = 16.67; // 60 FPS
+      const factor = delta / targetFrameTime;
+      return baseSpeed * Math.min(factor, 2.0); // Cap at 2x to prevent teleporting
+    };
 
     return () => {
       window.removeEventListener('resize', checkMobile);

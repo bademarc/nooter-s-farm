@@ -127,6 +127,15 @@ interface DefenseTypeInfo {
   description: string;
 }
 
+// Add TypeScript declaration for window extension
+declare global {
+  interface Window {
+    Phaser: any;
+    game: any;
+    _defendGameFixInterval?: number;
+  }
+}
+
 export function Farm() {
   const { 
     plots: gamePlots, 
@@ -1490,8 +1499,8 @@ export function Farm() {
   
   // Initialize the defend game
   const startDefendGame = () => {
+    // Set up initial state
     setDefendGameState({
-      ...defendGameState,
       isActive: true,
       wave: 1,
       day: 1,
@@ -1503,11 +1512,203 @@ export function Farm() {
       isPaused: false,
       gameOverStatus: false
     });
-    
-    // Start the first wave after a brief delay
-    setTimeout(() => {
-      startNewWave();
-    }, 1500);
+
+    // Apply mage and selection tool fixes when defend game starts
+    if (typeof window !== 'undefined') {
+      // Add a small delay to ensure the game is initialized
+      setTimeout(() => {
+        console.log("Applying defense game fixes...");
+        
+        // Fix for mages not attacking
+        const applyMageFixes = () => {
+          if (!window.Phaser) return;
+          
+          const game = window.game || (window.Phaser.Game && window.Phaser.Game.instance);
+          if (!game || !game.scene) return;
+          
+          // Find any Defense class or mage objects
+          game.scene.scenes.forEach((scene: any) => {
+            // Find Defense class
+            let Defense: any = null;
+            if (scene.Defense) Defense = scene.Defense;
+            
+            // Look in registry
+            if (scene.registry && scene.registry.get && scene.registry.get('Defense')) {
+              Defense = scene.registry.get('Defense');
+            }
+            
+            // Fix Defense class if found
+            if (Defense && Defense.prototype) {
+              // Skip if already fixed
+              if (Defense._mageFixes) return;
+              Defense._mageFixes = true;
+              
+              // Fix createProjectile
+              if (typeof Defense.prototype.createProjectile === 'function') {
+                const originalCreateProjectile = Defense.prototype.createProjectile;
+                
+                Defense.prototype.createProjectile = function(enemy) {
+                  try {
+                    // Ensure scene and enemy exist
+                    if (!this.scene || !this.scene.add || !enemy) return null;
+                    
+                    // Create projectile safely
+                    let projectile;
+                    try {
+                      // Use safe methods to create projectile
+                      projectile = this.scene.add.circle(this.x, this.y, 5, 0x00ffff);
+                      projectile.setDepth(5);
+                    } catch (e) {
+                      console.error("Error creating projectile:", e);
+                      return null;
+                    }
+                    
+                    if (!projectile) return null;
+                    
+                    // Set up projectile
+                    projectile.targetEnemy = enemy;
+                    projectile.damage = this.damage || 15;
+                    
+                    // Get safe enemy position
+                    const enemyX = enemy.x || (enemy.container && enemy.container.x) || 400;
+                    const enemyY = enemy.y || (enemy.container && enemy.container.y) || 300;
+                    
+                    // Projectile physics
+                    const dx = enemyX - this.x;
+                    const dy = enemyY - this.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy) || 1;
+                    const speed = 5;
+                    projectile.vx = (dx / distance) * speed;
+                    projectile.vy = (dy / distance) * speed;
+                    
+                    // Add to scene projectiles
+                    if (!this.scene.projectiles) this.scene.projectiles = [];
+                    this.scene.projectiles.push(projectile);
+                    
+                    // Update function
+                    projectile.update = function(delta) {
+                      delta = delta || 1/60;
+                      
+                      // Move projectile
+                      this.x += this.vx * delta;
+                      this.y += this.vy * delta;
+                      
+                      // Skip if enemy is gone
+                      if (!enemy || !enemy.active) {
+                        this.destroy();
+                        return;
+                      }
+                      
+                      // Hit detection
+                      const hitX = enemy.x || (enemy.container && enemy.container.x);
+                      const hitY = enemy.y || (enemy.container && enemy.container.y);
+                      
+                      if (hitX && hitY) {
+                        const dx = this.x - hitX;
+                        const dy = this.y - hitY;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        
+                        if (distance < 30) {
+                          // Hit enemy
+                          if (typeof enemy.takeDamage === 'function') {
+                            enemy.takeDamage(this.damage);
+                          }
+                          this.destroy();
+                        }
+                      }
+                      
+                      // Destroy if offscreen
+                      if (this.x < 0 || this.x > 800 || this.y < 0 || this.y > 600) {
+                        this.destroy();
+                      }
+                    };
+                    
+                    return projectile;
+                  } catch (error) {
+                    console.error("Error in createProjectile:", error);
+                    return null;
+                  }
+                };
+              }
+              
+              // Fix mage update to always attack
+              if (typeof Defense.prototype.update === 'function') {
+                const originalUpdate = Defense.prototype.update;
+                
+                Defense.prototype.update = function(delta) {
+                  // Force activation for mages
+                  if (this.type === 'mage') {
+                    this.active = true;
+                    
+                    // Force attack with super range
+                    if (typeof this.attackNearestEnemy === 'function') {
+                      this.attackNearestEnemy(true);
+                    }
+                  }
+                  
+                  // Call original update
+                  if (originalUpdate) originalUpdate.call(this, delta);
+                };
+              }
+            }
+            
+            // Fix selection tool
+            if (scene.input) {
+              scene.input.enabled = true;
+            }
+          });
+        };
+        
+        // Fix game over z-index
+        const fixGameOverZIndex = () => {
+          if (!window.Phaser) return;
+          
+          const game = window.game || (window.Phaser.Game && window.Phaser.Game.instance);
+          if (!game || !game.scene) return;
+          
+          game.scene.scenes.forEach(scene => {
+            if (!scene || !scene.children || !scene.children.list) return;
+            
+            // Find highest depth
+            let maxDepth = 10;
+            scene.children.list.forEach(child => {
+              if (child.depth > maxDepth) maxDepth = child.depth;
+            });
+            
+            // Set UI much higher
+            const uiDepth = maxDepth + 1000;
+            
+            // Fix all texts
+            scene.children.list.forEach(child => {
+              if (child.type === 'Text' && typeof child.setDepth === 'function') {
+                if (child.text && (
+                    child.text.includes('GAME OVER') || 
+                    child.text.includes('Game Over') ||
+                    child.text.includes('Score'))) {
+                  child.setDepth(uiDepth);
+                }
+              }
+            });
+          });
+        };
+        
+        // Apply fixes now and periodically
+        applyMageFixes();
+        fixGameOverZIndex();
+        
+        // Reapply fixes periodically
+        const fixInterval = setInterval(() => {
+          applyMageFixes();
+          fixGameOverZIndex();
+        }, 2000);
+        
+        // Store the interval for cleanup
+        window._defendGameFixInterval = fixInterval;
+      }, 1000);
+    }
+
+    // Start the first wave
+    startNewWave();
   };
   
   // Start a new wave of enemies
@@ -1664,21 +1865,42 @@ export function Farm() {
   
   // End game and collect rewards
   const endDefendGame = (wasSuccessful: boolean) => {
-    // Add coins earned to player's total
-    if (defendGameState.farmCoinsEarned > 0) {
-      addFarmCoins(defendGameState.farmCoinsEarned);
-      toast.success(`You earned ${defendGameState.farmCoinsEarned} Farm Coins!`, {
-        duration: 3000,
-        icon: '💰'
-      });
+    // Clear any fix intervals
+    if (typeof window !== 'undefined' && window._defendGameFixInterval) {
+      clearInterval(window._defendGameFixInterval);
+      window._defendGameFixInterval = null;
     }
-    
-    // Reset game state
-    setDefendGameState({
-      ...defendGameState,
+
+    // Update state to end the game
+    setDefendGameState(prev => ({
+      ...prev,
       isActive: false,
       gameOverStatus: true
-    });
+    }));
+
+    // Award coins based on success
+    if (wasSuccessful) {
+      const coinsEarned = defendGameState.farmCoinsEarned + 100 * defendGameState.wave;
+      addFarmCoins(coinsEarned);
+      
+      // Update the daily task
+      updateDailyTask('coinsEarned', coinsEarned);
+      
+      // Display success message
+      toast.success(`You defended your farm and earned ${coinsEarned} coins!`);
+    } else {
+      // Award partial coins for effort
+      if (defendGameState.farmCoinsEarned > 0) {
+        addFarmCoins(defendGameState.farmCoinsEarned);
+        
+        // Update the daily task
+        updateDailyTask('coinsEarned', defendGameState.farmCoinsEarned);
+        
+        toast.info(`Game over! You earned ${defendGameState.farmCoinsEarned} coins.`);
+      } else {
+        toast.error('Game over! Better luck next time.');
+      }
+    }
   };
   
   // Use clientSide state to prevent hydration mismatch

@@ -160,7 +160,7 @@ export const Sidebar = ({
           </div>
           <div className="ml-3">
             <h1 className="font-bold text-xl text-white noot-title">Nooter's Farm</h1>
-            <p className="text-xs text-white/60 noot-text">First CTO on Abstract</p>
+            <p className="text-xs text-white/60 noot-text">First CTO GAME on Abstract</p>
           </div>
         </div>
         

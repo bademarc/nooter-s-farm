@@ -53,6 +53,10 @@ export default class Enemy {
       this.weaknessMultiplier = 1.5; // Reduced from 2.0
     }
     
+    // ANTI-STACKING: Add slight horizontal and vertical position variation
+    this.x += (Math.random() - 0.5) * 40; // Add some horizontal spread 
+    this.y += (Math.random() - 0.5) * 100; // Add more vertical spread
+    
     // Generate a unique ID for this enemy
     this.id = `${this.type}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
     
@@ -99,7 +103,16 @@ export default class Enemy {
         // Use a large visible sprite for the enemy
         this.sprite = scene.add.sprite(0, 0, this.spriteKey);
         this.sprite.setDisplaySize(60, 60); // Larger size for better visibility
-        this.sprite.setInteractive(); // Make it interactive for clicks
+        this.sprite.setInteractive({ useHandCursor: true, pixelPerfect: false }); // Make it interactive for clicks with larger hitbox
+        
+        // Make sprite more interactive
+        this.sprite.on('pointerdown', () => {
+          if (this.scene && this.scene.gameState && typeof this.scene.gameState.clickDamage === 'number') {
+            const clickDamage = this.scene.gameState.clickDamage || 1;
+            this.takeDamage(clickDamage);
+            console.log(`Enemy clicked and taking ${clickDamage} damage`);
+          }
+        });
         
         // Add to container (no highlight circle)
         this.container.add([this.sprite]);
@@ -122,13 +135,31 @@ export default class Enemy {
         }).setOrigin(0.5);
         this.typeText.setInteractive(); // Make it interactive
         
+        // Make text more interactive
+        this.typeText.on('pointerdown', () => {
+          if (this.scene && this.scene.gameState && typeof this.scene.gameState.clickDamage === 'number') {
+            const clickDamage = this.scene.gameState.clickDamage || 1;
+            this.takeDamage(clickDamage);
+            console.log(`Enemy clicked and taking ${clickDamage} damage`);
+          }
+        });
+        
         // Add to container (no highlight circle)
         this.container.add([this.typeText]);
       }
       
       // Make the container interactive to improve clicking
-      this.container.setSize(60, 60); // Explicit size
+      this.container.setSize(80, 80); // LARGER explicit size for better clicking
       this.container.setInteractive();
+      
+      // Make container interactive too (triple redundancy for click handling)
+      this.container.on('pointerdown', () => {
+        if (this.scene && this.scene.gameState && typeof this.scene.gameState.clickDamage === 'number') {
+          const clickDamage = this.scene.gameState.clickDamage || 1;
+          this.takeDamage(clickDamage);
+          console.log(`Enemy container clicked and taking ${clickDamage} damage`);
+        }
+      });
     } catch (error) {
       console.error('Error creating enemy sprite:', error);
       // Ultra fallback - create a minimal emergency representation
@@ -181,7 +212,7 @@ export default class Enemy {
     console.log(`Created ${type} enemy ${this.id} at ${x},${y} - health: ${this.health}, speed: ${this.speed.toFixed(1)}, wave: ${currentWave}`);
   }
   
-  update() {
+  update(delta) {
     try {
       if (!this.active) return;
       
@@ -195,9 +226,18 @@ export default class Enemy {
         this.lastMoveTime = currentTime;
       }
       
-      // Move towards left side of screen - FASTER MOVEMENT
-      // Original speed multiplied by 1.5 for faster movement
-      this.x -= this.speed * 1.5;
+      // FIX FOR HIGH REFRESH RATE DEVICES (120Hz, 144Hz)
+      // Normalize movement to work consistently at all refresh rates
+      const targetFrameTime = 16.67; // Target 60fps
+      const timeMultiplier = delta ? Math.min(delta / targetFrameTime, 2.0) : 1.0;
+      
+      // ANTI-STACKING: Add small random y movement to avoid enemies moving in straight lines
+      const randomYOffset = (Math.random() - 0.5) * 0.5;
+      
+      // Move towards left side of screen - FIXED for high refresh rates
+      // Use a reduced base movement speed multiplied by timeMultiplier
+      this.x -= (this.speed * 0.3) * timeMultiplier; // Reduced from original speed
+      this.y += randomYOffset * timeMultiplier; // Add slight random y movement
       
       // Initialize stuck counter if not already set
       if (this.stuckCounter === undefined) {
@@ -219,7 +259,7 @@ export default class Enemy {
         if (!this.timeSinceLastMove) {
           this.timeSinceLastMove = 0;
         }
-        this.timeSinceLastMove += 16; // Assume ~16ms per frame
+        this.timeSinceLastMove += delta || 16; // Use delta time if available
         
         // If stuck for too long, force movement
         if (this.timeSinceLastMove > 500) { // 500ms stuck threshold
@@ -229,7 +269,7 @@ export default class Enemy {
           if (this.stuckCounter > 3) {
             // More aggressive unsticking for longer stucks
             console.log(`Enemy ${this.type} appears very stuck at (${this.x}, ${this.y}) - forcing stronger movement`);
-            this.x -= this.speed * 5; // More aggressive unsticking (changed from 3 to 5)
+            this.x -= this.speed * 2 * timeMultiplier; // Reduced multiplier, adjusted for time
             this.y += (Math.random() - 0.5) * 10; // Random Y jitter
             
             // If extremely stuck (10+ attempts), teleport
@@ -242,7 +282,7 @@ export default class Enemy {
           } else {
             // Normal unstuck attempt
             console.log(`Enemy appears stuck - forcing movement (attempt #${this.stuckCounter})`);
-            this.x -= this.speed * 3; // More aggressive unsticking (changed from 2 to 3)
+            this.x -= this.speed * 1.5 * timeMultiplier; // Reduced multiplier, adjusted for time
           }
         }
       } else {
@@ -396,58 +436,72 @@ export default class Enemy {
     // Skip if already inactive
     if (!this.active) return;
     
-    // Ensure minimum damage is applied
-    const actualDamage = Math.max(0.5, amount);
+    // Force active status
+    this.active = true;
     
-    // Apply damage resistance if applicable
+    // Ensure minimum damage is applied - INCREASED to ensure enemies die
+    const actualDamage = Math.max(1.0, amount);
+    
+    // Log damage for debugging
+    console.log(`Enemy ${this.type} taking ${actualDamage} damage, current health: ${this.health}`);
+    
+    // Apply damage resistance if applicable, but ensure minimum damage
     let finalDamage = actualDamage;
     if (this.damageResistance && this.damageResistance > 0) {
       finalDamage = actualDamage * (1 - this.damageResistance);
+      finalDamage = Math.max(1, finalDamage); // Always do at least 1 damage
     }
-    
-    // Ensure minimum effective damage (at least 0.5)
-    finalDamage = Math.max(0.5, finalDamage);
     
     // IMPORTANT FIX: Special handling for enemies with low health
     // This prevents enemies getting stuck at 1 HP
-    if (this.health <= 1.5) {
-      // Guarantee the enemy dies
-      finalDamage = Math.max(finalDamage, this.health * 2);
-      this.health = 0;
-      
-      // Log the forced death for debugging
-      console.log(`Enemy ${this.type} forced death at ${this.health} HP`);
-    } else {
-      // Normal damage application
-      this.health -= finalDamage;
+    if (this.health <= 3) {
+      // Guarantee the enemy dies with a critical hit
+      finalDamage = this.health * 2; // Double damage to ensure death
+      console.log(`Critical hit on low health enemy! Doing ${finalDamage} damage`);
     }
     
+    // Apply damage - ensure immediate health reduction
+    this.health -= finalDamage;
+    
     // CRITICAL FIX: Ensure health never gets stuck at exactly 1
-    if (this.health > 0 && this.health < 1.1) {
+    if (this.health > 0 && this.health < 1.5) {
       // Always kill it - no randomness
       this.health = 0;
-      console.log(`Enemy ${this.type} with <1.1 HP force killed`);
+      console.log(`Enemy ${this.type} with <1.5 HP force killed`);
     }
     
     // Update health bar if available
-    this.updateHealthBar();
+    if (typeof this.updateHealthBar === 'function') {
+      this.updateHealthBar();
+    }
     
     // Show damage text
-    this.showDamageText(finalDamage);
+    if (typeof this.showDamageText === 'function') {
+      this.showDamageText(finalDamage);
+    }
     
-    // Check if enemy is defeated
+    // Check if enemy is defeated - STRONGLY ENSURE DEATH
     if (this.health <= 0) {
       // Make sure health is exactly 0
       this.health = 0;
       
-      // Double check defeat
+      // Debug log
+      console.log(`Enemy defeated by takeDamage, health = ${this.health}`);
+      
+      // Double check defeat paths
       if (typeof this.defeat === 'function') {
+        console.log("Calling enemy defeat method");
         this.defeat();
       } else {
         // Fallback if defeat method is missing
+        console.log("No defeat method, calling destroy directly");
         this.destroy();
       }
+      
+      return true; // Indicate successful kill
     }
+    
+    return false; // Enemy still alive
   }
   
   endGame() {
@@ -764,6 +818,9 @@ export default class Enemy {
     
     // Make sure the enemy is dead
     this.health = 0;
+    
+    // Mark as inactive immediately to prevent multiple defeat calls
+    this.active = false;
     
     // Add coins to player
     if (this.scene && this.scene.gameState) {
