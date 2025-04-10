@@ -161,3 +161,48 @@ Next step (Step 5) will involve:
 - Implementing the advanced defenses (Wizard and Cannon)
 - Adding more enemy types with unique behaviors
 - Creating a proper wave scaling system for difficulty progression
+
+## Step 5: Advanced Defenses and Enemy Types ✅ (Completed April 7, 2025)
+
+We've successfully implemented advanced defense options and expanded enemy types for the farm game:
+
+1. **Added Advanced Defense Options**:
+   - **Wizard**: Long-ranged, versatile defense that can target all enemy types
+     - Special attack: Chain lightning that jumps between multiple enemies
+     - Higher damage but more expensive than basic defenses
+     - Unlocks at wave 5 for 350 coins
+   - **Cannon**: Heavy damage defense with massive area of effect
+     - Special attack: Explosion that damages all enemies in a large radius
+     - Longest range and highest damage of all defenses
+     - Unlocks at wave 8 for 600 coins
+
+2. **Implemented Fox Enemy Type**:
+   - Stealthy and evasive enemy that appears from wave 3 onwards
+   - Special ability: Can dodge attacks and temporarily enter stealth mode
+   - Weak against wizard defenses
+   - Higher health and speed compared to basic enemies
+
+3. **Enhanced Defense Placement System**:
+   - Added visual indicators for defense ranges and attack effects
+   - Created distinctive attack animations for each defense type
+   - Implemented cooldown indicators for all defenses
+
+4. **Added Progression-Based Defense Unlocking**:
+   - Defenses are initially locked and become available as player progresses
+   - Implemented proper UI for viewing unlock requirements
+   - Added notifications when new defenses become available
+
+5. **Balanced Gameplay**:
+   - Adjusted enemy spawn rates to gradually introduce fox enemies
+   - Fine-tuned defense costs and damage values
+   - Enhanced wave completion rewards to fund advanced defense purchases
+
+The implementation now provides more strategic depth with specialized defenses against different enemy types, giving players interesting choices as they progress through the game.
+
+## Testing Notes
+
+- Advanced defenses appear correctly in the toolbar after being unlocked
+- Fox enemies have proper dodge and stealth abilities
+- Wave progression correctly unlocks new defense options
+- Special attacks for wizard and cannon work properly
+- Difficulty scales appropriately with increasing waves

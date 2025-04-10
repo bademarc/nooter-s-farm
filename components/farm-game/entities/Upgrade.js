@@ -41,14 +41,14 @@ export default class Upgrade {
     this.unlockedDefenses = {
       scarecrow: true,  // Basic defense, starts unlocked
       dog: true,        // Basic defense, starts unlocked
-      wizard: true,    // Advanced defense, needs to be unlocked
-      cannon: true     // Advanced defense, needs to be unlocked
+      wizard: false,    // Advanced defense, needs to be unlocked
+      cannon: false     // Advanced defense, needs to be unlocked
     };
     
     // Define unlock conditions for advanced defenses
     this.unlockRequirements = {
-      wizard: { wave: 5, cost: 500 },
-      cannon: { wave: 8, cost: 750 }
+      wizard: { wave: 5, cost: 350 },  // Reduced from 500
+      cannon: { wave: 8, cost: 600 }   // Reduced from 750
     };
     
     // Initialize UI elements
@@ -239,6 +239,11 @@ export default class Upgrade {
     const screenCenterX = this.scene.cameras.main.worldView.x + this.scene.cameras.main.width / 2;
     const screenCenterY = this.scene.cameras.main.worldView.y + this.scene.cameras.main.height / 2;
     this.scene.showFloatingText(screenCenterX, screenCenterY - 50, `${type} Defense Unlocked!`, 0x00FFFF);
+    
+    // Update defense buttons visibility in the scene if the method exists
+    if (this.scene && typeof this.scene.updateAdvancedDefenseButtons === 'function') {
+      this.scene.updateAdvancedDefenseButtons();
+    }
     
     return true;
   }

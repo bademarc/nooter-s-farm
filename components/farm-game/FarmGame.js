@@ -381,30 +381,96 @@ const FarmGameInner = ({ farmCoins, addFarmCoins }) => {
   useEffect(() => {
     if (!isClient || !gameInstanceRef.current || !gameStarted) return;
     
+    console.log("Setting up wave progression check");
+    
     const checkWaveProgression = setInterval(() => {
       try {
         const scene = gameInstanceRef.current?.scene?.getScene('GameScene');
-        if (!scene) return;
+        if (!scene) {
+          console.log("No GameScene found, skipping wave check");
+          return;
+        }
         
-        if (scene?.gameState?.isActive && 
-            Array.isArray(scene.enemies) && 
-            scene.enemies.length === 0 && 
-            !scene.isSpawningEnemies &&
-            scene.enemiesSpawned >= scene.totalEnemiesInWave) {
+        // Debug info to track wave state
+        if (scene.gameState?.isActive) {
+          console.log(`Wave check: enemies=${scene.enemies?.length || 0}, spawning=${scene.isSpawningEnemies}, spawned=${scene.enemiesSpawned || 0}/${scene.totalEnemiesInWave || 0}, inProgress=${scene.waveInProgress}`);
+        }
+        
+        // First condition: All enemies defeated, no more spawning
+        const allEnemiesDefeated = 
+          scene?.gameState?.isActive && 
+          Array.isArray(scene.enemies) && 
+          scene.enemies.length === 0 && 
+          !scene.isSpawningEnemies &&
+          scene.enemiesSpawned >= scene.totalEnemiesInWave &&
+          scene.waveInProgress;
+        
+        // Second condition: Wave complete but next wave not started
+        const waveCompleteButStuck = 
+          scene?.gameState?.isActive && 
+          Array.isArray(scene.enemies) && 
+          scene.enemies.length === 0 && 
+          !scene.isSpawningEnemies &&
+          !scene.waveInProgress && 
+          scene.gameState.wave > 0;
           
-          console.log("Wave completion check: no enemies left");
+        // Third condition: Game active but no wave in progress
+        const gameActiveButNoWave = 
+          scene?.gameState?.isActive &&
+          !scene.waveInProgress &&
+          !scene.isSpawningEnemies &&
+          scene.gameState.wave > 0 &&
+          (scene.enemies?.length === 0 || !scene.enemies);
+          
+        if (allEnemiesDefeated || waveCompleteButStuck || gameActiveButNoWave) {
+          console.log("Wave completion check: no enemies left, forcing next wave", {
+            allEnemiesDefeated,
+            waveCompleteButStuck,
+            gameActiveButNoWave
+          });
           
           if (typeof scene.forceNextWave === 'function') {
-            console.log("Forcing next wave");
-            scene.forceNextWave();
+            // Ensure we log if waves are stuck
+            if (waveCompleteButStuck) {
+              console.warn("Detected stuck wave, forcing next wave start");
+            }
+            
+            try {
+              scene.forceNextWave();
+              console.log("Next wave forced successfully");
+            } catch (forceError) {
+              console.error("Error forcing next wave:", forceError);
+              
+              // Emergency recovery - try to reset the wave state
+              try {
+                console.log("Attempting emergency wave reset");
+                scene.waveInProgress = false;
+                scene.isSpawningEnemies = false;
+                scene.gameState.wave++;
+                
+                // Try to start next wave with delay
+                setTimeout(() => {
+                  if (scene.gameState?.isActive && typeof scene.startWave === 'function') {
+                    scene.startWave();
+                  }
+                }, 1000);
+              } catch (emergencyError) {
+                console.error("Emergency recovery failed:", emergencyError);
+              }
+            }
+          } else {
+            console.error("forceNextWave function not available");
           }
         }
       } catch (err) {
         console.error("Error in wave progression check:", err);
       }
-    }, 1000); // Check every second
+    }, 2000); // Check every 2 seconds for better performance
     
-    return () => clearInterval(checkWaveProgression);
+    return () => {
+      console.log("Clearing wave progression check");
+      clearInterval(checkWaveProgression);
+    };
   }, [isClient, gameStarted]);
 
   // Add reset game method
@@ -534,7 +600,7 @@ const FarmGameInner = ({ farmCoins, addFarmCoins }) => {
       )}
       
       {/* Game container - with responsive classes based on mobile or desktop */}
-      <div className={`${isMobile ? 'w-full' : 'w-[800px]'} ${isMobile ? 'h-[450px]' : 'h-[600px]'} bg-black/20 border border-white/10`} ref={gameContainerRef}>
+      <div className={`${isMobile ? 'w-full' : 'w-[800px]'} ${isMobile ? 'h-[450px]' : 'h-[600px]'} bg-black/20 border border-white/10 relative`} ref={gameContainerRef}>
         {(!isClient || isInitializing) && (
           <div className="w-full h-full flex items-center justify-center">
             <p className="text-white">{isInitializing ? "Initializing game..." : "Loading game..."}</p>
@@ -552,6 +618,26 @@ const FarmGameInner = ({ farmCoins, addFarmCoins }) => {
               </button>
             </div>
           </div>
+        )}
+        
+        {/* Manual next wave button for emergency use */}
+        {isClient && gameStarted && (
+          <button 
+            className="absolute bottom-2 right-2 text-xs px-2 py-1 bg-green-500 text-white rounded hover:bg-green-600 opacity-70 hover:opacity-100"
+            onClick={() => {
+              try {
+                const scene = gameInstanceRef.current?.scene?.getScene('GameScene');
+                if (scene && typeof scene.forceNextWave === 'function') {
+                  console.log("Manual force next wave triggered");
+                  scene.forceNextWave();
+                }
+              } catch (err) {
+                console.error("Error triggering next wave:", err);
+              }
+            }}
+          >
+            Next Wave
+          </button>
         )}
       </div>
       

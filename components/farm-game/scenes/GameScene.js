@@ -176,15 +176,22 @@ if (isBrowser) {
             this.load.image('decor8', '/characters/2 Objects/3 Decor/8.png');
             
             // Load penguin mage assets
-            this.load.image('ABS_idle', '/ABS.png');
-            this.load.image('ABS_attack', '/ABS.png');
-            this.load.image('NOOT_idle', '/NOOT.png');
-            this.load.image('NOOT_attack', '/NOOT.png');
+            this.load.image('ABS_idle', '/defense/abster idle.png');
+            this.load.image('ABS_attack', '/defense/abster attacks.png');
+            this.load.image('NOOT_idle', '/defense/noot idle.png');
+            this.load.image('NOOT_attack', '/defense/noot attack.png');
             
             // Load enemy images with proper path and error handling
             this.load.image('enemy_bird', 'characters/craftpix-net-459799-free-low-level-monsters-pixel-icons-32x32/PNG/Transperent/Icon1.png');
             this.load.image('enemy_rabbit', 'characters/craftpix-net-459799-free-low-level-monsters-pixel-icons-32x32/PNG/Transperent/Icon2.png');
             this.load.image('enemy_boss', 'characters/craftpix-net-459799-free-low-level-monsters-pixel-icons-32x32/PNG/Transperent/Icon3.png');
+            this.load.image('enemy_fox', 'characters/craftpix-net-459799-free-low-level-monsters-pixel-icons-32x32/PNG/Transperent/Icon9.png');
+            
+            // Load advanced defense textures
+            this.load.image('wizard_idle', '/defense/wizard idle.png');
+            this.load.image('wizard_attack', '/defense/wizard attack.png');
+            this.load.image('cannon_idle', '/defense/cannon idle.png');
+            this.load.image('cannon_attack', '/defense/cannon attack.png');
             
             // Load shadows
             this.load.image('shadow1', '/characters/2 Objects/1 Shadow/1.png');
@@ -194,6 +201,21 @@ if (isBrowser) {
             this.load.image('plant1_idle', '/characters/craftpix-net-922184-free-predator-plant-mobs-pixel-art-pack/PNG/Plant1/Idle/Plant1_Idle_head.png');
             this.load.image('plant2_idle', '/characters/craftpix-net-922184-free-predator-plant-mobs-pixel-art-pack/PNG/Plant2/Idle/Plant2_Idle_head.png');
             this.load.image('plant3_idle', '/characters/craftpix-net-922184-free-predator-plant-mobs-pixel-art-pack/PNG/Plant3/Idle/Plant3_Idle_head.png');
+            
+            // Load particle effects
+            this.load.spritesheet('fire_particle', 
+              '/particules/Spritesheets/Fire+Sparks-Sheet.png', 
+              { frameWidth: 48, frameHeight: 48 }
+            );
+            this.load.spritesheet('rocket_fire', 
+              '/particules/Spritesheets/Rocket Fire 2-Sheet.png', 
+              { frameWidth: 32, frameHeight: 32 }
+            );
+            
+            // Use the fireball particles as fallbacks
+            this.load.image('magic_particle', '/fireball.png');
+            this.load.image('fireball_red', '/fireball.png');
+            this.load.image('fireball_blue', '/iceball.png');
             
             // Load essential pixel for effects
             this.load.image('pixel', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==');
@@ -210,6 +232,14 @@ if (isBrowser) {
                 graphics.fillCircle(16, 16, 16);
                 graphics.generateTexture(fileObj.key, 32, 32);
                 console.log(`Created fallback texture for ${fileObj.key}`);
+              }
+              
+              // Create placeholders for missing wizard/cannon assets
+              if (fileObj.key === 'wizard_idle' || fileObj.key === 'wizard_attack' || 
+                  fileObj.key === 'cannon_idle' || fileObj.key === 'cannon_attack') {
+                console.log(`Creating placeholder for missing asset: ${fileObj.key}`);
+                
+                // We'll create the fallbacks in the complete handler
               }
             });
             
@@ -237,6 +267,67 @@ if (isBrowser) {
                 redGraphics.generateTexture('fireball_red', 40, 40);
                 console.log('Created fallback texture for fireball_red on load complete');
               }
+              
+              // Create fallback for wizard assets
+              if (!this.textures.exists('wizard_idle')) {
+                const wizardGraphics = this.make.graphics();
+                // Create a purple wizard shape
+                wizardGraphics.fillStyle(0xFF00FF, 1);
+                wizardGraphics.fillCircle(20, 20, 18);
+                wizardGraphics.fillStyle(0x9900CC, 1);
+                // Add a wizard hat
+                wizardGraphics.fillTriangle(10, 20, 30, 20, 20, 0);
+                wizardGraphics.generateTexture('wizard_idle', 40, 40);
+                console.log('Created fallback texture for wizard_idle');
+              }
+              
+              if (!this.textures.exists('wizard_attack')) {
+                // Just use the same texture for attack
+                if (this.textures.exists('wizard_idle')) {
+                  // Create a new key that references the same texture frame
+                  const idleTexture = this.textures.get('wizard_idle');
+                  this.textures.addImage('wizard_attack', idleTexture.getSourceImage());
+                } else {
+                  // Create if needed
+                  const wizardGraphics = this.make.graphics();
+                  wizardGraphics.fillStyle(0xFF00FF, 1);
+                  wizardGraphics.fillCircle(20, 20, 20);
+                  wizardGraphics.fillStyle(0x9900CC, 1);
+                  wizardGraphics.fillTriangle(10, 20, 30, 20, 20, 0);
+                  wizardGraphics.generateTexture('wizard_attack', 40, 40);
+                }
+                console.log('Created fallback texture for wizard_attack');
+              }
+              
+              // Create fallback for cannon assets
+              if (!this.textures.exists('cannon_idle')) {
+                const cannonGraphics = this.make.graphics();
+                // Create a red cannon shape
+                cannonGraphics.fillStyle(0x666666, 1); // Base
+                cannonGraphics.fillRect(10, 20, 20, 15);
+                cannonGraphics.fillStyle(0xFF0000, 1); // Barrel
+                cannonGraphics.fillRect(18, 10, 15, 10);
+                cannonGraphics.generateTexture('cannon_idle', 40, 40);
+                console.log('Created fallback texture for cannon_idle');
+              }
+              
+              if (!this.textures.exists('cannon_attack')) {
+                // Just use the same texture for attack
+                if (this.textures.exists('cannon_idle')) {
+                  // Create a new key that references the same texture frame
+                  const idleTexture = this.textures.get('cannon_idle');
+                  this.textures.addImage('cannon_attack', idleTexture.getSourceImage());
+                } else {
+                  // Create if needed
+                  const cannonGraphics = this.make.graphics();
+                  cannonGraphics.fillStyle(0x666666, 1);
+                  cannonGraphics.fillRect(10, 20, 20, 15);
+                  cannonGraphics.fillStyle(0xFF0000, 1);
+                  cannonGraphics.fillRect(18, 10, 15, 10);
+                  cannonGraphics.generateTexture('cannon_attack', 40, 40);
+                }
+                console.log('Created fallback texture for cannon_attack');
+              }
             });
             
             console.log("GameScene assets preloaded");
@@ -263,16 +354,8 @@ if (isBrowser) {
             // Create dynamic textures for fireballs if they don't exist
             if (!this.textures.exists('fireball_red')) {
               try {
-                // Create red fireball (for fire mage)
-                const redGraphics = this.make.graphics();
-                redGraphics.fillStyle(0xFF4400, 1); // Core
-                redGraphics.fillCircle(16, 16, 10);
-                redGraphics.fillStyle(0xFF8866, 0.7); // Mid glow
-                redGraphics.fillCircle(16, 16, 14);
-                redGraphics.fillStyle(0xFF9977, 0.3); // Outer glow
-                redGraphics.fillCircle(16, 16, 20);
-                redGraphics.generateTexture('fireball_red', 40, 40);
-                console.log('Created red fireball texture');
+                console.log('Using loaded red fireball texture');
+                // Skipping dynamic creation since we're loading the texture directly
               } catch (error) {
                 console.error("Error creating red fireball texture:", error);
               }
@@ -280,18 +363,10 @@ if (isBrowser) {
             
             if (!this.textures.exists('fireball_blue')) {
               try {
-                // Create blue iceball (for ice mage)
-                const blueGraphics = this.make.graphics();
-                blueGraphics.fillStyle(0x0088FF, 1); // Core
-                blueGraphics.fillCircle(16, 16, 10);
-                blueGraphics.fillStyle(0x66BBFF, 0.7); // Mid glow
-                blueGraphics.fillCircle(16, 16, 14);
-                blueGraphics.fillStyle(0x99CCFF, 0.3); // Outer glow
-                blueGraphics.fillCircle(16, 16, 20);
-                blueGraphics.generateTexture('fireball_blue', 40, 40);
-                console.log('Created blue iceball texture');
+                console.log('Using loaded blue fireball texture');
+                // Skipping dynamic creation since we're loading the texture directly
               } catch (error) {
-                console.error("Error creating blue iceball texture:", error);
+                console.error("Error creating blue fireball texture:", error);
               }
             }
             
@@ -299,6 +374,9 @@ if (isBrowser) {
             isUpdating = false;
             
             console.log("GameScene create started");
+            
+            // Setup particle animations
+            this.createParticleAnimations();
             
             // Initialize the defense range indicator early
             this.defenseRangeIndicator = this.add.circle(0, 0, 150, 0xFFFFFF, 0.2);
@@ -323,6 +401,9 @@ if (isBrowser) {
             
             // Debug texture loading
             this.verifyTextureLoading();
+            
+            // Create fallback textures for advanced defenses
+            this.createAdvancedDefenseTextures();
             
             // Add debug renderer
             this.createDebugRenderer();
@@ -516,6 +597,39 @@ if (isBrowser) {
               }
             });
             
+            // Optimize input performance
+            this.input.on('pointerdown', (pointer) => {
+              this.lastPointerDown = {
+                time: this.time.now,
+                x: pointer.x,
+                y: pointer.y
+              };
+            });
+            
+            // Setup wave progression check interval
+            this.waveCheckInterval = this.time.addEvent({
+              delay: 2000,
+              callback: () => {
+                try {
+                  // Check for completed waves that didn't progress
+                  if (this.gameState?.isActive && 
+                      this.enemies?.length === 0 && 
+                      !this.isSpawningEnemies &&
+                      this.enemiesSpawned >= this.totalEnemiesInWave &&
+                      this.waveInProgress) {
+                    
+                    console.log("Wave completion detected, forcing next wave");
+                    this.forceNextWave();
+                  }
+                } catch(err) {
+                  console.error("Error in wave check interval:", err);
+                }
+              },
+              loop: true
+            });
+
+            console.log("Wave progression fix applied successfully!");
+            
             console.log("GameScene created successfully");
           } catch (error) {
             console.error("Error in GameScene create:", error);
@@ -680,78 +794,102 @@ if (isBrowser) {
         
         createUI() {
           try {
-            console.log("Creating UI");
-            // Create basic UI elements - moved to top corners to avoid gameplay interference
-            this.scoreText = this.add.text(10, 10, "Score: 0", { 
-              color: "#ffffff",
-              fontSize: '14px',
-              backgroundColor: '#000000',
-              padding: { x: 5, y: 2 }
-            });
-            
-            this.livesText = this.add.text(10, 30, "Lives: 3", { 
-              color: "#ffffff",
-              fontSize: '14px',
-              backgroundColor: '#000000',
-              padding: { x: 5, y: 2 }
-            });
-            
-            this.waveText = this.add.text(10, 50, "Wave: 0", { 
-              color: "#ffffff",
-              fontSize: '14px',
-              backgroundColor: '#000000',
-              padding: { x: 5, y: 2 }
-            });
-            
-            this.farmCoinsText = this.add.text(10, 70, "Coins: 0", { 
-              color: "#ffff00",
-              fontSize: '14px',
-              backgroundColor: '#000000',
-              padding: { x: 5, y: 2 }
-            });
-            
-            // Add keyboard shortcuts
-            this.input.keyboard.on('keydown-P', () => {
-              // Set tool mode to plant
-              this.setToolMode('plant');
-            });
-            
-            this.input.keyboard.on('keydown-ONE', () => {
-              // Set tool mode to scarecrow
-              this.setToolMode('scarecrow');
-            });
-            
-            this.input.keyboard.on('keydown-TWO', () => {
-              // Set tool mode to dog
-              this.setToolMode('dog');
-            });
-            
-            this.input.keyboard.on('keydown-ESC', () => {
-              // Reset to attack mode
-              this.setToolMode('attack');
-              this.pendingDefensePlacement = false; // Cancel placement on ESC
-            });
-            
-            // Add special attack instructions
-            this.specialAttackText = this.add.text(400, 20, "Press 'S' or Right-Click near a mage to use Special Attack", {
+            // Create text displays
+            this.scoreText = this.add.text(10, 10, "Score: 0", {
               fontFamily: 'Arial',
-              fontSize: '14px',
-              color: '#FFFFFF',
-              stroke: '#000000',
-              strokeThickness: 3
-            }).setOrigin(0.5);
-            this.specialAttackText.setDepth(400);
-            
-            // Make it pulse to draw attention
-            this.tweens.add({
-              targets: this.specialAttackText,
-              alpha: 0.7,
-              duration: 1000,
-              yoyo: true,
-              repeat: -1
+              fontSize: '18px',
+              color: '#FFFFFF'
             });
+            
+            this.farmCoinsText = this.add.text(10, 30, "Farm Coins: 0", {
+              fontFamily: 'Arial',
+              fontSize: '18px',
+              color: '#FFFF00'
+            });
+            
+            this.waveText = this.add.text(10, 50, "Wave: 0", {
+              fontFamily: 'Arial',
+              fontSize: '18px',
+              color: '#FFFFFF'
+            });
+            
+            this.livesText = this.add.text(10, 70, "Lives: 3", {
+              fontFamily: 'Arial',
+              fontSize: '18px',
+              color: '#FF0000'
+            });
+            
+            // Add Next Wave button with a delay before it appears
+            const nextWaveButton = this.add.rectangle(750, 30, 120, 40, 0x00AA00);
+            nextWaveButton.setInteractive({ useHandCursor: true });
+            nextWaveButton.on('pointerdown', () => {
+              this.forceNextWave();
+            });
+            
+            const nextWaveText = this.add.text(750, 30, "Next Wave", {
+              fontFamily: 'Arial',
+              fontSize: '16px',
+              color: '#FFFFFF'
+            }).setOrigin(0.5);
+            
+            // Store reference to button for enabling/disabling
+            this.nextWaveButton = { button: nextWaveButton, text: nextWaveText };
+            
+            // Hide initially until game starts
+            this.nextWaveButton.button.visible = false;
+            this.nextWaveButton.text.visible = false;
+            
+            console.log("UI created");
           } catch (error) {
             console.error("Error creating UI:", error);
+          }
+        }
+        
+        // Show Next Wave button after a delay
+        showNextWaveButton() {
+          // Show button if it was hidden
+          if (this.nextWaveButton) {
+            this.nextWaveButton.button.visible = true;
+            this.nextWaveButton.text.visible = true;
+            
+            // Make the button more noticeable with animation
+            this.tweens.add({
+              targets: [this.nextWaveButton.button, this.nextWaveButton.text],
+              scale: { from: 0.8, to: 1 },
+              duration: 500,
+              yoyo: true,
+              repeat: 2
+            });
+            
+            // Change color to make it more noticeable
+            this.nextWaveButton.button.fillColor = 0xFF8800;
+          }
+        }
+        
+        // Start the game
+        startGame() {
+          try {
+            console.log("Starting game");
+            
+            this.gameState.isActive = true;
+            this.gameState.wave = 1;
+            this.updateWaveText();
+            
+            // Start first wave
+            this.startWave();
+            
+            // Hide start button
+            if (this.startButton) {
+              this.startButton.destroy();
+              this.startText.destroy();
+            }
+            
+            // Show next wave button immediately
+            this.showNextWaveButton();
+            
+            console.log("Game started");
+          } catch (error) {
+            console.error("Error starting game:", error);
           }
         }
         
@@ -759,40 +897,70 @@ if (isBrowser) {
           try {
             console.log("Setting up input handlers");
             
-            // Create a global click handler for the main game area
+            // Create a global click handler for the main game area with expanded hit area
             const gameArea = this.add.rectangle(400, 300, 800, 500, 0, 0);
             gameArea.setInteractive();
+            
+            // Use DOWN event for faster response
             gameArea.on('pointerdown', (pointer) => {
-              // Skip if clicking in toolbar area
-              if (pointer.y > 520) return;
+              // Skip if clicking in toolbar area - moved up to give more game area
+              if (pointer.y > 510) return;
               
               // Skip if game not active
               if (!this.gameState.isActive) return;
               
               console.log("Game area clicked at", pointer.x, pointer.y, "tool mode:", this.toolMode);
               
-              // ATTACK MODE - Check for enemies
+              // ATTACK MODE - Check for enemies with expanded hit area
               if (this.toolMode === 'attack') {
-                const clickedEnemy = this.getEnemyAtPosition(pointer.x, pointer.y);
-                if (clickedEnemy) {
+                // Find closest enemy within a reasonable distance (easier clicking)
+                let closestEnemy = null;
+                let closestDistance = 40; // Increased click radius from default
+                
+                if (this.enemies && this.enemies.length > 0) {
+                  this.enemies.forEach(enemy => {
+                    if (enemy && enemy.active) {
+                      const dx = enemy.x - pointer.x;
+                      const dy = enemy.y - pointer.y;
+                      const distance = Math.sqrt(dx * dx + dy * dy);
+                      
+                      if (distance < closestDistance) {
+                        closestDistance = distance;
+                        closestEnemy = enemy;
+                      }
+                    }
+                  });
+                }
+                
+                if (closestEnemy) {
                   // Apply damage to the enemy
-                  clickedEnemy.takeDamage(this.gameState.clickDamage || 1);
+                  closestEnemy.takeDamage(this.gameState.clickDamage || 1);
                   
                   // Show attack effect
-                  this.showFloatingText(clickedEnemy.x, clickedEnemy.y - 20, 
+                  this.showFloatingText(closestEnemy.x, closestEnemy.y - 20, 
                     `-${(this.gameState.clickDamage || 1).toFixed(1)}`, 0xFF0000);
                     
                   // Create attack effect
-                  this.createClickAttackEffect(clickedEnemy.x, clickedEnemy.y);
+                  this.createClickAttackEffect(closestEnemy.x, closestEnemy.y);
                   return;
+                }
+                
+                // Allow defense placement when in attack mode too (easier workflow)
+                if (pointer.x >= 200) {
+                  // Try to find a special attack to trigger
+                  this.triggerSpecialAttack();
                 }
               }
               
-              // CROP PLANTING MODE
-              if (this.toolMode === 'plant') {
+              // CROP PLANTING MODE with improved grid snapping
+              else if (this.toolMode === 'plant') {
                 if (this.isPointInFarmArea(pointer.x, pointer.y)) {
                   if (this.gameState.farmCoins >= 5) {
-                    this.plantCrop(pointer.x, pointer.y);
+                    // Better grid alignment for crops
+                    const gridSize = this.gridCellSize || 32;
+                    const snappedX = Math.floor(pointer.x / gridSize) * gridSize + (gridSize / 2);
+                    const snappedY = Math.floor(pointer.y / gridSize) * gridSize + (gridSize / 2);
+                    this.plantCrop(snappedX, snappedY);
                   } else {
                     this.showFloatingText(pointer.x, pointer.y, "Need 5 coins!", 0xFF0000);
                   }
@@ -802,16 +970,26 @@ if (isBrowser) {
                 return;
               }
               
-              // DEFENSE PLACEMENT MODE - For both scarecrow and dog
-              if (this.pendingDefensePlacement && this.pendingDefenseType) {
+              // DEFENSE PLACEMENT MODE - For any defense type
+              else if (this.isDefenseMode(this.toolMode) || this.pendingDefensePlacement) {
+                // Store the defense type from either source
+                const defenseType = this.pendingDefenseType || this.toolMode;
+                
                 // Check valid placement area
                 if (pointer.x < 200) {
                   this.showFloatingText(pointer.x, pointer.y, "Place on RIGHT side only!", 0xFF0000);
                   return;
                 }
                 
-                // Calculate cost
-                const cost = this.pendingDefenseType === 'scarecrow' ? 35 : 50;
+                // Calculate cost based on defense type
+                let cost = 0;
+                switch (defenseType) {
+                  case 'scarecrow': cost = 35; break;
+                  case 'dog': cost = 50; break;
+                  case 'wizard': cost = 100; break;
+                  case 'cannon': cost = 150; break;
+                  default: cost = 50; break;
+                }
                 
                 // Check if enough coins
                 if (this.gameState.farmCoins < cost) {
@@ -819,74 +997,63 @@ if (isBrowser) {
                   return;
                 }
                 
-                // Place the defense
-                if (typeof this.placeDefense === 'function') {
-                  // Place defense
-                  const defense = this.placeDefense(this.pendingDefenseType, pointer.x, pointer.y);
-                  
-                  // Show success message and range indicator
-                  if (defense) {
-                    const defenseName = this.pendingDefenseType === 'scarecrow' ? 'Ice Mage' : 'Fire Mage';
-                    const color = this.pendingDefenseType === 'scarecrow' ? 0x0088FF : 0xFF4400;
-                    this.showFloatingText(pointer.x, pointer.y - 30, `${defenseName} placed!`, color);
-                    
-                    // Create range visual effect
-                    const range = this.pendingDefenseType === 'scarecrow' ? 250 : 200;
-                    const rangeEffect = this.add.circle(pointer.x, pointer.y, range, color, 0.2);
-                    rangeEffect.setStrokeStyle(2, color);
-                    this.tweens.add({
-                      targets: rangeEffect,
-                      alpha: 0,
-                      scale: 1.2,
-                      duration: 1500,
-                      onComplete: () => rangeEffect.destroy()
-                    });
-                    
-                    // Deduct cost
-                    this.updateFarmCoins(-cost);
-                  }
-                  
+                // Grid snap the defense for better placement
+                const gridSize = 40; // Use slightly larger grid for defenses
+                const snappedX = Math.floor(pointer.x / gridSize) * gridSize + (gridSize / 2);
+                const snappedY = Math.floor(pointer.y / gridSize) * gridSize + (gridSize / 2);
+                
+                // Place the defense at the snapped position
+                const success = this.placeDefense(snappedX, snappedY, defenseType);
+                
+                if (success) {
                   // Reset flags
                   this.pendingDefensePlacement = false;
                   this.pendingDefenseType = null;
                   
-                  // Return to attack mode
+                  // Return to attack mode automatically for better user experience
                   this.setToolMode('attack');
                   
-                  // Hide placement indicator
-                  this.plantingIndicator.visible = false;
-                  this.plantingHelpText.visible = false;
-                } else {
-                  console.error("placeDefense method is not defined");
-                  this.showFloatingText(pointer.x, pointer.y, "Can't place defense - error!", 0xFF0000);
+                  // Hide any indicators that might be visible
+                  if (this.plantingIndicator) this.plantingIndicator.visible = false;
+                  if (this.plantingHelpText) this.plantingHelpText.visible = false;
                 }
+                
                 return;
               }
             });
             
-            // Add pointer move handler for planting indicator
-            this.input.on('pointermove', (pointer) => {
+            // Initialize pointerMoveListener for tracking tool placement
+            this.pointerMoveListener = (pointer) => {
               // Skip if clicking in toolbar area
               if (pointer.y > 520) {
-                this.plantingIndicator.visible = false;
-                this.plantingHelpText.visible = false;
+                if (this.plantingIndicator) this.plantingIndicator.visible = false;
+                if (this.plantingHelpText) this.plantingHelpText.visible = false;
+                if (this.placementCircle) this.placementCircle.visible = false;
                 return;
               }
               
               if (this.gameState && this.gameState.isActive) {
                 if (this.toolMode === 'plant') {
                   // Crop planting mode
-                  this.showCropPlacementIndicator(pointer);
-                } else if (this.pendingDefensePlacement) {
-                  // Defense placement mode
-                  this.showDefensePlacementIndicator(pointer, this.pendingDefenseType);
+                  this.updatePlacementPreview(pointer);
+                } else if (this.isDefenseMode(this.toolMode) || this.pendingDefensePlacement) {
+                  // Defense placement mode - show range indicator
+                  if (this.placementCircle) {
+                    this.placementCircle.x = pointer.x;
+                    this.placementCircle.y = pointer.y;
+                    this.placementCircle.visible = true;
+                  }
                 } else {
                   // Attack mode - hide indicators
-                  this.plantingIndicator.visible = false;
-                  this.plantingHelpText.visible = false;
+                  if (this.plantingIndicator) this.plantingIndicator.visible = false;
+                  if (this.plantingHelpText) this.plantingHelpText.visible = false;
+                  if (this.placementCircle) this.placementCircle.visible = false;
                 }
               }
-            });
+            };
+            
+            // Add pointer move handler
+            this.input.on('pointermove', this.pointerMoveListener);
           } catch (error) {
             console.error("Error setting up input handlers:", error);
           }
@@ -895,35 +1062,35 @@ if (isBrowser) {
         // Create visual effect for click attack
         createClickAttackEffect(x, y) {
           try {
-            // Create a burst effect
-            const burst = this.add.circle(x, y, 10, 0xFF0000, 0.7);
-            burst.setStrokeStyle(2, 0xFFFFFF);
+            // Create a larger burst effect for better visibility
+            const burst = this.add.circle(x, y, 15, 0xFF0000, 0.7); // Increased size from 10
+            burst.setStrokeStyle(3, 0xFFFFFF); // Thicker stroke
             
-            // Animate the burst
+            // Animate the burst with larger scale
             this.tweens.add({
               targets: burst,
-              scale: 2,
+              scale: 3, // Increased from 2
               alpha: 0,
-              duration: 300,
+              duration: 400, // Longer duration
               onComplete: () => burst.destroy()
             });
             
-            // Add some sparkles
-            for (let i = 0; i < 6; i++) {
+            // Add more sparkles for better visual feedback
+            for (let i = 0; i < 10; i++) { // Increased from 6
               const angle = Math.random() * Math.PI * 2;
-              const distance = 15 + Math.random() * 10;
+              const distance = 20 + Math.random() * 15; // Increased range
               const sparkX = x + Math.cos(angle) * distance;
               const sparkY = y + Math.sin(angle) * distance;
               
-              const spark = this.add.circle(sparkX, sparkY, 2, 0xFFFFFF, 1);
+              const spark = this.add.circle(sparkX, sparkY, 3, 0xFFFFFF, 1); // Larger sparks
               
               this.tweens.add({
                 targets: spark,
-                x: sparkX + Math.cos(angle) * 10,
-                y: sparkY + Math.sin(angle) * 10,
+                x: sparkX + Math.cos(angle) * 15, // Longer travel distance
+                y: sparkY + Math.sin(angle) * 15,
                 alpha: 0,
                 scale: 0.5,
-                duration: 200,
+                duration: 300, // Longer duration
                 onComplete: () => spark.destroy()
               });
             }
@@ -999,33 +1166,36 @@ if (isBrowser) {
         
         // Helper method to detect clicked enemies
         getEnemyAtPosition(x, y) {
-          if (!this.enemies || !Array.isArray(this.enemies)) return null;
-          
-          // Increase click radius for easier enemy selection
-          const clickRadius = 40; // Larger radius makes it easier to click enemies
-          
-          // Find the first enemy that contains the point
-          for (const enemy of this.enemies) {
-            // Skip inactive enemies
-            if (!enemy || !enemy.active) continue;
-            
-            // Get enemy position
-            const enemyX = enemy.x || (enemy.container && enemy.container.x) || (enemy.sprite && enemy.sprite.x);
-            const enemyY = enemy.y || (enemy.container && enemy.container.y) || (enemy.sprite && enemy.sprite.y);
-            
-            if (!enemyX || !enemyY) continue;
-            
-            // Check distance
-            const dx = x - enemyX;
-            const dy = y - enemyY;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            
-            if (distance <= clickRadius) {
-              return enemy;
+          try {
+            // If no enemies exist, return null
+            if (!this.enemies || this.enemies.length === 0) {
+              return null;
             }
+            
+            // Larger click radius for easier targeting
+            const clickRadius = 40; // Increased from default
+            let closestEnemy = null;
+            let closestDistance = clickRadius;
+            
+            // Find closest enemy within click radius
+            this.enemies.forEach(enemy => {
+              if (enemy && enemy.active) {
+                const dx = enemy.x - x;
+                const dy = enemy.y - y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance < closestDistance) {
+                  closestDistance = distance;
+                  closestEnemy = enemy;
+                }
+              }
+            });
+            
+            return closestEnemy;
+          } catch (error) {
+            console.error("Error in getEnemyAtPosition:", error);
+            return null;
           }
-          
-          return null;
         }
         
         // Helper method to check if point is in farm area (left side)
@@ -1124,24 +1294,45 @@ if (isBrowser) {
         // Show floating text that fades up and out
         showFloatingText(x, y, message, color = 0xFFFFFF) {
           try {
-            const text = this.add.text(x, y, message, {
+            // Create text with larger font size and a shadow for better visibility
+            const textConfig = {
               fontFamily: 'Arial',
-              fontSize: '20px',
-              color: color.toString(16).padStart(6, '0'),
+              fontSize: '24px', // Increased from default
+              color: this.rgbToHex(color),
               stroke: '#000000',
-              strokeThickness: 3
-            }).setOrigin(0.5);
+              strokeThickness: 4, // Added stroke for better visibility
+              shadow: {
+                offsetX: 2,
+                offsetY: 2,
+                color: '#000000',
+                blur: 2
+              }
+            };
             
+            const floatingText = this.add.text(x, y, message, textConfig).setOrigin(0.5);
+            
+            // Add a rising and fading animation
             this.tweens.add({
-              targets: text,
-              y: y - 50,
+              targets: floatingText,
+              y: y - 60, // Move further up for better visibility
               alpha: 0,
-              duration: 2000,
-              onComplete: () => text.destroy()
+              duration: 1200, // Longer duration so text is visible longer
+              ease: 'Cubic.easeOut',
+              onComplete: () => {
+                floatingText.destroy();
+              }
             });
           } catch (error) {
             console.error("Error showing floating text:", error);
           }
+        }
+        
+        // Helper function to convert RGB color to hex string
+        rgbToHex(color) {
+          const r = (color >> 16) & 0xFF;
+          const g = (color >> 8) & 0xFF;
+          const b = color & 0xFF;
+          return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
         }
         
         showStartButton() {
@@ -1289,11 +1480,15 @@ if (isBrowser) {
           try {
             if (!this.gameState.isActive) return;
             
-            // Update wave counter
-            this.gameState.wave++;
-            this.waveText.setText(`Wave: ${this.gameState.wave}`);
-            
             console.log(`Starting wave ${this.gameState.wave}`);
+            
+            // Update advanced defense buttons (to ensure proper unlocking)
+            if (typeof this.updateAdvancedDefenseButtons === 'function') {
+              this.updateAdvancedDefenseButtons();
+            }
+            
+            // Show wave announcement
+            this.showWaveStartText(this.gameState.wave);
             
             // Determine number of enemies based on wave number - IMPROVED SCALING
             let numEnemies = Math.min(50, Math.floor(3 + (this.gameState.wave * 1.5)));
@@ -1313,6 +1508,9 @@ if (isBrowser) {
             
             // Show wave start text with the available showFloatingText method
             this.showFloatingText(400, 300, `WAVE ${this.gameState.wave} STARTING!`, 0xFFFF00);
+            
+            // Start spawning enemies with a delay
+            this.isSpawningEnemies = true;
             
             // Add wave bonus - increased coins for higher waves
             const waveBonus = Math.floor(10 + (this.gameState.wave * 5));
@@ -1504,48 +1702,45 @@ if (isBrowser) {
               // Determine enemy type probabilities based on wave number
               let birdChance = 0.6;
               let rabbitChance = 0.4;
-              let deerChance = 0;
-              let boarChance = 0;
+              let foxChance = 0;
               
               // Adjust probabilities based on wave number
-              if (wave > 3) {
+              if (wave >= 3) {
                 birdChance = 0.5;
                 rabbitChance = 0.3;
-                deerChance = 0.2;
+                foxChance = 0.2;
               }
-              if (wave > 6) {
-                birdChance = 0.35;
-                rabbitChance = 0.35;
-                deerChance = 0.25;
-                boarChance = 0.05;
+              if (wave >= 6) {
+                birdChance = 0.4;
+                rabbitChance = 0.3;
+                foxChance = 0.3;
               }
-              if (wave > 9) {
+              if (wave >= 9) {
                 birdChance = 0.3;
                 rabbitChance = 0.3;
-                deerChance = 0.3;
-                boarChance = 0.1;
+                foxChance = 0.4;
               }
               
               // Special case for boss waves
-              if (wave % 5 === 0 && Math.random() < 0.2) {
-                type = 'boar'; // 20% chance for a boar on boss waves
+              if (wave % 5 === 0) {
+                foxChance += 0.1; // Increase fox chance on boss waves
+                // Adjust other chances to maintain total of 1.0
+                const total = birdChance + rabbitChance + foxChance;
+                birdChance = birdChance / total;
+                rabbitChance = rabbitChance / total;
+                foxChance = foxChance / total;
+              }
+              
+              // Determine type based on calculated probabilities
+              const roll = Math.random();
+              if (roll < birdChance) {
+                type = 'bird';
+              } else if (roll < birdChance + rabbitChance) {
+                type = 'rabbit';
               } else {
-                // Determine type based on calculated probabilities
-                const roll = Math.random();
-                if (roll < birdChance) {
-                  type = 'bird';
-                } else if (roll < birdChance + rabbitChance) {
-                  type = 'rabbit';
-                } else if (roll < birdChance + rabbitChance + deerChance) {
-                  type = 'deer';
-                } else {
-                  type = 'boar';
-                }
+                type = 'fox';
               }
             }
-            
-            // Get current wave
-            const wave = this.gameState.wave || 1;
             
             // Calculate spawn position (always start from right edge)
             const x = 800 + (Math.random() * 50); // Add some randomness to entry position
@@ -1597,10 +1792,35 @@ if (isBrowser) {
               this.isSpawningEnemies = false;
               
               // Clear any pending spawn events
+              if (this.spawnTimer) {
+                this.spawnTimer.remove();
+                this.spawnTimer = null;
+              }
+              
               if (this.spawnEvent) {
                 this.spawnEvent.remove();
                 this.spawnEvent = null;
               }
+            }
+            
+            // Ensure enemies array exists
+            if (!this.enemies) {
+              this.enemies = [];
+            }
+            
+            // Clear any remaining enemies (this ensures we don't get stuck)
+            if (this.enemies && this.enemies.length > 0) {
+              console.log(`Clearing ${this.enemies.length} remaining enemies`);
+              
+              // Destroy all remaining enemies
+              this.enemies.forEach(enemy => {
+                if (enemy && typeof enemy.destroy === 'function') {
+                  enemy.destroy();
+                }
+              });
+              
+              // Clear the array completely to ensure no lingering references
+              this.enemies = [];
             }
             
             // End current wave
@@ -1610,26 +1830,59 @@ if (isBrowser) {
             this.gameState.wave++;
             this.updateWaveText();
             
-            // Start next wave
-            this.startWave();
-            
-            console.log(`Forced start of wave ${this.gameState.wave}`);
-            
-            // Show notification
-            this.showFloatingText(400, 300, `WAVE ${this.gameState.wave} STARTING!`, 0xFFFF00);
+            // Delay before starting next wave to ensure clean transition
+            this.time.delayedCall(500, () => {
+              // Start next wave
+              this.startWave();
+              
+              console.log(`Forced start of wave ${this.gameState.wave}`);
+              
+              // Show notification
+              this.showFloatingText(400, 300, `WAVE ${this.gameState.wave} STARTING!`, 0xFFFF00);
+              
+              // Flash the screen to indicate wave change
+              const flash = this.add.rectangle(400, 300, 800, 600, 0xFFFF00, 0.3);
+              this.tweens.add({
+                targets: flash,
+                alpha: 0,
+                duration: 500,
+                onComplete: () => flash.destroy()
+              });
+            });
           } catch (error) {
             console.error("Error forcing next wave:", error);
+            
+            // Emergency recovery - make sure wave progresses even if there's an error
+            try {
+              this.waveInProgress = false;
+              this.isSpawningEnemies = false;
+              this.enemies = [];
+              this.gameState.wave++;
+              
+              // Try to start next wave after a short delay
+              this.time.delayedCall(1000, () => {
+                if (this.gameState && this.gameState.isActive) {
+                  this.startWave();
+                }
+              });
+            } catch (recoveryError) {
+              console.error("Emergency wave recovery failed:", recoveryError);
+            }
           }
         }
         
         createToolbar() {
           try {
             // Create a larger background for the toolbar to accommodate all buttons
-            const toolbarBg = this.add.rectangle(200, 550, 400, 50, 0x333333, 0.8);
+            const toolbarBg = this.add.rectangle(200, 550, 420, 65, 0x333333, 0.8);
+            
+            // LARGER BUTTONS - Increase size from 60x40 to 70x50
             
             // Add attack button
-            const attackButton = this.add.rectangle(40, 550, 60, 40, 0xFF4400);
-            attackButton.setInteractive();
+            const attackButton = this.add.rectangle(40, 550, 70, 50, 0xFF4400);
+            attackButton.setInteractive({ useHandCursor: true });
+            // Set much larger hit area to make it very easy to click
+            attackButton.input.hitArea.setTo(-40, -30, 80, 60);
             attackButton.on('pointerdown', () => {
               this.pendingDefensePlacement = false; // Reset placement flag
               this.setToolMode('attack');
@@ -1637,32 +1890,52 @@ if (isBrowser) {
             
             const attackText = this.add.text(40, 550, '👆', {
               fontFamily: 'Arial',
-              fontSize: '24px'
+              fontSize: '32px' // Increased from 24px
             }).setOrigin(0.5);
+            // Make text interactive too for better touch/click response
+            attackText.setInteractive({ useHandCursor: true });
+            attackText.on('pointerdown', () => {
+              this.pendingDefensePlacement = false;
+              this.setToolMode('attack');
+            });
             
             // Add crop button
-            const cropButton = this.add.rectangle(110, 550, 60, 40, 0x006600);
-            cropButton.setInteractive();
+            const cropButton = this.add.rectangle(110, 550, 70, 50, 0x006600);
+            cropButton.setInteractive({ useHandCursor: true });
+            cropButton.input.hitArea.setTo(-40, -30, 80, 60);
             cropButton.on('pointerdown', () => {
               this.pendingDefensePlacement = false; // Reset placement flag
               this.setToolMode('plant');
             });
             
             // IMPORTANT: Always use tree images for crops - NEVER change this!
+            let cropImage;
             if (this.textures.exists('Fruit_tree3')) {
-              const cropImage = this.add.image(110, 550, 'Fruit_tree3');
-              cropImage.setDisplaySize(32, 32);
+              cropImage = this.add.image(110, 550, 'Fruit_tree3');
+              cropImage.setDisplaySize(40, 40); // Increased from 32x32
+              // Make crop image interactive
+              cropImage.setInteractive({ useHandCursor: true });
+              cropImage.on('pointerdown', () => {
+                this.pendingDefensePlacement = false;
+                this.setToolMode('plant');
+              });
             } else {
               // Fallback to emoji if image doesn't exist
-              const cropText = this.add.text(110, 550, '🌳', {
+              cropImage = this.add.text(110, 550, '🌳', {
                 fontFamily: 'Arial',
-                fontSize: '24px'
+                fontSize: '32px' // Increased from 24px
               }).setOrigin(0.5);
+              cropImage.setInteractive({ useHandCursor: true });
+              cropImage.on('pointerdown', () => {
+                this.pendingDefensePlacement = false;
+                this.setToolMode('plant');
+              });
             }
             
             // Add scarecrow button (ABS mage)
-            const scarecrowButton = this.add.rectangle(180, 550, 60, 40, 0x000066);
-            scarecrowButton.setInteractive();
+            const scarecrowButton = this.add.rectangle(180, 550, 70, 50, 0x000066);
+            scarecrowButton.setInteractive({ useHandCursor: true });
+            scarecrowButton.input.hitArea.setTo(-40, -30, 80, 60);
             scarecrowButton.on('pointerdown', () => {
               // Select defense without auto-placing
               this.pendingDefenseType = 'scarecrow';
@@ -1677,20 +1950,37 @@ if (isBrowser) {
             
             // Use ABS image instead of emoji
             const absImageKey = 'ABS_idle';
+            let absImage;
             if (this.textures.exists(absImageKey)) {
-              const absImage = this.add.image(180, 550, absImageKey);
-              absImage.setDisplaySize(32, 32);
+              absImage = this.add.image(180, 550, absImageKey);
+              absImage.setDisplaySize(40, 40); // Increased from 32x32
+              // Make the image interactive too
+              absImage.setInteractive({ useHandCursor: true });
+              absImage.on('pointerdown', () => {
+                this.pendingDefenseType = 'scarecrow';
+                this.pendingDefensePlacement = true;
+                this.setToolMode('scarecrow');
+                this.showFloatingText(400, 300, "ABS Ice Mage selected - Click map to place", 0x0088FF);
+              });
             } else {
               // Fallback to emoji if image doesn't exist
-              const scarecrowText = this.add.text(180, 550, '🧙‍♂️', {
+              absImage = this.add.text(180, 550, '🧙‍♂️', {
                 fontFamily: 'Arial',
-                fontSize: '24px'
+                fontSize: '32px' // Increased from 24px
               }).setOrigin(0.5);
+              absImage.setInteractive({ useHandCursor: true });
+              absImage.on('pointerdown', () => {
+                this.pendingDefenseType = 'scarecrow';
+                this.pendingDefensePlacement = true;
+                this.setToolMode('scarecrow');
+                this.showFloatingText(400, 300, "ABS Ice Mage selected - Click map to place", 0x0088FF);
+              });
             }
             
             // Add dog button (NOOT mage)
-            const dogButton = this.add.rectangle(250, 550, 60, 40, 0x660000);
-            dogButton.setInteractive();
+            const dogButton = this.add.rectangle(250, 550, 70, 50, 0x660000);
+            dogButton.setInteractive({ useHandCursor: true });
+            dogButton.input.hitArea.setTo(-40, -30, 80, 60);
             dogButton.on('pointerdown', () => {
               // Select defense without auto-placing
               this.pendingDefenseType = 'dog';
@@ -1705,15 +1995,31 @@ if (isBrowser) {
             
             // Use NOOT image instead of emoji
             const nootImageKey = 'NOOT_idle';
+            let nootImage;
             if (this.textures.exists(nootImageKey)) {
-              const nootImage = this.add.image(250, 550, nootImageKey);
-              nootImage.setDisplaySize(32, 32);
+              nootImage = this.add.image(250, 550, nootImageKey);
+              nootImage.setDisplaySize(40, 40); // Increased from 32x32
+              // Make the image interactive too
+              nootImage.setInteractive({ useHandCursor: true });
+              nootImage.on('pointerdown', () => {
+                this.pendingDefenseType = 'dog';
+                this.pendingDefensePlacement = true;
+                this.setToolMode('dog');
+                this.showFloatingText(400, 300, "NOOT Fire Mage selected - Click map to place", 0xFF4400);
+              });
             } else {
               // Fallback to emoji if image doesn't exist
-              const dogText = this.add.text(250, 550, '🧙‍♀️', {
+              nootImage = this.add.text(250, 550, '🧙‍♀️', {
                 fontFamily: 'Arial',
-                fontSize: '24px'
+                fontSize: '32px' // Increased from 24px
               }).setOrigin(0.5);
+              nootImage.setInteractive({ useHandCursor: true });
+              nootImage.on('pointerdown', () => {
+                this.pendingDefenseType = 'dog';
+                this.pendingDefensePlacement = true;
+                this.setToolMode('dog');
+                this.showFloatingText(400, 300, "NOOT Fire Mage selected - Click map to place", 0xFF4400);
+              });
             }
             
             // Advanced defenses - only if unlocked in the upgrade system
@@ -1721,8 +2027,9 @@ if (isBrowser) {
             
             // ALWAYS show the wizard button regardless of upgrade system
             // Add wizard button
-            wizardButton = this.add.rectangle(320, 550, 60, 40, 0x990099);
-            wizardButton.setInteractive();
+            wizardButton = this.add.rectangle(320, 550, 70, 50, 0x990099);
+            wizardButton.setInteractive({ useHandCursor: true });
+            wizardButton.input.hitArea.setTo(-40, -30, 80, 60);
             wizardButton.on('pointerdown', () => {
               // Select defense without auto-placing
               this.pendingDefenseType = 'wizard';
@@ -1736,28 +2043,50 @@ if (isBrowser) {
             });
             
             // Use wizard image or emoji
+            let wizardImage;
             if (this.textures.exists('wizard_idle')) {
-              const wizardImage = this.add.image(320, 550, 'wizard_idle');
-              wizardImage.setDisplaySize(32, 32);
+              wizardImage = this.add.image(320, 550, 'wizard_idle');
+              wizardImage.setDisplaySize(40, 40); // Increased from 32x32
+              // Make image interactive too
+              wizardImage.setInteractive({ useHandCursor: true });
+              wizardImage.on('pointerdown', () => {
+                this.pendingDefenseType = 'wizard';
+                this.pendingDefensePlacement = true; 
+                this.setToolMode('wizard');
+                this.showFloatingText(400, 300, "Wizard selected - Click map to place", 0xFF00FF);
+              });
             } else {
               // Fallback to emoji if image doesn't exist
-              const wizardText = this.add.text(320, 550, '🧙', {
+              wizardImage = this.add.text(320, 550, '🧙', {
                 fontFamily: 'Arial',
-                fontSize: '24px'
+                fontSize: '32px' // Increased from 24px
               }).setOrigin(0.5);
+              wizardImage.setInteractive({ useHandCursor: true });
+              wizardImage.on('pointerdown', () => {
+                this.pendingDefenseType = 'wizard';
+                this.pendingDefensePlacement = true;
+                this.setToolMode('wizard');
+                this.showFloatingText(400, 300, "Wizard selected - Click map to place", 0xFF00FF);
+              });
             }
             
             // Add wizard cost
-            this.add.text(320, 570, '100', {
+            const wizardCostText = this.add.text(320, 570, '100', {
               fontFamily: 'Arial',
               fontSize: '12px',
               color: '#FFFF00'
             }).setOrigin(0.5);
             
+            // Hide wizard by default
+            wizardButton.visible = false;
+            wizardImage.visible = false;
+            wizardCostText.visible = false;
+            
             // ALWAYS show the cannon button regardless of upgrade system
             // Add cannon button
-            cannonButton = this.add.rectangle(390, 550, 60, 40, 0x990000);
-            cannonButton.setInteractive();
+            cannonButton = this.add.rectangle(390, 550, 70, 50, 0x990000);
+            cannonButton.setInteractive({ useHandCursor: true });
+            cannonButton.input.hitArea.setTo(-40, -30, 80, 60);
             cannonButton.on('pointerdown', () => {
               // Select defense without auto-placing
               this.pendingDefenseType = 'cannon';
@@ -1771,33 +2100,57 @@ if (isBrowser) {
             });
             
             // Use cannon image or emoji
+            let cannonImage;
             if (this.textures.exists('cannon_idle')) {
-              const cannonImage = this.add.image(390, 550, 'cannon_idle');
-              cannonImage.setDisplaySize(32, 32);
+              cannonImage = this.add.image(390, 550, 'cannon_idle');
+              cannonImage.setDisplaySize(40, 40); // Increased from 32x32
+              // Make image interactive too
+              cannonImage.setInteractive({ useHandCursor: true });
+              cannonImage.on('pointerdown', () => {
+                this.pendingDefenseType = 'cannon';
+                this.pendingDefensePlacement = true;
+                this.setToolMode('cannon');
+                this.showFloatingText(400, 300, "Cannon selected - Click map to place", 0xFF0000);
+              });
             } else {
               // Fallback to emoji if image doesn't exist
-              const cannonText = this.add.text(390, 550, '💣', {
+              cannonImage = this.add.text(390, 550, '💣', {
                 fontFamily: 'Arial',
-                fontSize: '24px'
+                fontSize: '32px' // Increased from 24px
               }).setOrigin(0.5);
+              cannonImage.setInteractive({ useHandCursor: true });
+              cannonImage.on('pointerdown', () => {
+                this.pendingDefenseType = 'cannon';
+                this.pendingDefensePlacement = true;
+                this.setToolMode('cannon');
+                this.showFloatingText(400, 300, "Cannon selected - Click map to place", 0xFF0000);
+              });
             }
             
             // Add cannon cost
-            this.add.text(390, 570, '150', {
+            const cannonCostText = this.add.text(390, 570, '150', {
               fontFamily: 'Arial',
               fontSize: '12px',
               color: '#FFFF00'
             }).setOrigin(0.5);
             
+            // Hide cannon by default
+            cannonButton.visible = false;
+            cannonImage.visible = false;
+            cannonCostText.visible = false;
+            
             // Add upgrade button - moved to the right end
-            const upgradeButton = this.add.rectangle(460, 550, 60, 40, 0x555500);
-            upgradeButton.setInteractive();
+            const upgradeButton = this.add.rectangle(460, 550, 70, 50, 0x555500);
+            upgradeButton.setInteractive({ useHandCursor: true });
+            upgradeButton.input.hitArea.setTo(-40, -30, 80, 60);
             upgradeButton.on('pointerdown', () => this.toggleUpgradePanel());
             
             const upgradeText = this.add.text(460, 550, '⚙️', {
               fontFamily: 'Arial',
-              fontSize: '24px'
+              fontSize: '32px' // Increased from 24px
             }).setOrigin(0.5);
+            upgradeText.setInteractive({ useHandCursor: true });
+            upgradeText.on('pointerdown', () => this.toggleUpgradePanel());
             
             // Store buttons for reference
             this.toolbarButtons = {
@@ -1854,6 +2207,9 @@ if (isBrowser) {
             
             // Set initial tool to attack mode
             this.setToolMode('attack');
+            
+            // Initialize advanced defense button visibility
+            this.updateAdvancedDefenseButtons();
           } catch (error) {
             console.error("Error creating toolbar:", error);
           }
@@ -2121,233 +2477,117 @@ if (isBrowser) {
 
         update(time, delta) {
           try {
-            // Skip if game is inactive or if an update is already in progress
-            if (!this.gameState || !this.gameState.isActive || isUpdating) {
+            // Don't allow recursive updates
+            if (isUpdating) return;
+            isUpdating = true;
+            
+            // Skip updates if game is not active
+            if (!this.gameState.isActive) {
+              isUpdating = false;
               return;
             }
             
-            // Set flag to prevent recursive updates
-            isUpdating = true;
-            
-            // CRITICAL FIX: Ensure all enemies are active and can be targeted
-            if (this.enemies && this.enemies.length > 0) {
-              this.enemies.forEach(enemy => {
-                if (enemy) {
-                  // Force enemy to be active
-                  enemy.active = true;
-                  enemy.visible = true;
-                  
-                  // Ensure enemy has proper position if missing
-                  if (typeof enemy.x !== 'number' || typeof enemy.y !== 'number') {
-                    if (enemy.container) {
-                      enemy.x = enemy.container.x;
-                      enemy.y = enemy.container.y;
-                    } else if (enemy.sprite) {
-                      enemy.x = enemy.sprite.x;
-                      enemy.y = enemy.sprite.y;
-                    }
-                  }
-                }
-              });
+            // Check if crop placement mode is active
+            if (this.toolMode === 'plant' && this.plantingIndicator) {
+              // Update crop placement preview on mouse movement
+              const pointer = this.input.activePointer;
+              this.updatePlacementPreview(pointer);
+            } else if (this.isDefenseMode(this.toolMode) && this.pendingDefensePlacement) {
+              // Update defense placement preview
+              const pointer = this.input.activePointer;
+              this.showDefensePlacementIndicator(pointer, this.pendingDefenseType);
             }
             
-            // CRITICAL FIX: Update all projectiles
-            if (this.projectiles && this.projectiles.length > 0) {
-              // Create a copy of the array to safely modify during iteration
-              const projectilesToUpdate = [...this.projectiles];
-              
-              // Update each projectile
-              projectilesToUpdate.forEach(projectile => {
-                if (projectile && typeof projectile.update === 'function') {
-                  try {
-                    // Call the projectile's update method with delta time
-                    projectile.update(delta / 1000); // Convert to seconds if needed by some projectiles
-                  } catch (error) {
-                    console.error("Error updating projectile:", error);
-                    // Clean up errored projectile
-                    if (projectile.destroy) {
-                      projectile.destroy();
-                    }
-                  }
-                } else if (projectile) {
-                  // If no update method but has movement properties, apply basic movement
-                  if (typeof projectile.vx === 'number' && typeof projectile.vy === 'number') {
-                    projectile.x += projectile.vx;
-                    projectile.y += projectile.vy;
-                    
-                    // Basic cleanup if offscreen
-                    if (projectile.x < 0 || projectile.x > 800 || projectile.y < 0 || projectile.y > 600) {
-                      projectile.destroy();
-                    }
-                  }
-                }
-              });
-              
-              // Clean up the projectiles array to remove destroyed objects
-              this.projectiles = this.projectiles.filter(p => p && p.active !== false);
-            }
-            
-            // CRITICAL FIX: Make clickable enemies more responsive
-            if (this.enemies && this.enemies.length > 0) {
-              this.enemies.forEach(enemy => {
-                if (enemy && enemy.container) {
-                  // Ensure container is interactive with large hit area
-                  enemy.container.setSize(80, 80);
-                  enemy.container.setInteractive();
-                  
-                  // Force all sprites to be interactive too
-                  if (enemy.sprite) {
-                    enemy.sprite.setInteractive({ useHandCursor: true });
-                  }
-                }
-              });
-            }
-            
-            // Calculate frame-independent movement factor
-            // default to 16.67ms (60fps) if delta is unavailable 
-            const deltaFactor = delta ? delta / 16.67 : 1.0;
-            
-            // Update enemies - frame-rate independent movement
-            if (this.enemies && this.enemies.length > 0) {
-              // Using forEach with catch error for safety
-              this.enemies.forEach(enemy => {
-                try {
-                  if (enemy && enemy.update) {
-                    enemy.update(delta);
-                    
-                    // Original base speed is defined in the Enemy class (around 1.5-2.0)
-                    // We apply frame-independent movement based on delta time
-                    const frameIndependentSpeed = 0.5 * deltaFactor;
-                    
-                    // Force enemy position to move at consistent speed regardless of frame rate
-                    enemy.x -= frameIndependentSpeed;
-                    
-                    // ANTI-STACKING: Add random Y movement 
-                    if (Math.random() < 0.1) {
-                      enemy.y += (Math.random() - 0.5) * 2;
-                    }
-                    
-                    // Ensure enemy is visibly updated
-                    if (enemy.container) {
-                      enemy.container.x = enemy.x;
-                      enemy.container.y = enemy.y;
-                      enemy.container.visible = true;
-                      enemy.container.setDepth(100);
-                    }
-                    
-                    // Update health bar position
-                    if (enemy.healthBar) {
-                      if (enemy.healthBar.background) {
-                        enemy.healthBar.background.x = enemy.x;
-                        enemy.healthBar.background.y = enemy.y - 35;
-                        enemy.healthBar.background.visible = true;
-                      }
-                      if (enemy.healthBar.fill) {
-                        const healthPercent = Math.max(0, enemy.health / enemy.maxHealth);
-                        enemy.healthBar.fill.width = 40 * healthPercent;
-                        enemy.healthBar.fill.x = enemy.x - 20 + (enemy.healthBar.fill.width / 2);
-                        enemy.healthBar.fill.y = enemy.y - 35;
-                        enemy.healthBar.fill.visible = true;
-                      }
-                    }
-                  }
-                } catch (enemyError) {
-                  console.error("Error updating enemy:", enemyError);
-                }
-              });
-            }
-            
-            // CRITICAL FIX: Reset all defense cooldowns if they're stuck
-            // This ensures mages can attack regularly
-            if (this.defenses && this.defenses.length > 0 && Math.random() < 0.05) {
-              // Occasionally reset all cooldowns to ensure attacks happen
-              this.defenses.forEach(defense => {
-                if (defense && defense.active) {
-                  // Reset cooldown if it's been too long since last attack
-                  if (this.scene && this.scene.time && this.scene.time.now - (defense.lastAttackTime || 0) > 5000) {
-                    defense.cooldownRemaining = 0;
-                    console.log(`Resetting stuck cooldown for ${defense.type} defense`);
-                  }
-                }
-              });
-            }
-            
-            // Update defenses - force update every frame
+            // Update defenses
             if (this.defenses && this.defenses.length > 0) {
-              // Call update on each defense
-              this.defenses.forEach(defense => {
-                try {
-                  if (defense && defense.active && typeof defense.update === 'function') {
-                    defense.update();
-                    
-                    // Log occasional debug information
-                    if (Math.random() < 0.001) {
-                      console.log(`Defense at (${defense.x}, ${defense.y}) active: ${defense.active}, cooldown: ${defense.cooldownRemaining || 0}`);
-                      
-                      // Count visible enemies in range
-                      if (this.enemies && this.enemies.length > 0) {
-                        let enemiesInRange = 0;
-                        this.enemies.forEach(enemy => {
-                          if (enemy && enemy.active) {
-                            const dx = enemy.x - defense.x;
-                            const dy = enemy.y - defense.y;
-                            const distance = Math.sqrt(dx * dx + dy * dy);
-                            if (distance <= defense.range * 1.5) {
-                              enemiesInRange++;
-                            }
-                          }
-                        });
-                        console.log(`Defense at (${defense.x}, ${defense.y}) has ${enemiesInRange} enemies in range out of ${this.enemies.length} total`);
-                      }
-                    }
-                  }
-                } catch (defenseError) {
-                  console.error("Error updating defense:", defenseError);
-                }
-              });
+              this.updateDefenseAttacks();
             }
             
-            // CRITICAL FIX: Super aggressive direct forced attacks
-            // This bypass ensures mages ALWAYS attack regardless of other conditions
-            this.superForceDefensesToAttack();
+            // Update crops if they exist
+            if (this.crops) {
+              this.updateCrops();
+            }
             
-            // Force defenses to attack every frame - AGGRESSIVE APPROACH
-            this.forceDefensesToAttack();
+            // Update enemies
+            if (this.enemies && this.enemies.length > 0) {
+              // Update each enemy
+              this.enemies.forEach(enemy => {
+                if (enemy && enemy.active) {
+                  if (typeof enemy.update === 'function') {
+                    enemy.update(delta);
+                  } else {
+                    console.warn("Enemy missing update method");
+                  }
+                } else if (enemy && !enemy.active) {
+                  // Handle inactive enemies - might need cleanup
+                  // Will be handled by the destroy method
+                } else {
+                  console.warn("Null or undefined enemy in array");
+                }
+              });
+              
+              // Clean up null/undefined entries in enemies array
+              this.enemies = this.enemies.filter(enemy => enemy != null && enemy !== undefined);
+            }
             
-            // Update defenses' attacks separately to ensure they attack
-            this.updateDefenseAttacks();
-            
-            // Update and process crops
-            this.updateCrops();
-            
-            // Check if all enemies are gone and we've spawned all for this wave
-            if (!this.isSpawningEnemies && this.enemies.length === 0 && this.waveInProgress) {
+            // Check for wave completion
+            if (this.waveInProgress && 
+                this.enemies.length === 0 && 
+                this.enemiesSpawned >= this.totalEnemiesInWave && 
+                !this.isSpawningEnemies) {
               this.waveInProgress = false;
               
-              // Start next wave after delay
-              this.time.delayedCall(5000, () => {
-                if (this.gameState && this.gameState.isActive) {
+              // Add a bit of delay before next wave
+              this.time.delayedCall(2000, () => {
+                if (this.gameState.isActive) {
+                  // Reward player for completing the wave
+                  const waveReward = Math.ceil(this.gameState.wave * 15); // 15 coins per wave level
+                  this.updateFarmCoins(waveReward);
+                  this.showFloatingText(400, 300, `Wave ${this.gameState.wave} Complete! +${waveReward} coins`, 0x00FF00);
+                  
+                  // Start next wave
                   this.gameState.wave++;
                   this.updateWaveText();
-                  this.startWave();
+                  
+                  // Check for defense unlocks after wave increase
+                  this.updateAdvancedDefenseButtons();
+                  
+                  // Start the next wave after a delay
+                  this.time.delayedCall(3000, () => {
+                    if (this.gameState.isActive) {
+                      this.startWave();
+                    }
+                  });
                 }
               });
-              
-              // Show wave complete message
-              this.showFloatingText(400, 300, `Wave ${this.gameState.wave} complete!`, 0x00FF00);
-              
-              // Award bonus coins for completing wave
-              const waveBonus = 20 + (this.gameState.wave * 5);
-              this.updateFarmCoins(waveBonus);
-              this.showFloatingText(400, 350, `+${waveBonus} coins bonus!`, 0xFFFF00);
             }
             
-            // Clear flag when done
+            // Safety check: if game is active but no wave is in progress and we're not spawning enemies
+            // This catches situations where the wave transition got stuck
+            if (this.gameState?.isActive && 
+                !this.waveInProgress && 
+                !this.isSpawningEnemies && 
+                this.enemies?.length === 0 &&
+                time % 5000 < 16) { // Only check occasionally
+              console.log("Safety check: game active but no wave in progress - forcing next wave");
+              
+              // Start next wave
+              this.gameState.wave++;
+              this.updateWaveText();
+              this.startWave();
+            }
+            
+            // Debug info occasionally
+            if (time % 5000 < 16) { // roughly every 5 seconds
+              console.log(`Active enemies: ${this.enemies.length}, Wave: ${this.gameState.wave}, Coins: ${this.gameState.farmCoins}`);
+            }
+            
+            // Release the update lock
             isUpdating = false;
+            
           } catch (error) {
-            // Make sure flag is cleared even if there's an error
-            isUpdating = false;
             console.error("Error in update loop:", error);
+            isUpdating = false; // Always release the lock
           }
         }
         
@@ -2514,17 +2754,23 @@ if (isBrowser) {
           }
         }
 
-        // Add this function to toggle the upgrade panel
+        // Toggle the upgrade panel visibility
         toggleUpgradePanel() {
-          if (this.upgradeSystem) {
-            const isVisible = this.upgradeSystem.toggleUI();
+          try {
+            if (!this.upgradeSystem) return;
             
-            // Highlight the upgrade button when panel is open
-            if (this.toolbarButtons && this.toolbarButtons.upgrade) {
-              this.toolbarButtons.upgrade.fillColor = isVisible ? 0x888800 : 0x555500;
-            }
+            // Get current state
+            const isVisible = this.upgradeSystem.uiElements?.panel?.visible || false;
             
-            console.log(`Upgrade panel ${isVisible ? 'opened' : 'closed'}`);
+            // Toggle visibility
+            this.upgradeSystem.setUIVisible(!isVisible);
+            
+            // Update defense buttons
+            this.updateAdvancedDefenseButtons();
+            
+            console.log(`Upgrade panel ${isVisible ? 'hidden' : 'shown'}`);
+          } catch (error) {
+            console.error("Error toggling upgrade panel:", error);
           }
         }
 
@@ -2848,6 +3094,12 @@ if (isBrowser) {
               this.placementCircle.setVisible(false);
             }
             
+            // Remove any existing pointermove listener
+            if (this.pointerMoveListener) {
+              this.input.off('pointermove', this.pointerMoveListener);
+              this.pointerMoveListener = null;
+            }
+            
             // Reset placement state if switching to attack or plant mode
             if (mode === 'attack' || mode === 'plant') {
               this.pendingDefensePlacement = false;
@@ -2885,20 +3137,30 @@ if (isBrowser) {
                 if (!this.placementCircle) {
                   this.placementCircle = this.add.circle(0, 0, range, 0xFFFFFF, 0.2);
                   this.placementCircle.setStrokeStyle(2, color);
+                } else {
+                  // Update existing circle
+                  this.placementCircle.setRadius(range);
+                  this.placementCircle.setStrokeStyle(2, color);
                 }
                 
-                // Update circle properties
-                this.placementCircle.setRadius(range);
-                this.placementCircle.setStrokeStyle(2, color);
+                // Make sure the circle is visible
                 this.placementCircle.setVisible(true);
                 
-                // Make the circle follow the pointer
-                this.input.on('pointermove', (pointer) => {
-                  if ((this.toolMode === mode || this.pendingDefensePlacement) && this.placementCircle) {
+                // Get current pointer position and update placement circle
+                const pointer = this.input.activePointer;
+                this.placementCircle.x = pointer.x;
+                this.placementCircle.y = pointer.y;
+                
+                // Create a new pointermove listener
+                this.pointerMoveListener = (pointer) => {
+                  if (this.placementCircle && (this.isDefenseMode(this.toolMode) || this.pendingDefensePlacement)) {
                     this.placementCircle.x = pointer.x;
                     this.placementCircle.y = pointer.y;
                   }
-                });
+                };
+                
+                // Add new listener
+                this.input.on('pointermove', this.pointerMoveListener);
               }
             }
             
@@ -3092,66 +3354,79 @@ if (isBrowser) {
 
         verifyTextureLoading() {
           try {
-            // Check if textures are loaded
-            const textures = [
-              'enemy_bird', 'enemy_rabbit', 'enemy_boss',
-              'Fruit_tree3', 'Moss_tree3', 'fireball', 'iceball'
-            ];
-            
-            textures.forEach(texture => {
-              if (this.textures.exists(texture)) {
-                console.log(`✅ Texture '${texture}' loaded successfully`);
-                
-                // Debug: show texture at known position
-                const debugSprite = this.add.sprite(100 + textures.indexOf(texture) * 50, 100, texture);
-                debugSprite.setDisplaySize(32, 32);
-                debugSprite.setAlpha(0.5);
-                this.time.delayedCall(5000, () => {
-                  debugSprite.destroy();
-                });
-              } else {
-                console.error(`❌ Texture '${texture}' NOT FOUND`);
-                
-                // Create fallback texture if needed
-                if (texture === 'fireball') {
-                  const fireGraphics = this.make.graphics();
-                  fireGraphics.fillStyle(0xFF4400, 1);
-                  fireGraphics.fillCircle(16, 16, 16);
-                  fireGraphics.fillStyle(0xFF8866, 0.4);
-                  fireGraphics.fillCircle(16, 16, 20);
-                  fireGraphics.generateTexture('fireball', 40, 40);
-                  console.log('Created fallback texture for fireball');
-                } else if (texture === 'iceball') {
-                  const iceGraphics = this.make.graphics();
-                  iceGraphics.fillStyle(0x0088FF, 1);
-                  iceGraphics.fillCircle(16, 16, 16);
-                  iceGraphics.fillStyle(0x66BBFF, 0.4);
-                  iceGraphics.fillCircle(16, 16, 20);
-                  iceGraphics.generateTexture('iceball', 40, 40);
-                  console.log('Created fallback texture for iceball');
-                }
-                
-                // Create visual indicator for missing texture
-                const errorText = this.add.text(100 + textures.indexOf(texture) * 50, 100, '❌', {
-                  fontSize: '24px',
-                  fontFamily: 'Arial',
-                  color: '#FF0000'
-                }).setOrigin(0.5);
-                this.time.delayedCall(5000, () => {
-                  errorText.destroy();
-                });
-              }
-            });
-            
-            // Add visible debug indicator at spawn position
-            const spawnPoint = this.add.circle(850, 300, 10, 0xFF0000);
-            spawnPoint.setAlpha(0.7);
-            this.time.delayedCall(5000, () => {
-              spawnPoint.destroy();
-            });
-            
+            // Log all available textures for debugging
+            if (this.textures) {
+              const textureKeys = Object.keys(this.textures.list);
+              console.log(`Available textures (${textureKeys.length}):`, textureKeys.join(', '));
+            }
           } catch (error) {
             console.error("Error verifying textures:", error);
+          }
+        }
+        
+        // Create fallback textures for advanced defenses
+        createAdvancedDefenseTextures() {
+          try {
+            console.log("Checking for advanced defense textures");
+            
+            // Only create fallback textures if the actual textures aren't loaded
+            // Wizard textures
+            if (!this.textures.exists('wizard_idle')) {
+              console.log("Creating fallback wizard_idle texture");
+              const wizardGraphics = this.make.graphics();
+              wizardGraphics.fillStyle(0xFF00FF, 1);
+              wizardGraphics.fillCircle(20, 20, 20);
+              wizardGraphics.fillStyle(0x9900CC, 1);
+              wizardGraphics.fillTriangle(10, 20, 30, 20, 20, 0);
+              wizardGraphics.generateTexture('wizard_idle', 40, 40);
+            }
+            
+            if (!this.textures.exists('wizard_attack')) {
+              console.log("Creating fallback wizard_attack texture");
+              if (this.textures.exists('wizard_idle')) {
+                // Replace addKey with the correct way to reuse a texture
+                const idleTexture = this.textures.get('wizard_idle');
+                this.textures.addImage('wizard_attack', idleTexture.getSourceImage());
+              } else {
+                const wizardGraphics = this.make.graphics();
+                wizardGraphics.fillStyle(0xFF00FF, 1);
+                wizardGraphics.fillCircle(20, 20, 18);
+                wizardGraphics.fillStyle(0x9900CC, 1);
+                wizardGraphics.fillTriangle(10, 20, 30, 20, 20, 0);
+                wizardGraphics.generateTexture('wizard_attack', 40, 40);
+              }
+            }
+            
+            // Create cannon textures
+            if (!this.textures.exists('cannon_idle')) {
+              console.log("Creating fallback cannon_idle texture");
+              const cannonGraphics = this.make.graphics();
+              cannonGraphics.fillStyle(0x666666, 1);
+              cannonGraphics.fillRect(10, 20, 20, 15);
+              cannonGraphics.fillStyle(0xFF0000, 1);
+              cannonGraphics.fillRect(18, 10, 15, 10);
+              cannonGraphics.generateTexture('cannon_idle', 40, 40);
+            }
+            
+            if (!this.textures.exists('cannon_attack')) {
+              console.log("Creating fallback cannon_attack texture");
+              if (this.textures.exists('cannon_idle')) {
+                // Replace addKey with the correct way to reuse a texture
+                const idleTexture = this.textures.get('cannon_idle');
+                this.textures.addImage('cannon_attack', idleTexture.getSourceImage());
+              } else {
+                const cannonGraphics = this.make.graphics();
+                cannonGraphics.fillStyle(0x666666, 1);
+                cannonGraphics.fillRect(10, 20, 20, 15);
+                cannonGraphics.fillStyle(0xFF0000, 1);
+                cannonGraphics.fillRect(18, 10, 15, 10);
+                cannonGraphics.generateTexture('cannon_attack', 40, 40);
+              }
+            }
+            
+            console.log("Defense textures verified successfully");
+          } catch (error) {
+            console.error("Error creating fallback textures:", error);
           }
         }
 
@@ -3263,6 +3538,196 @@ if (isBrowser) {
             });
           } catch (error) {
             console.error("Error updating crops:", error);
+          }
+        }
+
+        // Update defense button visibility based on unlocks
+        updateAdvancedDefenseButtons() {
+          if (!this.upgradeSystem) return;
+          
+          try {
+            // Update wizard button
+            if (this.toolbarButtons.wizard) {
+              const wizardVisible = this.upgradeSystem.isDefenseUnlocked('wizard');
+              this.toolbarButtons.wizard.visible = wizardVisible;
+              
+              // Also update the associated image and cost text
+              const wizardImage = this.children.list.find(child => 
+                (child.type === 'Image' && child.texture.key === 'wizard_idle') ||
+                (child.type === 'Text' && child.text === '🧙')
+              );
+              
+              const wizardCost = this.children.list.find(child => 
+                child.type === 'Text' && 
+                child.text === '100' && 
+                Math.abs(child.x - 320) < 5 && 
+                Math.abs(child.y - 570) < 5
+              );
+              
+              if (wizardImage) wizardImage.visible = wizardVisible;
+              if (wizardCost) wizardCost.visible = wizardVisible;
+              
+              // Show notification when first unlocked
+              if (wizardVisible && !this.wizardUnlockNotified) {
+                this.showFloatingText(400, 300, "Wizard Defense Unlocked!", 0xFF00FF);
+                this.wizardUnlockNotified = true;
+              }
+            }
+            
+            // Update cannon button
+            if (this.toolbarButtons.cannon) {
+              const cannonVisible = this.upgradeSystem.isDefenseUnlocked('cannon');
+              this.toolbarButtons.cannon.visible = cannonVisible;
+              
+              // Also update the associated image and cost text
+              const cannonImage = this.children.list.find(child => 
+                (child.type === 'Image' && child.texture.key === 'cannon_idle') ||
+                (child.type === 'Text' && child.text === '💣')
+              );
+              
+              const cannonCost = this.children.list.find(child => 
+                child.type === 'Text' && 
+                child.text === '150' && 
+                Math.abs(child.x - 390) < 5 && 
+                Math.abs(child.y - 570) < 5
+              );
+              
+              if (cannonImage) cannonImage.visible = cannonVisible;
+              if (cannonCost) cannonCost.visible = cannonVisible;
+              
+              // Show notification when first unlocked
+              if (cannonVisible && !this.cannonUnlockNotified) {
+                this.showFloatingText(400, 300, "Cannon Defense Unlocked!", 0xFF0000);
+                this.cannonUnlockNotified = true;
+              }
+            }
+          } catch (error) {
+            console.error("Error updating advanced defense buttons:", error);
+          }
+        }
+
+        createParticleAnimations() {
+          try {
+            // Fire+Sparks animation
+            this.anims.create({
+              key: 'fire_sparks_anim',
+              frames: this.anims.generateFrameNumbers('fire_particle', { start: 0, end: 7 }),
+              frameRate: 12,
+              repeat: -1
+            });
+            
+            // Rocket Fire animation
+            this.anims.create({
+              key: 'rocket_fire_anim',
+              frames: this.anims.generateFrameNumbers('rocket_fire', { start: 0, end: 7 }),
+              frameRate: 12,
+              repeat: -1
+            });
+            
+            console.log('Particle animations created successfully');
+          } catch (error) {
+            console.error('Error creating particle animations:', error);
+          }
+        }
+
+        createMagicAura() {
+          // ... existing code ...
+        }
+        
+        // Create hit effect when projectile hits target
+        createHitEffect(x, y, defenseType) {
+          try {
+            if (!this || !this.add) return;
+            
+            // Determine effect color based on defense type
+            let color = 0xff0000;
+            let particleTexture = 'pixel';
+            
+            switch (defenseType) {
+              case 'ABS': // Ice Mage
+                color = 0x66ccff;
+                break;
+              case 'NOOT': // Fire Mage
+                color = 0xff6600;
+                break;
+              case 'wizard':
+                color = 0xff00ff;
+                break;
+              case 'cannon':
+                color = 0xff0000;
+                break;
+            }
+            
+            // Create impact particle
+            const particles = this.add.particles(x, y, particleTexture, {
+              speed: { min: 50, max: 150 },
+              scale: { start: 1, end: 0 },
+              tint: color,
+              blendMode: 'ADD',
+              lifespan: 300,
+              quantity: 15
+            });
+            
+            // Clean up after animation completes
+            this.time.delayedCall(300, () => {
+              particles.destroy();
+            });
+          } catch (error) {
+            console.error("Error creating hit effect:", error);
+          }
+        }
+        
+        createCombatAura() {
+          // ... existing code ...
+        }
+        
+        // Clean up resources when scene is shutdown or destroyed
+        shutdown() {
+          try {
+            console.log("GameScene shutting down, cleaning up resources");
+            
+            // Clean up wave check interval
+            if (this.waveCheckInterval) {
+              this.waveCheckInterval.remove();
+              this.waveCheckInterval = null;
+            }
+            
+            // Clean up any other timers or events
+            if (this.spawnTimer) {
+              this.spawnTimer.remove();
+              this.spawnTimer = null;
+            }
+            
+            if (this.spawnEvent) {
+              this.spawnEvent.remove();
+              this.spawnEvent = null;
+            }
+            
+            // Clean up pointer event listeners
+            if (this.pointerMoveListener) {
+              this.input.off('pointermove', this.pointerMoveListener);
+              this.pointerMoveListener = null;
+            }
+            
+            // Remove any placement UI elements
+            if (this.placementCircle) {
+              this.placementCircle.destroy();
+              this.placementCircle = null;
+            }
+            
+            if (this.placementPreview) {
+              this.placementPreview.destroy();
+              this.placementPreview = null;
+            }
+            
+            if (this.defensePreview) {
+              this.defensePreview.destroy();
+              this.defensePreview = null;
+            }
+            
+            console.log("GameScene resources cleaned up");
+          } catch (error) {
+            console.error("Error in shutdown method:", error);
           }
         }
       }

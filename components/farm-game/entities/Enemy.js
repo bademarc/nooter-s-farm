@@ -58,6 +58,9 @@ export default class Enemy {
       this.stealthDuration = 0; // Tracks stealth duration
       this.stealthCooldown = 6000; // Cooldown between stealth attempts
       this.lastStealthTime = 0; // Last time stealth was activated
+      
+      // Use fox sprite
+      this.spriteKey = 'enemy_fox';
     } else {
       // Base properties - increased health
       this.baseSpeed = 1.5;
@@ -604,27 +607,22 @@ export default class Enemy {
       this.active = false;
       this.visible = false;
       
-      // Remove from enemies array with delay to allow animations to finish
+      // Remove from enemies array immediately
+      if (this.scene && this.scene.enemies) {
+        const index = this.scene.enemies.indexOf(this);
+        if (index !== -1) {
+          this.scene.enemies.splice(index, 1);
+        }
+      }
+      
+      // Still use a delay for visual cleanup
       if (this.scene && this.scene.time && typeof this.scene.time.delayedCall === 'function') {
         this.scene.time.delayedCall(300, () => {
-          if (!this.scene || !this.scene.enemies) return;
-          
-          const index = this.scene.enemies.indexOf(this);
-          if (index !== -1) {
-            this.scene.enemies.splice(index, 1);
-          }
-          
           // Clean up sprites after the delay
           this.cleanupSprites();
         });
       } else {
         // If delayed call is not available, clean up immediately
-        if (this.scene && this.scene.enemies) {
-          const index = this.scene.enemies.indexOf(this);
-          if (index !== -1) {
-            this.scene.enemies.splice(index, 1);
-          }
-        }
         this.cleanupSprites();
       }
     } catch (error) {
@@ -632,6 +630,14 @@ export default class Enemy {
       
       // Fallback cleanup to prevent memory leaks
       this.cleanupSprites();
+      
+      // Emergency removal from the enemies array
+      if (this.scene && this.scene.enemies) {
+        const index = this.scene.enemies.indexOf(this);
+        if (index !== -1) {
+          this.scene.enemies.splice(index, 1);
+        }
+      }
     }
   }
   

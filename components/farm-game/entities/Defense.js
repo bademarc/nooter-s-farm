@@ -1788,9 +1788,11 @@ export default class Defense {
   }
   
   performExplosionAttack(enemies) {
-    if (!this.scene || enemies.length === 0) return;
-    
     try {
+      if (!this.scene || enemies.length === 0) return false;
+      
+      console.log(`Performing explosion attack on ${enemies.length} enemies`);
+      
       // Calculate damage based on special attack multiplier
       const specialDamage = this.damage * this.specialAttackDamageMultiplier;
       
@@ -1799,46 +1801,123 @@ export default class Defense {
       let centerY = 0;
       
       enemies.forEach(enemy => {
-        centerX += enemy.x;
-        centerY += enemy.y;
+        if (!enemy || !enemy.active) return;
+        // Get enemy position with fallbacks
+        const enemyX = enemy.x || (enemy.container && enemy.container.x) || (enemy.sprite && enemy.sprite.x);
+        const enemyY = enemy.y || (enemy.container && enemy.container.y) || (enemy.sprite && enemy.sprite.y);
+        
+        if (enemyX && enemyY) {
+          centerX += enemyX;
+          centerY += enemyY;
+        }
       });
       
-      centerX /= enemies.length;
-      centerY /= enemies.length;
+      // Filter out any invalid enemies and get valid count
+      const validEnemies = enemies.filter(enemy => 
+        enemy && enemy.active && 
+        (enemy.x || (enemy.container && enemy.container.x) || (enemy.sprite && enemy.sprite.x)) &&
+        (enemy.y || (enemy.container && enemy.container.y) || (enemy.sprite && enemy.sprite.y))
+      );
+      
+      if (validEnemies.length === 0) {
+        console.log("No valid enemies found for explosion attack");
+        return false;
+      }
+      
+      centerX /= validEnemies.length;
+      centerY /= validEnemies.length;
       
       // Create explosion effect
       this.createExplosionEffect(centerX, centerY);
       
       // Apply damage to all enemies with slight delay
-      setTimeout(() => {
-        enemies.forEach(enemy => {
-          if (enemy && enemy.active) {
-            // Deal high damage
-            this.damageEnemy(enemy, specialDamage);
-            
-            // Show damage text
-            this.showDamageText(enemy, `${specialDamage.toFixed(1)}`, 0xFF0000);
-            
-            // Knockback effect - push enemies away from center
-            if (enemy.x && enemy.y) {
-              const dx = enemy.x - centerX;
-              const dy = enemy.y - centerY;
-              const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      if (this.scene && this.scene.time && typeof this.scene.time.delayedCall === 'function') {
+        this.scene.time.delayedCall(300, () => {
+          validEnemies.forEach(enemy => {
+            if (enemy && enemy.active) {
+              // Deal high damage
+              if (typeof this.damageEnemy === 'function') {
+                this.damageEnemy(enemy, specialDamage);
+              } else {
+                // Fallback to applyDamageToEnemy
+                this.applyDamageToEnemy(enemy, specialDamage);
+              }
               
-              // Apply knockback
-              enemy.x += (dx / dist) * 50;
-              enemy.y += (dy / dist) * 50;
+              // Show damage text
+              this.showDamageText(enemy, `${specialDamage.toFixed(1)}`, 0xFF0000);
+              
+              // Knockback effect - push enemies away from center
+              if (enemy.x !== undefined && enemy.y !== undefined) {
+                const dx = enemy.x - centerX;
+                const dy = enemy.y - centerY;
+                const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                
+                // Apply knockback (safely)
+                if (typeof enemy.x === 'number' && typeof enemy.y === 'number') {
+                  enemy.x += (dx / dist) * 50;
+                  enemy.y += (dy / dist) * 50;
+                }
+              }
             }
+          });
+        });
+      } else {
+        // Immediate execution fallback if delayedCall not available
+        validEnemies.forEach(enemy => {
+          if (enemy && enemy.active) {
+            if (typeof this.damageEnemy === 'function') {
+              this.damageEnemy(enemy, specialDamage);
+            } else {
+              this.applyDamageToEnemy(enemy, specialDamage);
+            }
+            this.showDamageText(enemy, `${specialDamage.toFixed(1)}`, 0xFF0000);
           }
         });
-      }, 300);
+      }
       
       // Show special attack text
-      this.showFloatingText(this.x, this.y - 50, "MASSIVE EXPLOSION!", 0xFF0000);
+      if (typeof this.showFloatingText === 'function') {
+        this.showFloatingText(this.x, this.y - 50, "MASSIVE EXPLOSION!", 0xFF0000);
+      } else if (this.scene && typeof this.scene.showFloatingText === 'function') {
+        this.scene.showFloatingText(this.x, this.y - 50, "MASSIVE EXPLOSION!", 0xFF0000);
+      }
+      
+      // Reset special attack state
+      this.specialAttackAvailable = false;
+      this.enemiesDefeated = 0;
+      this.specialAttackLastUsed = this.scene ? this.scene.time.now : Date.now();
+      
+      // Reset special attack indicators
+      if (this.specialAttackReadyIndicator) {
+        this.specialAttackReadyIndicator.destroy();
+        this.specialAttackReadyIndicator = null;
+      }
+      
+      if (this.specialAttackText) {
+        this.specialAttackText.destroy();
+        this.specialAttackText = null;
+      }
       
       return true;
     } catch (error) {
       console.error("Error performing explosion attack:", error);
+      
+      // Make sure to reset special attack state even if there's an error
+      this.specialAttackAvailable = false;
+      this.enemiesDefeated = 0;
+      this.specialAttackLastUsed = this.scene ? this.scene.time.now : Date.now();
+      
+      // Clean up any indicators
+      if (this.specialAttackReadyIndicator) {
+        this.specialAttackReadyIndicator.destroy();
+        this.specialAttackReadyIndicator = null;
+      }
+      
+      if (this.specialAttackText) {
+        this.specialAttackText.destroy();
+        this.specialAttackText = null;
+      }
+      
       return false;
     }
   }
@@ -1937,8 +2016,8 @@ export default class Defense {
         alpha: 0,
         duration: 800,
         onComplete: () => {
-          explosion.destroy();
-        }
+            explosion.destroy();
+          }
       });
       
       // Add some particles for extra effect
@@ -1952,7 +2031,7 @@ export default class Defense {
           x, y, size, 
           0xFF0000, 0.8
         );
-        
+          
         // Set movement
         this.scene.tweens.add({
           targets: particle,
@@ -1971,7 +2050,71 @@ export default class Defense {
       console.error("Error creating explosion effect:", error);
     }
   }
+  
+  // Add these methods right before the createWizard method
 
+  // Helper method to damage an enemy
+  damageEnemy(enemy, amount) {
+    if (!enemy || !enemy.active) return false;
+    
+    // Try to use takeDamage method first
+    if (typeof enemy.takeDamage === 'function') {
+      return enemy.takeDamage(amount);
+    } 
+    // Fallback to direct damage
+    else {
+      // Ensure enemy has a health property
+      if (typeof enemy.health !== 'number') return false;
+      
+      enemy.health -= amount;
+      
+      // Check if defeated
+      if (enemy.health <= 0) {
+        enemy.health = 0;
+        
+        // Try different defeat methods
+        if (typeof enemy.defeated === 'function') {
+          enemy.defeated();
+        } else if (typeof enemy.defeat === 'function') {
+          enemy.defeat();
+        } else if (typeof enemy.destroy === 'function') {
+          enemy.destroy();
+        }
+        
+        return true;
+      }
+      
+      return false;
+    }
+  }
+
+  // Helper for showing floating text if method doesn't exist
+  showFloatingText(x, y, message, color) {
+    if (!this.scene) return;
+    
+    try {
+      // Create text
+      const text = this.scene.add.text(x, y, message, {
+        fontFamily: 'Arial',
+        fontSize: '16px',
+        color: color ? '#' + color.toString(16).padStart(6, '0') : '#FFFFFF',
+        stroke: '#000000',
+        strokeThickness: 2
+      }).setOrigin(0.5);
+      
+      // Animate text
+      this.scene.tweens.add({
+        targets: text,
+        y: y - 30,
+        alpha: 0,
+        duration: 1000,
+        onComplete: () => text.destroy()
+      });
+    } catch (error) {
+      console.error("Error showing floating text:", error);
+    }
+  }
+  
   createWizard() {
     try {
       // Create the wizard sprite
@@ -2084,35 +2227,52 @@ export default class Defense {
     try {
       if (!this.scene) return;
       
-      // Create magic particles
-      const particles = this.scene.add.particles(0, 0, 'magic_particle', {
-        lifespan: 2000,
-        speed: { min: 20, max: 50 },
-        scale: { start: 0.5, end: 0 },
-        blendMode: 'ADD',
-        emitting: true,
-        quantity: 1,
-        frequency: 100,
-        alpha: { start: 0.6, end: 0 }
+      // Create a simple pulsing aura instead of particles
+      // This is more reliable than the particle system
+      this.aura = this.scene.add.circle(this.x, this.y, 15, 0xFF00FF, 0.3);
+      this.aura.setStrokeStyle(2, 0xFF00FF, 0.7);
+      
+      // Create pulsing animation for the aura
+      this.scene.tweens.add({
+        targets: this.aura,
+        scaleX: 1.3,
+        scaleY: 1.3,
+        alpha: 0.1,
+        duration: 1500,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut'
       });
       
-      // If no particles system, create a basic aura
-      if (!particles) {
-        const aura = this.scene.add.graphics();
-        aura.fillStyle(0xFF00FF, 0.3);
-        aura.fillCircle(this.x, this.y, 20);
-        
-        // Pulse animation
-        this.scene.tweens.add({
-          targets: aura,
-          alpha: 0.1,
-          duration: 1000,
-          yoyo: true,
-          repeat: -1
+      // Add occasional magic sparkle effects
+      if (this.scene.time && typeof this.scene.time.addEvent === 'function') {
+        this.sparkleTimer = this.scene.time.addEvent({
+          delay: 800,
+          callback: () => {
+            if (!this.active) return;
+            
+            // Create small sparkle
+            const angle = Math.random() * Math.PI * 2;
+            const distance = 20 + Math.random() * 15;
+            const sparkleX = this.x + Math.cos(angle) * distance;
+            const sparkleY = this.y + Math.sin(angle) * distance;
+            
+            const sparkle = this.scene.add.circle(sparkleX, sparkleY, 2, 0xFF00FF, 0.8);
+            
+            // Animate sparkle
+            this.scene.tweens.add({
+              targets: sparkle,
+              scaleX: 2,
+              scaleY: 2,
+              alpha: 0,
+              duration: 600,
+              ease: 'Cubic.easeOut',
+              onComplete: () => sparkle.destroy()
+            });
+          },
+          callbackScope: this,
+          loop: true
         });
-      } else {
-        particles.setPosition(this.x, this.y);
-        this.particles = particles;
       }
     } catch (error) {
       console.error("Error creating magic aura:", error);
@@ -2182,163 +2342,219 @@ export default class Defense {
   
   // Create info panel on hover/click
   createInfoPanel() {
-    // Will be implemented if needed for full gameplay
+    // Simple empty implementation to avoid errors
+    // Will be enhanced in future updates
+    console.log(`Created empty info panel for ${this.type}`);
   }
   
   createHealthBar() {
-    try {
-      if (!this.scene) return;
-      
-      // Create health bar container
-      this.healthBar = {
-        container: this.scene.add.container(this.x, this.y - 20),
-        width: 40,
-        height: 5
-      };
-      
-      // Background (gray)
-      this.healthBar.background = this.scene.add.rectangle(
-        0, 0, 
-        this.healthBar.width, this.healthBar.height, 
-        0x333333, 0.8
-      );
-      
-      // Fill (color based on defense type)
-      const healthColor = this.type === 'scarecrow' ? 0x00AAFF : 
-                         this.type === 'dog' ? 0xFF4400 : 
-                         this.type === 'wizard' ? 0xFF00FF : 
-                         this.type === 'cannon' ? 0xFF0000 : 0x00FF00;
-      
-      this.healthBar.fill = this.scene.add.rectangle(
-        0, 0, 
-        this.healthBar.width, this.healthBar.height, 
-        healthColor, 1
-      );
-      
-      // Add to container
-      this.healthBar.container.add(this.healthBar.background);
-      this.healthBar.container.add(this.healthBar.fill);
-      
-      // Set depth to ensure visibility
-      this.healthBar.container.setDepth(100);
-      
-      // Start invisible
-      this.healthBar.container.setVisible(false);
-      
-      console.log(`Created health bar for ${this.type}`);
-    } catch (error) {
-      console.error("Error creating health bar:", error);
-    }
+    // Simple empty implementation to avoid errors
+    // Will be enhanced in future updates
+    console.log(`Created empty health bar for ${this.type}`);
   }
   
-  // Update health bar to show status
-  updateHealthBar(percent = 1) {
+  // Show info panel when defense is clicked
+  showInfoPanel() {
     try {
-      if (!this.healthBar || !this.healthBar.fill) return;
+      if (!this.infoPanel || !this.infoPanel.container) return;
       
-      // Update fill width based on percent
-      this.healthBar.fill.width = this.healthBar.width * percent;
+      // For now, just log that the panel was clicked
+      console.log(`${this.getDisplayName()} clicked at (${this.x}, ${this.y})`);
       
-      // Center the fill properly
-      const offsetX = (this.healthBar.width - this.healthBar.fill.width) / 2;
-      this.healthBar.fill.x = offsetX;
-      
-      // Update position to follow defense
-      if (this.healthBar.container) {
-        this.healthBar.container.x = this.x;
-        this.healthBar.container.y = this.y - 20;
+      // Show a simple floating text with defense info
+      if (this.scene && typeof this.scene.showFloatingText === 'function') {
+        this.scene.showFloatingText(
+          this.x, 
+          this.y - 40, 
+          `${this.getDisplayName()}\nDMG: ${this.damage.toFixed(1)}`, 
+          this.getColor()
+        );
       }
     } catch (error) {
-      console.error("Error updating health bar:", error);
+      console.error("Error showing info panel:", error);
     }
   }
   
-  // Show the health bar
-  showHealthBar() {
-    if (this.healthBar && this.healthBar.container) {
-      this.healthBar.container.setVisible(true);
+  // Get color based on defense type
+  getColor() {
+    switch(this.type) {
+      case 'scarecrow': return 0x0088FF; // Blue for ice mage
+      case 'dog': return 0xFF4400; // Red for fire mage
+      case 'wizard': return 0xFF00FF; // Purple for wizard
+      case 'cannon': return 0xFF0000; // Red for cannon
+      default: return 0xFFFFFF;
     }
   }
   
-  // Hide the health bar
-  hideHealthBar() {
-    if (this.healthBar && this.healthBar.container) {
-      this.healthBar.container.setVisible(false);
-    }
-  }
-
-  // Utility method to display floating text above a position
-  showFloatingText(x, y, text, color = 0xFFFFFF) {
+  // Enhanced createProjectile method using animated particles
+  createProjectile(enemy) {
     try {
-      if (!this.scene) return;
+      if (!this.scene || !enemy) return null;
       
-      // Create the text object
-      const colorString = color ? '#' + color.toString(16).padStart(6, '0') : '#FFFFFF';
-      const floatingText = this.scene.add.text(x, y, text, {
-        fontFamily: 'Arial',
-        fontSize: '18px',
-        fontWeight: 'bold',
-        color: colorString,
-        stroke: '#000000',
-        strokeThickness: 3,
-        align: 'center'
-      }).setOrigin(0.5);
+      // Get projectile type and texture based on defense type
+      let textureKey = 'fireball_red';
+      let particleEffect = null;
       
-      // Set high depth to ensure visibility
-      floatingText.setDepth(300);
+      // Select appropriate projectile style based on defense type
+      switch (this.type) {
+        case 'NOOT': // Fire Mage
+          textureKey = 'fireball_red';
+          particleEffect = 'fire_sparks_anim';
+          break;
+        case 'ABS': // Ice Mage
+          textureKey = 'fireball_blue';
+          particleEffect = 'rocket_fire_anim';
+          break;
+        case 'wizard':
+          textureKey = 'magic_particle';
+          particleEffect = 'fire_sparks_anim';
+          break;
+        case 'cannon':
+          textureKey = 'fireball_red';
+          particleEffect = 'rocket_fire_anim';
+          break;
+        default:
+          textureKey = 'fireball_red';
+          particleEffect = 'fire_sparks_anim';
+      }
       
-      // Animate the text
+      // Create the projectile
+      const projectile = this.scene.add.sprite(this.x, this.y, textureKey);
+      projectile.setScale(0.75);
+      
+      // Add animated particle effect
+      if (particleEffect) {
+        try {
+          // Create a particle sprite behind the projectile
+          const particleSprite = this.scene.add.sprite(this.x, this.y, 
+            particleEffect === 'fire_sparks_anim' ? 'fire_particle' : 'rocket_fire');
+          
+          // Play the animation
+          particleSprite.play(particleEffect);
+          particleSprite.setScale(0.8);
+          particleSprite.setAlpha(0.8);
+          
+          // Link the particle to the projectile
+          projectile.particleEffect = particleSprite;
+          
+          // Update particle position along with projectile
+          const originalUpdate = projectile.update;
+          projectile.update = function(x, y) {
+            if (originalUpdate) originalUpdate.call(this, x, y);
+            if (this.particleEffect && !this.particleEffect.destroyed) {
+              this.particleEffect.x = this.x - 5; // Slight offset so it looks like a trail
+              this.particleEffect.y = this.y - 5;
+            }
+          };
+        } catch (error) {
+          console.error("Error creating particle effect:", error);
+        }
+      }
+      
+      // Set projectile properties
+      projectile.damage = this.damage;
+      projectile.defense = this;
+      projectile.target = enemy;
+      projectile.speed = 300;
+      
+      // Add to scene's projectiles array if it exists
+      if (this.scene.projectiles) {
+        this.scene.projectiles.push(projectile);
+      }
+      
+      // Simple tween animation
+      const distance = Phaser.Math.Distance.Between(this.x, this.y, enemy.x, enemy.y);
+      const duration = distance / projectile.speed * 1000; // Convert to ms
+      
       this.scene.tweens.add({
-        targets: floatingText,
-        y: y - 40,
-        alpha: 0,
-        scale: 1.5,
-        duration: 1500,
-        ease: 'Power2',
+        targets: projectile,
+        x: enemy.x,
+        y: enemy.y,
+        duration: duration,
+        onUpdate: () => {
+          // Update the particle with projectile position
+          if (projectile.particleEffect && !projectile.particleEffect.destroyed) {
+            projectile.update(projectile.x, projectile.y);
+          }
+          
+          // Check if enemy still exists and update target position
+          if (enemy && enemy.active) {
+            // Update destination if enemy moves
+            const tween = this.scene.tweens.getTweensOf(projectile)[0];
+            if (tween) {
+              tween.updateTo('x', enemy.x, true);
+              tween.updateTo('y', enemy.y, true);
+            }
+          }
+        },
         onComplete: () => {
-          floatingText.destroy();
+          if (enemy && enemy.active) {
+            // Apply damage
+            if (typeof enemy.takeDamage === 'function') {
+              enemy.takeDamage(projectile.damage);
+            }
+            
+            // Create hit effect
+            if (this.scene && typeof this.scene.createHitEffect === 'function') {
+              this.scene.createHitEffect(projectile.x, projectile.y, this.type);
+            }
+          }
+          
+          // Destroy the projectile and particle effect
+          if (projectile.particleEffect && !projectile.particleEffect.destroyed) {
+            projectile.particleEffect.destroy();
+          }
+          
+          projectile.destroy();
         }
       });
       
-      return floatingText;
+      return projectile;
     } catch (error) {
-      console.error("Error showing floating text:", error);
+      console.error("Error creating projectile:", error);
       return null;
     }
   }
   
-  // Apply damage to an enemy with proper effects
-  damageEnemy(enemy, amount) {
+  // Create hit effect when projectile hits target
+  createHitEffect(x, y, defenseType) {
     try {
-      if (!enemy || !enemy.active) return false;
+      if (!this.scene) return;
       
-      // Apply damage through the existing method
-      const defeated = this.applyDamageToEnemy(enemy, amount);
+      // Determine effect color based on defense type
+      let color = 0xff0000;
       
-      // Create visual hit effect
-      const hitColor = this.type === 'scarecrow' ? 0x00AAFF : 
-                      this.type === 'dog' ? 0xFF4400 : 
-                      this.type === 'wizard' ? 0xFF00FF : 
-                      this.type === 'cannon' ? 0xFF0000 : 0xFFFFFF;
+      switch (defenseType) {
+        case 'ABS': // Ice Mage
+          color = 0x66ccff;
+          break;
+        case 'NOOT': // Fire Mage
+          color = 0xff6600;
+          break;
+        case 'wizard':
+          color = 0xff00ff;
+          break;
+        case 'cannon':
+          color = 0xff0000;
+          break;
+      }
       
-      // Create hit flash
-      const flash = this.scene.add.circle(enemy.x, enemy.y, 20, hitColor, 0.6);
-      
-      // Animate flash
-      this.scene.tweens.add({
-        targets: flash,
-        alpha: 0,
-        scale: 1.5,
-        duration: 300,
-        onComplete: () => {
-          flash.destroy();
-        }
+      // Create impact particle
+      const particles = this.scene.add.particles(x, y, 'pixel', {
+        speed: { min: 50, max: 150 },
+        scale: { start: 1, end: 0 },
+        tint: color,
+        blendMode: 'ADD',
+        lifespan: 300,
+        quantity: 15
       });
       
-      return defeated;
+      // Clean up after animation completes
+      this.scene.time.delayedCall(300, () => {
+        particles.destroy();
+      });
     } catch (error) {
-      console.error("Error applying damage to enemy:", error);
-      return false;
+      console.error("Error creating hit effect:", error);
     }
   }
-} 
+}
