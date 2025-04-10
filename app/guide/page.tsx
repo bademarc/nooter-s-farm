@@ -20,7 +20,7 @@ export default function GuidePage() {
               Return to Farm
             </Button>
           </Link>
-          <h1 className="text-2xl font-fantasy text-gradient-gold">Farville Alpha Guide</h1>
+          <h1 className="text-2xl font-fantasy text-gradient-gold">Nooter's Farm Guide</h1>
         </div>
 
         {/* Main content container */}
@@ -28,7 +28,7 @@ export default function GuidePage() {
           <div className="flex flex-wrap items-center gap-4 mb-6">
             <BookOpen className="w-8 h-8 text-highlight-gold" />
             <h2 className="font-fantasy text-xl text-gradient-gold">
-              🌱 Farm in Farville's Alpha! 🌱
+              🌱 Farm in Nooter's Farm! 🌱
             </h2>
           </div>
           
@@ -201,7 +201,7 @@ export default function GuidePage() {
           <section id="social" className="mb-10">
             <h3 className="text-xl font-fantasy text-gradient mb-4 flex items-center">
               <Users className="w-6 h-6 mr-2 text-highlight-blue" />
-              📱 4. Farcaster Social Interactions
+              📱 4. Social Interactions
             </h3>
             <div className="bg-card/60 p-4 rounded-lg mb-4">
               <p className="mb-3">Stay connected and collaborate with your friends through Farcaster!</p>

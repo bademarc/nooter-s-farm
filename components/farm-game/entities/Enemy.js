@@ -61,8 +61,153 @@ export default class Enemy {
       
       // Use fox sprite
       this.spriteKey = 'enemy_fox';
+    } else if (type === 'slime') {
+      this.baseSpeed = 1.2; // Slower but resilient
+      this.baseHealth = 6; // Higher health
+      this.baseValue = 7;
+      
+      this.speed = this.baseSpeed + (currentWave * 0.1);
+      this.health = Math.floor(this.baseHealth * waveScaling);
+      this.maxHealth = this.health;
+      this.value = Math.floor(this.baseValue * waveScaling);
+      
+      this.color = 0x22cc22; // Green for slime
+      this.weakAgainst = 'trap';
+      this.weaknessMultiplier = 1.8;
+      
+      // Slime special ability: regeneration
+      this.canRegenerate = true;
+      this.regenAmount = 0.05;
+    } else if (type === 'ghost') {
+      this.baseSpeed = 1.8;
+      this.baseHealth = 4;
+      this.baseValue = 9;
+      
+      this.speed = this.baseSpeed + (currentWave * 0.15);
+      this.health = Math.floor(this.baseHealth * waveScaling);
+      this.maxHealth = this.health;
+      this.value = Math.floor(this.baseValue * waveScaling);
+      
+      this.color = 0xaaaaff; // Light blue for ghost
+      this.weakAgainst = 'wizard';
+      this.weaknessMultiplier = 2.0;
+      
+      // Ghost special ability: phase through defenses
+      this.canPhase = true;
+      this.phaseCooldown = 5000;
+      this.lastPhaseTime = 0;
+    } else if (type === 'skeleton') {
+      this.baseSpeed = 1.6;
+      this.baseHealth = 5;
+      this.baseValue = 10;
+      
+      this.speed = this.baseSpeed + (currentWave * 0.12);
+      this.health = Math.floor(this.baseHealth * waveScaling);
+      this.maxHealth = this.health;
+      this.value = Math.floor(this.baseValue * waveScaling);
+      
+      this.color = 0xf0f0f0; // Off-white for skeleton
+      this.weakAgainst = 'wizard';
+      this.weaknessMultiplier = 1.7;
+    } else if (type === 'bat') {
+      this.baseSpeed = 2.2; // Fast
+      this.baseHealth = 2; // Low health
+      this.baseValue = 6;
+      
+      this.speed = this.baseSpeed + (currentWave * 0.22);
+      this.health = Math.floor(this.baseHealth * waveScaling);
+      this.maxHealth = this.health;
+      this.value = Math.floor(this.baseValue * waveScaling);
+      
+      this.color = 0x442244; // Dark purple for bat
+      this.weakAgainst = 'scarecrow';
+      this.weaknessMultiplier = 1.9;
+      
+      // Bat special ability: erratic movement
+      this.movementVariance = 0.3;
+    } else if (type === 'spider') {
+      this.baseSpeed = 1.9;
+      this.baseHealth = 3;
+      this.baseValue = 8;
+      
+      this.speed = this.baseSpeed + (currentWave * 0.18);
+      this.health = Math.floor(this.baseHealth * waveScaling);
+      this.maxHealth = this.health;
+      this.value = Math.floor(this.baseValue * waveScaling);
+      
+      this.color = 0x442222; // Dark red for spider
+      this.weakAgainst = 'dog';
+      this.weaknessMultiplier = 1.8;
+    } else if (type === 'wolf') {
+      this.baseSpeed = 2.3; // Very fast
+      this.baseHealth = 6; // Good health
+      this.baseValue = 14;
+      
+      this.speed = this.baseSpeed + (currentWave * 0.2);
+      this.health = Math.floor(this.baseHealth * waveScaling);
+      this.maxHealth = this.health;
+      this.value = Math.floor(this.baseValue * waveScaling);
+      
+      this.color = 0x664422; // Brown for wolf
+      this.weakAgainst = 'fence';
+      this.weaknessMultiplier = 1.7;
+    } else if (type === 'snake') {
+      this.baseSpeed = 1.7;
+      this.baseHealth = 4;
+      this.baseValue = 9;
+      
+      this.speed = this.baseSpeed + (currentWave * 0.15);
+      this.health = Math.floor(this.baseHealth * waveScaling);
+      this.maxHealth = this.health;
+      this.value = Math.floor(this.baseValue * waveScaling);
+      
+      this.color = 0x88aa22; // Yellow-green for snake
+      this.weakAgainst = 'dog';
+      this.weaknessMultiplier = 1.6;
+    } else if (type === 'goblin') {
+      this.baseSpeed = 1.8;
+      this.baseHealth = 7;
+      this.baseValue = 15;
+      
+      this.speed = this.baseSpeed + (currentWave * 0.16);
+      this.health = Math.floor(this.baseHealth * waveScaling);
+      this.maxHealth = this.health;
+      this.value = Math.floor(this.baseValue * waveScaling);
+      
+      this.color = 0x22aa22; // Green for goblin
+      this.weakAgainst = 'fence';
+      this.weaknessMultiplier = 1.5;
+    } else if (type === 'dragon') {
+      this.baseSpeed = 1.4; // Slower but very powerful
+      this.baseHealth = 12; // Very high health
+      this.baseValue = 25; // High reward
+      
+      this.speed = this.baseSpeed + (currentWave * 0.1);
+      this.health = Math.floor(this.baseHealth * waveScaling);
+      this.maxHealth = this.health;
+      this.value = Math.floor(this.baseValue * waveScaling);
+      
+      this.color = 0xcc2222; // Red for dragon
+      this.weakAgainst = 'wizard';
+      this.weaknessMultiplier = 1.4;
+      
+      // Dragon special ability: fire resistance
+      this.fireResistance = 0.5;
+    } else if (type === 'demon') {
+      this.baseSpeed = 1.7;
+      this.baseHealth = 10;
+      this.baseValue = 20;
+      
+      this.speed = this.baseSpeed + (currentWave * 0.14);
+      this.health = Math.floor(this.baseHealth * waveScaling);
+      this.maxHealth = this.health;
+      this.value = Math.floor(this.baseValue * waveScaling);
+      
+      this.color = 0x880000; // Dark red for demon
+      this.weakAgainst = 'wizard';
+      this.weaknessMultiplier = 1.6;
     } else {
-      // Base properties - increased health
+      // Default properties for rabbit or unknown types
       this.baseSpeed = 1.5;
       this.baseHealth = 4; // Increased from 2
       this.baseValue = 6;
@@ -113,8 +258,51 @@ export default class Enemy {
       // Use boss sprite for boss waves
       this.spriteKey = 'enemy_boss';
     } else {
-      // Use regular enemy sprites
-      this.spriteKey = type === 'bird' ? 'enemy_bird' : 'enemy_rabbit';
+      // Assign the appropriate sprite key based on enemy type
+      switch (type) {
+        case 'bird':
+          this.spriteKey = 'enemy_bird';
+          break;
+        case 'rabbit':
+          this.spriteKey = 'enemy_rabbit';
+          break;
+        case 'fox':
+          this.spriteKey = 'enemy_fox';
+          break;
+        case 'slime':
+          this.spriteKey = 'enemy_slime';
+          break;
+        case 'ghost':
+          this.spriteKey = 'enemy_ghost';
+          break;
+        case 'skeleton':
+          this.spriteKey = 'enemy_skeleton';
+          break;
+        case 'bat':
+          this.spriteKey = 'enemy_bat';
+          break;
+        case 'spider':
+          this.spriteKey = 'enemy_spider';
+          break;
+        case 'wolf':
+          this.spriteKey = 'enemy_wolf';
+          break;
+        case 'snake':
+          this.spriteKey = 'enemy_snake';
+          break;
+        case 'goblin':
+          this.spriteKey = 'enemy_goblin';
+          break;
+        case 'dragon':
+          this.spriteKey = 'enemy_dragon';
+          break;
+        case 'demon':
+          this.spriteKey = 'enemy_demon';
+          break;
+        default:
+          this.spriteKey = 'enemy_rabbit';
+          break;
+      }
     }
     
     // Create visual representation using sprite images with fallback
@@ -151,8 +339,26 @@ export default class Enemy {
         this.container = scene.add.container(x, y);
         this.container.setDepth(100);
         
+        // Get appropriate emoji based on enemy type
+        let emoji = '❓';
+        switch (type) {
+          case 'bird': emoji = '🐦'; break;
+          case 'rabbit': emoji = '🐰'; break;
+          case 'fox': emoji = '🦊'; break;
+          case 'slime': emoji = '🟢'; break;
+          case 'ghost': emoji = '👻'; break;
+          case 'skeleton': emoji = '💀'; break;
+          case 'bat': emoji = '🦇'; break;
+          case 'spider': emoji = '🕷️'; break;
+          case 'wolf': emoji = '🐺'; break;
+          case 'snake': emoji = '🐍'; break;
+          case 'goblin': emoji = '👹'; break;
+          case 'dragon': emoji = '🐉'; break;
+          case 'demon': emoji = '😈'; break;
+        }
+        
         // Create a larger, more visible sprite or icon
-        this.typeText = scene.add.text(0, 0, type === 'bird' ? '🐦' : '🐰', {
+        this.typeText = scene.add.text(0, 0, emoji, {
           fontSize: '36px', // Larger text
           fontFamily: 'Arial',
           stroke: '#000000',

@@ -37,7 +37,8 @@ import {
   Settings,
   Hammer,
   Rocket,
-  Shield
+  Shield,
+  Package
 } from "lucide-react";
 import { TokenSwap } from "@/components/token-swap";
 import { Switch } from "@/components/ui/switch";
@@ -2084,6 +2085,13 @@ export function Farm() {
           >
             <Users className="h-4 w-4" />
             Social
+          </button>
+          <button 
+            onClick={() => window.location.href = '/farm-cases'}
+            className={`px-4 py-2 flex items-center justify-center gap-2 text-white/80 hover:text-white`}
+          >
+            <Package className="h-4 w-4" />
+            Cases
           </button>
           <button 
             onClick={() => setActiveTab("profile")}

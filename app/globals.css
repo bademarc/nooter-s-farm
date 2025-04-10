@@ -10,6 +10,7 @@
 body {
   font-family: "Arial", "Helvetica", sans-serif;
   @apply bg-background text-foreground;
+  background-color: #000000;
 }
 
 @layer utilities {
@@ -107,6 +108,13 @@ body {
   /* Removed redundant @layer base and applied border only to specific elements */
   html, body, div, section, article {
     @apply border-border;
+  }
+
+  html, body {
+    background-color: #000000;
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
   }
 
   .bg-brown-700 {
@@ -646,9 +654,10 @@ body {
 }
 
 .noot-theme {
-  background-color: var(--noot-bg);
+  background-color: #000000;
   color: var(--noot-text);
   font-family: 'Space Mono', monospace;
+  min-height: 100vh;
 }
 
 .noot-theme h1,
@@ -663,16 +672,16 @@ body {
 }
 
 .noot-card {
-  background-color: var(--noot-accent);
-  border: 1px solid var(--noot-border);
+  background-color: #111111;
+  border: 2px solid var(--noot-border);
   border-radius: 0;
   overflow: hidden;
 }
 
 .noot-button {
-  background-color: var(--noot-accent);
+  background-color: #000000;
   color: var(--noot-text);
-  border: 1px solid var(--noot-border);
+  border: 2px solid #f9d77a;
   border-radius: 0;
   padding: 0.5rem 1rem;
   font-weight: 600;
@@ -680,8 +689,8 @@ body {
 }
 
 .noot-button:hover {
-  background-color: var(--noot-text);
-  color: var(--noot-bg);
+  background-color: #f9d77a;
+  color: #000000;
 }
 
 .noot-input {
@@ -1200,4 +1209,16 @@ canvas {
   .noot-text {
     font-size: 0.875rem;
   }
+}
+
+/* Add these styles at the end of the file */
+
+/* Hide scrollbars for the case opening animation */
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-none {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;     /* Firefox */
 }

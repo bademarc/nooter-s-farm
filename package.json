@@ -45,6 +45,7 @@
     "date-fns": "3.0.0",
     "embla-carousel-react": "8.5.1",
     "ethers": "^6.13.5",
+    "framer-motion": "^12.6.3",
     "input-otp": "1.4.1",
     "js-cookie": "^3.0.5",
     "lottie-react": "^2.4.1",

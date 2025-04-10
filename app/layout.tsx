@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import "./globals.css"
 import { Toaster } from "react-hot-toast"
 import { Inter } from "next/font/google"
+import { Providers } from "./providers"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -12,7 +13,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning className="bg-black">
       <head>
         <link rel="icon" href="/favicon.ico" />
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
@@ -20,8 +21,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="theme-color" content="#000000" />
       </head>
-      <body className={inter.className} suppressHydrationWarning>
-        {children}
+      <body className={`${inter.className} bg-black text-white`} suppressHydrationWarning>
+        <Providers>
+          {children}
+        </Providers>
         
         {/* SVG filters for colorblind modes - hidden visually */}
         <div className="svg-filters" aria-hidden="true">

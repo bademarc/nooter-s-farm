@@ -85,7 +85,8 @@ if (isBrowser) {
             wave: 1,
             farmCoins: 0,
             clickDamage: 0.5,
-            canPlant: true
+            canPlant: true,
+            autoWave: true // Add auto-wave functionality by default
           };
           this.enemiesSpawned = 0;
           this.totalEnemiesInWave = 0;
@@ -186,6 +187,18 @@ if (isBrowser) {
             this.load.image('enemy_rabbit', 'characters/craftpix-net-459799-free-low-level-monsters-pixel-icons-32x32/PNG/Transperent/Icon2.png');
             this.load.image('enemy_boss', 'characters/craftpix-net-459799-free-low-level-monsters-pixel-icons-32x32/PNG/Transperent/Icon3.png');
             this.load.image('enemy_fox', 'characters/craftpix-net-459799-free-low-level-monsters-pixel-icons-32x32/PNG/Transperent/Icon9.png');
+            
+            // Load additional enemy skins
+            this.load.image('enemy_slime', 'characters/craftpix-net-459799-free-low-level-monsters-pixel-icons-32x32/PNG/Transperent/Icon4.png');
+            this.load.image('enemy_ghost', 'characters/craftpix-net-459799-free-low-level-monsters-pixel-icons-32x32/PNG/Transperent/Icon5.png');
+            this.load.image('enemy_skeleton', 'characters/craftpix-net-459799-free-low-level-monsters-pixel-icons-32x32/PNG/Transperent/Icon6.png');
+            this.load.image('enemy_bat', 'characters/craftpix-net-459799-free-low-level-monsters-pixel-icons-32x32/PNG/Transperent/Icon7.png');
+            this.load.image('enemy_spider', 'characters/craftpix-net-459799-free-low-level-monsters-pixel-icons-32x32/PNG/Transperent/Icon8.png');
+            this.load.image('enemy_wolf', 'characters/craftpix-net-459799-free-low-level-monsters-pixel-icons-32x32/PNG/Transperent/Icon10.png');
+            this.load.image('enemy_snake', 'characters/craftpix-net-459799-free-low-level-monsters-pixel-icons-32x32/PNG/Transperent/Icon11.png');
+            this.load.image('enemy_goblin', 'characters/craftpix-net-459799-free-low-level-monsters-pixel-icons-32x32/PNG/Transperent/Icon12.png');
+            this.load.image('enemy_dragon', 'characters/craftpix-net-459799-free-low-level-monsters-pixel-icons-32x32/PNG/Transperent/Icon14.png');
+            this.load.image('enemy_demon', 'characters/craftpix-net-459799-free-low-level-monsters-pixel-icons-32x32/PNG/Transperent/Icon15.png');
             
             // Load advanced defense textures
             this.load.image('wizard_idle', '/defense/wizard idle.png');
@@ -847,6 +860,11 @@ if (isBrowser) {
         
         // Show Next Wave button after a delay
         showNextWaveButton() {
+          // Don't show button if auto-wave is enabled
+          if (this.gameState?.autoWave) {
+            return;
+          }
+        
           // Show button if it was hidden
           if (this.nextWaveButton) {
             this.nextWaveButton.button.visible = true;
@@ -869,25 +887,54 @@ if (isBrowser) {
         // Start the game
         startGame() {
           try {
-            console.log("Starting game");
+            console.log("Start button clicked - starting game");
             
-            this.gameState.isActive = true;
-            this.gameState.wave = 1;
-            this.updateWaveText();
-            
-            // Start first wave
-            this.startWave();
-            
-            // Hide start button
+            // Remove start button
             if (this.startButton) {
               this.startButton.destroy();
               this.startText.destroy();
             }
             
-            // Show next wave button immediately
-            this.showNextWaveButton();
+            // Set game to active state
+            this.gameState.isActive = true;
+            this.gameState.wave = 1;
             
-            console.log("Game started");
+            // Set autoWave to true by default to ensure waves always progress automatically
+            this.gameState.autoWave = true;
+            
+            this.updateWaveText();
+            
+            // Reset game stats
+            this.gameState.score = 0;
+            this.gameState.lives = 3;
+            this.gameState.clickDamage = 0.5;
+            
+            // Reset farm coins to 50 to start with
+            this.gameState.farmCoins = 50;
+            this.updateFarmCoins(0); // Update display
+            
+            // Reset the upgrade system if it exists
+            if (this.upgradeSystem) {
+              this.upgradeSystem.destroy();
+              this.upgradeSystem = new this.UpgradeClass(this);
+              this.upgradeSystem.createUI();
+            }
+            
+            // Start first wave - IMPORTANT: must be after setting gameState
+            this.startWave();
+            
+            // Only show next wave button if auto-wave is disabled 
+            if (!this.gameState.autoWave) {
+              this.showNextWaveButton();
+            } else {
+              // Hide next wave button if it exists when auto-wave is enabled
+              if (this.nextWaveButton) {
+                this.nextWaveButton.button.visible = false;
+                this.nextWaveButton.text.visible = false;
+              }
+            }
+            
+            console.log("Game started successfully");
           } catch (error) {
             console.error("Error starting game:", error);
           }
@@ -1400,10 +1447,11 @@ if (isBrowser) {
             // Set game to active state
             this.gameState.isActive = true;
             this.gameState.wave = 1;
-            this.updateWaveText();
             
-            // Start first wave
-            this.startWave();
+            // Set autoWave to true by default to ensure waves always progress automatically
+            this.gameState.autoWave = true;
+            
+            this.updateWaveText();
             
             // Reset game stats
             this.gameState.score = 0;
@@ -1419,6 +1467,20 @@ if (isBrowser) {
               this.upgradeSystem.destroy();
               this.upgradeSystem = new this.UpgradeClass(this);
               this.upgradeSystem.createUI();
+            }
+            
+            // Start first wave - IMPORTANT: must be after setting gameState
+            this.startWave();
+            
+            // Only show next wave button if auto-wave is disabled 
+            if (!this.gameState.autoWave) {
+              this.showNextWaveButton();
+            } else {
+              // Hide next wave button if it exists when auto-wave is enabled
+              if (this.nextWaveButton) {
+                this.nextWaveButton.button.visible = false;
+                this.nextWaveButton.text.visible = false;
+              }
             }
             
             console.log("Game started successfully");
@@ -1555,23 +1617,72 @@ if (isBrowser) {
           const types = {
             bird: { weight: 70, minWave: 1 },
             rabbit: { weight: 70, minWave: 1 },
-            fox: { weight: 0, minWave: 3 }
+            fox: { weight: 0, minWave: 3 },
+            slime: { weight: 0, minWave: 2 },
+            ghost: { weight: 0, minWave: 4 },
+            skeleton: { weight: 0, minWave: 5 },
+            bat: { weight: 0, minWave: 2 },
+            spider: { weight: 0, minWave: 3 },
+            wolf: { weight: 0, minWave: 6 },
+            snake: { weight: 0, minWave: 4 },
+            goblin: { weight: 0, minWave: 7 },
+            dragon: { weight: 0, minWave: 10 },
+            demon: { weight: 0, minWave: 8 }
           };
           
           // Adjust weights based on wave progression
+          if (wave >= 2) {
+            // Start introducing slimes and bats at wave 2
+            types.slime.weight = Math.min(30, (wave - 1) * 15);
+            types.bat.weight = Math.min(30, (wave - 1) * 15);
+          }
+          
           if (wave >= 3) {
-            // Start introducing foxes at wave 3
+            // Start introducing foxes and spiders at wave 3
             types.fox.weight = Math.min(40, (wave - 2) * 10);
+            types.spider.weight = Math.min(35, (wave - 2) * 8);
+          }
+          
+          if (wave >= 4) {
+            // Start introducing ghosts and snakes at wave 4
+            types.ghost.weight = Math.min(30, (wave - 3) * 10);
+            types.snake.weight = Math.min(35, (wave - 3) * 12);
           }
           
           if (wave >= 5) {
+            // Start introducing skeletons at wave 5
+            types.skeleton.weight = Math.min(40, (wave - 4) * 10);
             // More foxes in later waves
             types.fox.weight = Math.min(50, 30 + (wave - 5) * 5);
+          }
+          
+          if (wave >= 6) {
+            // Start introducing wolves at wave 6
+            types.wolf.weight = Math.min(45, (wave - 5) * 15);
+          }
+          
+          if (wave >= 7) {
+            // Start introducing goblins at wave 7
+            types.goblin.weight = Math.min(45, (wave - 6) * 15);
+          }
+          
+          if (wave >= 8) {
+            // Start introducing demons at wave 8
+            types.demon.weight = Math.min(40, (wave - 7) * 12);
+          }
+          
+          if (wave >= 10) {
+            // Start introducing dragons at wave 10
+            types.dragon.weight = Math.min(50, (wave - 9) * 20);
           }
           
           // Boss waves have more advanced enemies
           if (wave % 5 === 0) {
             types.fox.weight += 20;
+            
+            if (wave >= 5) types.skeleton.weight += 25;
+            if (wave >= 10) types.dragon.weight += 30;
+            if (wave >= 8) types.demon.weight += 25;
           }
           
           return types;
@@ -1619,9 +1730,9 @@ if (isBrowser) {
             return;
           }
           
-          // Create a random enemy type
-          const enemyTypes = ['rabbit', 'bird'];
-          const enemyType = enemyTypes[Math.floor(Math.random() * enemyTypes.length)];
+          // Use our weighted enemy type selection system
+          const enemyTypes = this.calculateEnemyTypes(this.gameState.wave);
+          const enemyType = this.selectEnemyType(enemyTypes);
           
           // Calculate spawn position (from the right side) - randomize both X and Y
           const spawnY = Phaser.Math.Between(100, 500);
@@ -1695,51 +1806,12 @@ if (isBrowser) {
               return;
             }
             
-            // If no type specified, choose randomly based on wave
+            // If no type specified, use our enemy type selection system
             if (!type) {
               const wave = this.gameState.wave;
-              
-              // Determine enemy type probabilities based on wave number
-              let birdChance = 0.6;
-              let rabbitChance = 0.4;
-              let foxChance = 0;
-              
-              // Adjust probabilities based on wave number
-              if (wave >= 3) {
-                birdChance = 0.5;
-                rabbitChance = 0.3;
-                foxChance = 0.2;
-              }
-              if (wave >= 6) {
-                birdChance = 0.4;
-                rabbitChance = 0.3;
-                foxChance = 0.3;
-              }
-              if (wave >= 9) {
-                birdChance = 0.3;
-                rabbitChance = 0.3;
-                foxChance = 0.4;
-              }
-              
-              // Special case for boss waves
-              if (wave % 5 === 0) {
-                foxChance += 0.1; // Increase fox chance on boss waves
-                // Adjust other chances to maintain total of 1.0
-                const total = birdChance + rabbitChance + foxChance;
-                birdChance = birdChance / total;
-                rabbitChance = rabbitChance / total;
-                foxChance = foxChance / total;
-              }
-              
-              // Determine type based on calculated probabilities
-              const roll = Math.random();
-              if (roll < birdChance) {
-                type = 'bird';
-              } else if (roll < birdChance + rabbitChance) {
-                type = 'rabbit';
-              } else {
-                type = 'fox';
-              }
+              // Use the calculateEnemyTypes and selectEnemyType methods for more variety
+              const enemyTypes = this.calculateEnemyTypes(wave);
+              type = this.selectEnemyType(enemyTypes);
             }
             
             // Calculate spawn position (always start from right edge)
@@ -1809,7 +1881,7 @@ if (isBrowser) {
             }
             
             // Clear any remaining enemies (this ensures we don't get stuck)
-            if (this.enemies && this.enemies.length > 0) {
+            if (this.enemies.length > 0) {
               console.log(`Clearing ${this.enemies.length} remaining enemies`);
               
               // Destroy all remaining enemies
@@ -1830,24 +1902,21 @@ if (isBrowser) {
             this.gameState.wave++;
             this.updateWaveText();
             
-            // Delay before starting next wave to ensure clean transition
-            this.time.delayedCall(500, () => {
-              // Start next wave
-              this.startWave();
-              
-              console.log(`Forced start of wave ${this.gameState.wave}`);
-              
-              // Show notification
-              this.showFloatingText(400, 300, `WAVE ${this.gameState.wave} STARTING!`, 0xFFFF00);
-              
-              // Flash the screen to indicate wave change
-              const flash = this.add.rectangle(400, 300, 800, 600, 0xFFFF00, 0.3);
-              this.tweens.add({
-                targets: flash,
-                alpha: 0,
-                duration: 500,
-                onComplete: () => flash.destroy()
-              });
+            // Start next wave immediately (no delay)
+            this.startWave();
+
+            console.log(`Forced start of wave ${this.gameState.wave}`);
+            
+            // Show notification
+            this.showFloatingText(400, 300, `WAVE ${this.gameState.wave} STARTING!`, 0xFFFF00);
+            
+            // Flash the screen to indicate wave change
+            const flash = this.add.rectangle(400, 300, 800, 600, 0xFFFF00, 0.3);
+            this.tweens.add({
+              targets: flash,
+              alpha: 0,
+              duration: 500,
+              onComplete: () => flash.destroy()
             });
           } catch (error) {
             console.error("Error forcing next wave:", error);
@@ -1859,12 +1928,10 @@ if (isBrowser) {
               this.enemies = [];
               this.gameState.wave++;
               
-              // Try to start next wave after a short delay
-              this.time.delayedCall(1000, () => {
-                if (this.gameState && this.gameState.isActive) {
-                  this.startWave();
-                }
-              });
+              // Start next wave immediately without delay
+              if (this.gameState && this.gameState.isActive) {
+                this.startWave();
+              }
             } catch (recoveryError) {
               console.error("Emergency wave recovery failed:", recoveryError);
             }
@@ -2530,45 +2597,114 @@ if (isBrowser) {
               this.enemies = this.enemies.filter(enemy => enemy != null && enemy !== undefined);
             }
             
-            // Check for wave completion
+            // Debug info to track wave state
+            if (this.gameState?.isActive) {
+              if (time % 5000 < 16) { // roughly every 5 seconds
+                console.log(`Wave check: enemies=${this.enemies?.length || 0}, spawning=${this.isSpawningEnemies}, spawned=${this.enemiesSpawned || 0}/${this.totalEnemiesInWave || 0}, inProgress=${this.waveInProgress}`);
+              }
+            }
+            
+            // First condition: All enemies defeated, no more spawning
+            const allEnemiesDefeated = 
+              this.gameState?.isActive && 
+              Array.isArray(this.enemies) && 
+              this.enemies.length === 0 && 
+              !this.isSpawningEnemies &&
+              this.enemiesSpawned >= this.totalEnemiesInWave &&
+              this.waveInProgress;
+            
+            // Second condition: Wave complete but next wave not started
+            const waveCompleteButStuck = 
+              this.gameState?.isActive && 
+              Array.isArray(this.enemies) && 
+              this.enemies.length === 0 && 
+              !this.isSpawningEnemies &&
+              !this.waveInProgress && 
+              this.gameState.wave > 0;
+              
+            // Third condition: Game active but no wave in progress
+            const gameActiveButNoWave = 
+              this.gameState?.isActive &&
+              !this.waveInProgress &&
+              !this.isSpawningEnemies &&
+              this.gameState.wave > 0 &&
+              (this.enemies?.length === 0 || !this.enemies);
+              
+            if (allEnemiesDefeated || waveCompleteButStuck || gameActiveButNoWave) {
+              console.log("Wave completion check: no enemies left, forcing next wave", {
+                allEnemiesDefeated,
+                waveCompleteButStuck,
+                gameActiveButNoWave
+              });
+              
+              // Ensure we log if waves are stuck
+              if (waveCompleteButStuck) {
+                console.warn("Detected stuck wave, forcing next wave start");
+              }
+              
+              try {
+                this.forceNextWave();
+                console.log("Next wave forced successfully");
+              } catch (forceError) {
+                console.error("Error forcing next wave:", forceError);
+                
+                // Emergency recovery - try to reset the wave state
+                try {
+                  console.log("Attempting emergency wave reset");
+                  this.waveInProgress = false;
+                  this.isSpawningEnemies = false;
+                  this.gameState.wave++;
+                  
+                  // Try to start next wave with delay
+                  setTimeout(() => {
+                    if (this.gameState?.isActive && typeof this.startWave === 'function') {
+                      this.startWave();
+                    }
+                  }, 1000);
+                } catch (emergencyError) {
+                  console.error("Emergency recovery failed:", emergencyError);
+                }
+              }
+            }
+            
+            // Legacy wave completion code - can be kept as a backup
             if (this.waveInProgress && 
                 this.enemies.length === 0 && 
                 this.enemiesSpawned >= this.totalEnemiesInWave && 
                 !this.isSpawningEnemies) {
               this.waveInProgress = false;
               
-              // Add a bit of delay before next wave
-              this.time.delayedCall(2000, () => {
-                if (this.gameState.isActive) {
-                  // Reward player for completing the wave
-                  const waveReward = Math.ceil(this.gameState.wave * 15); // 15 coins per wave level
-                  this.updateFarmCoins(waveReward);
-                  this.showFloatingText(400, 300, `Wave ${this.gameState.wave} Complete! +${waveReward} coins`, 0x00FF00);
-                  
-                  // Start next wave
-                  this.gameState.wave++;
-                  this.updateWaveText();
-                  
-                  // Check for defense unlocks after wave increase
-                  this.updateAdvancedDefenseButtons();
-                  
-                  // Start the next wave after a delay
-                  this.time.delayedCall(3000, () => {
-                    if (this.gameState.isActive) {
-                      this.startWave();
-                    }
-                  });
+              // Reward player for completing the wave immediately (no delay)
+              const waveReward = Math.ceil(this.gameState.wave * 15); // 15 coins per wave level
+              this.updateFarmCoins(waveReward);
+              this.showFloatingText(400, 300, `Wave ${this.gameState.wave} Complete! +${waveReward} coins`, 0x00FF00);
+              
+              // Start next wave
+              this.gameState.wave++;
+              this.updateWaveText();
+              
+              // Check for defense unlocks after wave increase
+              this.updateAdvancedDefenseButtons();
+              
+              // Start the next wave or show button immediately depending on autoWave setting
+              if (this.gameState.isActive) {
+                if (this.gameState.autoWave) {
+                  console.log("Auto-starting next wave");
+                  this.startWave();
+                } else {
+                  console.log("Waiting for manual wave start");
+                  // Show next wave button if not using auto-wave
+                  this.showNextWaveButton();
                 }
-              });
+              }
             }
             
-            // Safety check: if game is active but no wave is in progress and we're not spawning enemies
-            // This catches situations where the wave transition got stuck
+            // Safety check: run on every frame instead of occasionally
             if (this.gameState?.isActive && 
+                this.gameState?.autoWave && // Only auto-start if autoWave is enabled
                 !this.waveInProgress && 
                 !this.isSpawningEnemies && 
-                this.enemies?.length === 0 &&
-                time % 5000 < 16) { // Only check occasionally
+                this.enemies?.length === 0) {
               console.log("Safety check: game active but no wave in progress - forcing next wave");
               
               // Start next wave
@@ -3743,5 +3879,5 @@ if (isBrowser) {
   });
 }
 
-// Export the GameScene
+// Export using ES modules
 export { GameScene }; 

@@ -21,11 +21,14 @@ import {
   Moon,
   Coins,
   Gamepad2,
-  ArrowRightLeft
+  ArrowRightLeft,
+  Users,
+  Wallet
 } from "lucide-react";
 import { Leaderboard } from "./leaderboard";
 import { ethers, Contract } from "ethers";
 import { AccessibilityMenu } from "./accessibility-menu";
+import Link from "next/link";
 
 // Add type declarations for window.gameFunctions
 declare global {
@@ -128,6 +131,14 @@ export const Sidebar = ({
   const handleTabClick = (tab: string) => {
     setActiveTab(tab);
     
+    if (tab === "farm") {
+      setActiveView('farm');
+    } else if (tab === "market") {
+      setActiveView('market');
+    } else if (tab === "social") {
+      setActiveView('social');
+    }
+    
     if (window.innerWidth < 768) {
       setShowSidebar(false);
     }
@@ -210,6 +221,38 @@ export const Sidebar = ({
             <ArrowRightLeft className="h-4 w-4 mr-2" />
             <span>Token Swap</span>
             {activeTab === "swap" && (
+              <ChevronRight className="h-4 w-4 ml-auto" />
+            )}
+          </Button>
+
+          <Button
+            variant={activeTab === "market" ? "default" : "ghost"}
+            className={`w-full justify-start rounded-none border border-transparent noot-text ${activeTab === "market" ? "bg-white text-black hover:bg-white/90" : "text-white/80 hover:bg-[#222] hover:text-white"}`}
+            onClick={() => handleTabClick("market")}
+          >
+            <ShoppingBag className="h-4 w-4 mr-2" />
+            <span>Market</span>
+            {activeTab === "market" && (
+              <ChevronRight className="h-4 w-4 ml-auto" />
+            )}
+          </Button>
+          
+          <Link
+            href="/farm-cases"
+            className="flex w-full items-center rounded-none border border-transparent px-3 py-2 text-white/80 hover:bg-[#222] hover:text-white noot-text"
+          >
+            <Package className="h-4 w-4 mr-2" />
+            <span>Farm Cases</span>
+          </Link>
+          
+          <Button
+            variant={activeTab === "social" ? "default" : "ghost"}
+            className={`w-full justify-start rounded-none border border-transparent noot-text ${activeTab === "social" ? "bg-white text-black hover:bg-white/90" : "text-white/80 hover:bg-[#222] hover:text-white"}`}
+            onClick={() => handleTabClick("social")}
+          >
+            <Users className="h-4 w-4 mr-2" />
+            <span>Social</span>
+            {activeTab === "social" && (
               <ChevronRight className="h-4 w-4 ml-auto" />
             )}
           </Button>

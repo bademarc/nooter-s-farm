@@ -141,24 +141,21 @@ function forceNextWave() {
     this.gameState.wave++;
     this.updateWaveText();
     
-    // Delay before starting next wave to ensure clean transition
-    this.time.delayedCall(500, () => {
-      // Start next wave
-      this.startWave();
-      
-      console.log(`Forced start of wave ${this.gameState.wave}`);
-      
-      // Show notification
-      this.showFloatingText(400, 300, `WAVE ${this.gameState.wave} STARTING!`, 0xFFFF00);
-      
-      // Flash the screen to indicate wave change
-      const flash = this.add.rectangle(400, 300, 800, 600, 0xFFFF00, 0.3);
-      this.tweens.add({
-        targets: flash,
-        alpha: 0,
-        duration: 500,
-        onComplete: () => flash.destroy()
-      });
+    // Start next wave immediately (no delay)
+    this.startWave();
+
+    console.log(`Forced start of wave ${this.gameState.wave}`);
+    
+    // Show notification
+    this.showFloatingText(400, 300, `WAVE ${this.gameState.wave} STARTING!`, 0xFFFF00);
+    
+    // Flash the screen to indicate wave change
+    const flash = this.add.rectangle(400, 300, 800, 600, 0xFFFF00, 0.3);
+    this.tweens.add({
+      targets: flash,
+      alpha: 0,
+      duration: 500,
+      onComplete: () => flash.destroy()
     });
   } catch (error) {
     console.error("Error forcing next wave:", error);
@@ -170,12 +167,10 @@ function forceNextWave() {
       this.enemies = [];
       this.gameState.wave++;
       
-      // Try to start next wave after a short delay
-      this.time.delayedCall(1000, () => {
-        if (this.gameState && this.gameState.isActive) {
-          this.startWave();
-        }
-      });
+      // Start next wave immediately without delay
+      if (this.gameState && this.gameState.isActive) {
+        this.startWave();
+      }
     } catch (recoveryError) {
       console.error("Emergency wave recovery failed:", recoveryError);
     }
@@ -192,8 +187,7 @@ function updateSafetyChecks(time) {
   if (this.gameState.isActive && 
       !this.waveInProgress && 
       !this.isSpawningEnemies && 
-      this.enemies.length === 0 &&
-      time % 5000 < 16) { // Only check occasionally
+      this.enemies.length === 0) {
     console.log("Safety check: game active but no wave in progress - forcing next wave");
     
     // Start next wave

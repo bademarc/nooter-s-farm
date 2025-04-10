@@ -248,6 +248,43 @@ export const GameProvider = ({ children }: GameProviderProps) => {
     return 0;
   })
 
+  // Add a specific debugging effect to ensure proper initialization from localStorage
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const savedCoins = localStorage.getItem("farm-coins");
+        console.log("[CoinFix] Initial load check - State:", farmCoins, "Storage:", savedCoins ? JSON.parse(savedCoins) : "Not found");
+        
+        if (savedCoins) {
+          const parsedCoins = JSON.parse(savedCoins);
+          // Check if there's a mismatch between state and localStorage
+          if (parsedCoins !== farmCoins) {
+            console.log(`[CoinFix] Fixing mismatch: ${farmCoins} → ${parsedCoins}`);
+            setFarmCoins(parsedCoins);
+          }
+        } else {
+          // If no localStorage value exists, initialize it
+          console.log("[CoinFix] No localStorage value, setting initial coins");
+          localStorage.setItem("farm-coins", JSON.stringify(farmCoins));
+        }
+      } catch (error) {
+        console.error("[CoinFix] Error during localStorage sync:", error);
+      }
+    }
+  }, []); // Empty dependency array to run only once on mount
+
+  // Add manual debug function to global scope for emergency fixes
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      // @ts-ignore - Adding debug method to window
+      window.__fixCoins = (amount: number) => {
+        console.log(`[CoinFix] Manual fix requested: ${amount}`);
+        setFarmCoins(amount);
+        localStorage.setItem("farm-coins", JSON.stringify(amount));
+      };
+    }
+  }, []);
+
   const [playerLevel, setPlayerLevel] = useState<number>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("player-level")
@@ -626,41 +663,58 @@ export const GameProvider = ({ children }: GameProviderProps) => {
   };
 
   const addFarmCoins = (amount: number) => {
-    // Wrap in setTimeout to ensure this doesn't run during render
-    // This breaks the infinite update cycle
-    setTimeout(() => {
-    setFarmCoins((prev) => {
-      const newAmount = prev + amount
-      return newAmount < 0 ? 0 : newAmount // Prevent farmCoins from going below zero
-    })
-      
+    // Direct state update without setTimeout to avoid race conditions
+    const currentCoins = farmCoins; // Capture current value
+    const newAmount = currentCoins + amount;
+    const safeNewAmount = newAmount < 0 ? 0 : newAmount; // Prevent negative coins
+    
+    // Update state immediately
+    setFarmCoins(safeNewAmount);
+    
+    // Immediately update localStorage to ensure persistence
+    if (typeof window !== "undefined") {
+      localStorage.setItem("farm-coins", JSON.stringify(safeNewAmount));
+      console.log(`Coins updated: ${currentCoins} → ${safeNewAmount} (Δ${amount})`);
+    }
+    
+    // Handle additional effects for positive amounts
     if (amount > 0) {
-        addCoinsEarned(amount)
-        
-        const xpGained = Math.floor(amount / 2); // Use the same XP calculation as farm component
-        
-        let newXp = playerXp + xpGained;
-        let currentXpToNext = playerXpToNext;
-        let currentLevel = playerLevel;
-        let didLevelUp = false;
-        
-        if (newXp >= currentXpToNext) {
-          currentLevel += 1;
-          didLevelUp = true;
-          newXp = newXp - currentXpToNext;
-          currentXpToNext = Math.floor(currentXpToNext * 1.5);
-        }
-        
-        if (didLevelUp) {
-          setPlayerLevel(currentLevel);
-          setPlayerXpToNext(currentXpToNext);
-          setFarmCoins(prev => prev + (currentLevel * 10));
-          addCoinsEarned(currentLevel * 10);
-        }
-        
-        setPlayerXp(newXp);
+      addCoinsEarned(amount);
+      
+      const xpGained = Math.floor(amount / 2); // Use the same XP calculation as farm component
+      
+      let newXp = playerXp + xpGained;
+      let currentXpToNext = playerXpToNext;
+      let currentLevel = playerLevel;
+      let didLevelUp = false;
+      
+      if (newXp >= currentXpToNext) {
+        currentLevel += 1;
+        didLevelUp = true;
+        newXp = newXp - currentXpToNext;
+        currentXpToNext = Math.floor(currentXpToNext * 1.5);
       }
-    }, 0);
+      
+      if (didLevelUp) {
+        setPlayerLevel(currentLevel);
+        setPlayerXpToNext(currentXpToNext);
+        
+        // Add level-up bonus coins
+        const levelBonus = currentLevel * 10;
+        setFarmCoins(prev => {
+          const withBonus = prev + levelBonus;
+          // Update localStorage with the bonus immediately
+          if (typeof window !== "undefined") {
+            localStorage.setItem("farm-coins", JSON.stringify(withBonus));
+          }
+          return withBonus;
+        });
+        
+        addCoinsEarned(levelBonus);
+      }
+      
+      setPlayerXp(newXp);
+    }
   }
 
   const expandFarm = () => {
