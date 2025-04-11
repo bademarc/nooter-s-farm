@@ -1,6 +1,13 @@
 import { useState, useRef } from "react"
 import confetti from "canvas-confetti"
 
+// Add type declaration for the window object
+declare global {
+  interface Window {
+    __debugSelectedItem?: Item;
+  }
+}
+
 // Define item type
 export interface Item {
   id: string
@@ -9,6 +16,7 @@ export interface Item {
   rarity: "Common" | "Uncommon" | "Rare" | "Epic" | "Legendary"
   value: number
   icon: string
+  image?: string
 }
 
 // Define case type
@@ -139,10 +147,22 @@ export function useCaseSimulator() {
     
     // Select an item using our custom selection function
     const item = selectItem(selectedCase.items, rarityDistribution)
+    
+    // Log the selected item before setting it in state
+    console.log("ITEM SELECTED:", item.name, item.id);
+    
+    // Store the selected item in the state - this is important!
+    // This exact same item will be used throughout the animation and for rewards
     setSelectedItem(item)
     
-    // Start the scrolling animation
-    setIsScrolling(true)
+    // Make a global reference to ensure no other item gets substituted
+    window.__debugSelectedItem = item;
+    
+    // Start the scrolling animation after a brief delay to ensure state is set
+    setTimeout(() => {
+      console.log("SCROLLING STARTED with item:", item.name, item.id);
+      setIsScrolling(true)
+    }, 100)
     
     // The scrolling animation component will call handleScrollingComplete when done
   }
@@ -154,25 +174,36 @@ export function useCaseSimulator() {
     
     // Only proceed with these actions if we have a selected item
     if (selectedItem) {
+      console.log("ANIMATION COMPLETE with item:", selectedItem.name, selectedItem.id);
+      
+      // Compare with the original selected item from the global reference
+      if (window.__debugSelectedItem && window.__debugSelectedItem.id !== selectedItem.id) {
+        console.error("MISMATCH DETECTED - Expected:", window.__debugSelectedItem.name, 
+                    "Got:", selectedItem.name);
+      }
+      
+      // Ensure we're working with the current selected item from state
+      const currentItem = selectedItem;
+      
       // Add opened item to history
-      setOpenHistory(prev => [selectedItem, ...prev])
+      setOpenHistory(prev => [currentItem, ...prev])
       
       // Show confetti for Rare or better items
-      if (selectedItem.rarity !== "Common" && selectedItem.rarity !== "Uncommon") {
+      if (currentItem.rarity !== "Common" && currentItem.rarity !== "Uncommon") {
         triggerConfetti()
       }
       
       // Reward player with coins based on item value
       // Only if the item's value is greater than 0 and we have a reward callback
-      if (selectedItem.value > 0 && rewardCoinsRef.current) {
+      if (currentItem.value > 0 && rewardCoinsRef.current) {
         // Calculate reward - set this to the item's value
-        const rewardAmount = Math.floor(selectedItem.value)
+        const rewardAmount = Math.floor(currentItem.value)
         
         // Add coins to player's balance using the stored callback
         rewardCoinsRef.current(rewardAmount)
         
         // Log the reward for debugging
-        console.log(`Rewarded ${rewardAmount} coins for ${selectedItem.name}`)
+        console.log(`Rewarded ${rewardAmount} coins for ${currentItem.name}`)
       }
     }
   }

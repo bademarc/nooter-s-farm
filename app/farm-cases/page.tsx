@@ -8,7 +8,8 @@ import {
   FileText, 
   ArrowRight, 
   Sparkles,
-  ArrowLeft
+  ArrowLeft,
+  Leaf
 } from "lucide-react"
 
 export default function FarmCasesPage() {
@@ -32,7 +33,30 @@ export default function FarmCasesPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 max-w-6xl mx-auto">
+        {/* Noot Case Card */}
+        <Link 
+          href="/farm-cases/noot-case"
+          className="noot-card group overflow-hidden border-2 hover:border-yellow-500"
+          onMouseEnter={() => setHoverState('noot')}
+          onMouseLeave={() => setHoverState(null)}
+        >
+          <div className="p-6 flex flex-col items-center text-center h-full">
+            <div className="mb-4 w-16 h-16 bg-black rounded-full flex items-center justify-center border-2 border-yellow-500">
+              <Leaf className="w-8 h-8 text-yellow-500" />
+            </div>
+            <h2 className="noot-title text-xl mb-2">Noot Case</h2>
+            <p className="text-white/70 mb-4 flex-grow">
+              Open special farm-themed cases to collect rare items for your farm
+            </p>
+            <div className="flex items-center justify-center mt-2 border border-yellow-500 bg-black py-2 px-4 group-hover:bg-yellow-500 group-hover:text-black transition-all">
+              <span className="text-sm font-bold flex items-center">
+                OPEN NOOT CASES <ArrowRight className="w-4 h-4 ml-1 transition-transform group-hover:translate-x-1" />
+              </span>
+            </div>
+          </div>
+        </Link>
+        
         {/* Case Battle Card */}
         <Link 
           href="/farm-cases/case-battle"

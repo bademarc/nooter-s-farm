@@ -38,7 +38,8 @@ import {
   Hammer,
   Rocket,
   Shield,
-  Package
+  Package,
+  Leaf
 } from "lucide-react";
 import { TokenSwap } from "@/components/token-swap";
 import { Switch } from "@/components/ui/switch";
@@ -2092,6 +2093,13 @@ export function Farm() {
           >
             <Package className="h-4 w-4" />
             Cases
+          </button>
+          <button 
+            onClick={() => window.location.href = '/farm-cases/noot-case'}
+            className={`px-4 py-2 flex items-center justify-center gap-2 text-white/80 hover:text-white`}
+          >
+            <Leaf className="h-4 w-4" />
+            Noot Case
           </button>
           <button 
             onClick={() => setActiveTab("profile")}

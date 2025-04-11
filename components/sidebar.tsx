@@ -23,7 +23,8 @@ import {
   Gamepad2,
   ArrowRightLeft,
   Users,
-  Wallet
+  Wallet,
+  Briefcase
 } from "lucide-react";
 import { Leaderboard } from "./leaderboard";
 import { ethers, Contract } from "ethers";
@@ -137,6 +138,8 @@ export const Sidebar = ({
       setActiveView('market');
     } else if (tab === "social") {
       setActiveView('social');
+    } else if (tab === "case-simulator") {
+      window.location.href = '/case-simulator';
     }
     
     if (window.innerWidth < 768) {
@@ -185,6 +188,18 @@ export const Sidebar = ({
             <Home className="h-4 w-4 mr-2" />
             <span>Farm</span>
             {activeTab === "farm" && (
+              <ChevronRight className="h-4 w-4 ml-auto" />
+            )}
+          </Button>
+          
+          <Button 
+            variant={activeTab === "case-simulator" ? "default" : "ghost"} 
+            className={`w-full justify-start rounded-none border border-transparent noot-text ${activeTab === "case-simulator" ? "bg-white text-black hover:bg-white/90" : "text-white/80 hover:bg-[#222] hover:text-white"}`}
+            onClick={() => handleTabClick("case-simulator")}
+          >
+            <Briefcase className="h-4 w-4 mr-2" />
+            <span>Case Simulator</span>
+            {activeTab === "case-simulator" && (
               <ChevronRight className="h-4 w-4 ml-auto" />
             )}
           </Button>

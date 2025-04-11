@@ -16,6 +16,14 @@ const nextConfig = {
   reactStrictMode: false, // Disable strict mode to prevent double-mounting issues with Phaser
   // Always use static export to avoid server components issues
   output: 'export',
+  // Add trailingSlash to improve compatibility with static hosting
+  trailingSlash: true,
+  // Set standard page extensions
+  pageExtensions: ['js', 'jsx', 'ts', 'tsx'],
+  // Configure empty pages directory
+  exportPathMap: async function () {
+    return {}; // Empty object means no Pages Router routes
+  },
   webpack: (config, { isServer }) => {
     // Fix compatibility issues with ethers and other libraries
     config.resolve.fallback = {
@@ -62,12 +70,6 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  // Remove experimental features that might cause issues
-  // experimental: {
-  //   webpackBuildWorker: true,
-  //   parallelServerCompiles: true,
-  //   parallelServerBuildTraces: true,
-  // },
   // Set basePath for GitHub Pages if needed
   ...(process.env.GITHUB_ACTIONS ? {
     basePath: '/nooter-s-farm',
