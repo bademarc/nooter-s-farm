@@ -1,0 +1,9 @@
+This directory will contain wallet icons for:
+- MetaMask
+- AGW Wallet
+- Privy CrossApp Connect
+
+Please add SVG or PNG images for each wallet with appropriate filenames:
+- metamask-logo.svg
+- agw-logo.svg
+- privy-logo.svg 

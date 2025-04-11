@@ -1,9 +1,8 @@
-"use client";
-
+// This should be a server component since it uses generateStaticParams
 import dynamic from 'next/dynamic';
 import { Suspense } from 'react';
 
-// Import the Case Opening component with SSR disabled
+// Import the client-side case opening component with SSR disabled
 const CaseOpening = dynamic(() => import('@/components/case-simulator/case-opening'), {
   ssr: false,
   loading: () => (

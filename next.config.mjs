@@ -21,9 +21,6 @@ const nextConfig = {
   // Set standard page extensions
   pageExtensions: ['js', 'jsx', 'ts', 'tsx'],
   // Configure empty pages directory
-  exportPathMap: async function () {
-    return {}; // Empty object means no Pages Router routes
-  },
   webpack: (config, { isServer }) => {
     // Fix compatibility issues with ethers and other libraries
     config.resolve.fallback = {

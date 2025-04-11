@@ -1,0 +1,19 @@
+{
+  "name": "77-Bit",
+  "description": "77-Bit NFT for Abstract Testnet",
+  "image": "ipfs://YOUR_IMAGE_CID_HERE/77-Bit.jpg",
+  "attributes": [
+    {
+      "trait_type": "Type",
+      "value": "Bronze"
+    },
+    {
+      "trait_type": "Collection",
+      "value": "Nooters Farm"
+    },
+    {
+      "trait_type": "Supply",
+      "value": 1000
+    }
+  ]
+} 

@@ -2,6 +2,8 @@
 
 import { ReactNode, useEffect } from "react"
 import { GameProvider } from "@/context/game-context"
+import { AbstractWalletProvider } from '@abstract-foundation/agw-react'
+import { abstractTestnet } from 'viem/chains'
 
 export function Providers({ children }: { children: ReactNode }) {
   // Add debug logging for context initialization
@@ -10,8 +12,10 @@ export function Providers({ children }: { children: ReactNode }) {
   }, []);
   
   return (
-    <GameProvider>
-      {children}
-    </GameProvider>
+    <AbstractWalletProvider chain={abstractTestnet}>
+      <GameProvider>
+        {children}
+      </GameProvider>
+    </AbstractWalletProvider>
   )
 } 
