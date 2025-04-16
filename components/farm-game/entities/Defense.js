@@ -42,24 +42,6 @@ export default class Defense {
       this.aoeRadius = 60; // Radius of area effect for fire mage
       this.aoeDamageMultiplier = 0.8; // AoE damage is 80% of direct damage
       this.createNOOTMage();
-    } else if (type === 'wizard') {
-      this.cost = 100;
-      this.range = 300; // Longer range for wizard
-      this.cooldown = 1500; // 1.5 second cooldown
-      this.damage = 3.0; // High damage
-      this.targetTypes = ['bird', 'rabbit']; // Can target all enemy types
-      this.aoeRadius = 120; // Larger area of effect
-      this.aoeDamageMultiplier = 0.9; // Strong area effect
-      this.createWizard();
-    } else if (type === 'cannon') {
-      this.cost = 150;
-      this.range = 350; // Very long range for cannon
-      this.cooldown = 2000; // 2 second cooldown
-      this.damage = 5.0; // Very high damage
-      this.targetTypes = ['bird', 'rabbit']; // Can target all enemy types
-      this.aoeRadius = 150; // Largest area of effect
-      this.aoeDamageMultiplier = 1.0; // Full damage in area
-      this.createCannon();
     }
     
     // Store the last time this defense attacked
@@ -73,7 +55,7 @@ export default class Defense {
     // Create cooldown text indicator
     this.createCooldownText();
     
-    const defenseName = type === 'scarecrow' ? 'ABS ice mage' : type === 'dog' ? 'NOOT fire mage' : type === 'wizard' ? 'Wizard' : type === 'cannon' ? 'Cannon' : type.charAt(0).toUpperCase() + type.slice(1);
+    const defenseName = type === 'scarecrow' ? 'ABS ice mage' : 'NOOT fire mage';
     console.log(`Created ${defenseName} at ${x}, ${y} with range ${this.range}`);
     
     // Apply any existing upgrades
@@ -124,7 +106,7 @@ export default class Defense {
   
   createCooldownText() {
     // Create a text object to display cooldown
-    const color = this.type === 'scarecrow' ? '#0088FF' : this.type === 'dog' ? '#FF4400' : this.type === 'wizard' ? '#FF00FF' : this.type === 'cannon' ? '#FF0000' : '#FFFFFF';
+    const color = this.type === 'scarecrow' ? '#0088FF' : '#FF4400';
     this.cooldownText = this.scene.add.text(this.x, this.y - 30, '', {
       fontFamily: 'Arial',
       fontSize: '14px',
@@ -140,7 +122,7 @@ export default class Defense {
     this.cooldownText.visible = false;
     
     // Create ready indicator
-    const readyColor = this.type === 'scarecrow' ? 0x0088FF : this.type === 'dog' ? 0xFF4400 : this.type === 'wizard' ? 0xFF00FF : this.type === 'cannon' ? 0xFF0000 : 0xFFFFFF;
+    const readyColor = this.type === 'scarecrow' ? 0x0088FF : 0xFF4400;
     this.readyIndicator = this.scene.add.circle(this.x, this.y - 25, 5, readyColor, 0.8);
     this.readyIndicator.setStrokeStyle(1, 0xFFFFFF);
     this.readyIndicator.setDepth(300);
@@ -212,7 +194,7 @@ export default class Defense {
       
       // Foreground arc for indicating progress - starts empty
       this.cooldownIndicator = this.scene.add.graphics();
-      this.cooldownIndicator.fillStyle(this.type === 'scarecrow' ? 0x66CCFF : this.type === 'dog' ? 0xFF6644 : this.type === 'wizard' ? 0xFF00FF : this.type === 'cannon' ? 0xFF0000 : 0xFFFFFF, 1);
+      this.cooldownIndicator.fillStyle(this.type === 'scarecrow' ? 0x66CCFF : 0xFF6644, 1);
       this.cooldownContainer.add(this.cooldownIndicator);
       
       // Add this to our container if it exists
@@ -249,7 +231,7 @@ export default class Defense {
       // Only draw if actually on cooldown
       if (remainingPercent > 0) {
         // Draw cooldown arc - we draw clockwise from top, so it depletes clockwise
-        this.cooldownIndicator.fillStyle(this.type === 'scarecrow' ? 0x66CCFF : this.type === 'dog' ? 0xFF6644 : this.type === 'wizard' ? 0xFF00FF : this.type === 'cannon' ? 0xFF0000 : 0xFFFFFF, 1);
+        this.cooldownIndicator.fillStyle(this.type === 'scarecrow' ? 0x66CCFF : 0xFF6644, 1);
         
         // Calculate end angle based on remaining percent (radians)
         // 0 at top, increases clockwise
@@ -421,9 +403,9 @@ export default class Defense {
     // Force enemy to be active - this ensures we can attack even if the enemy was previously marked inactive
     enemy.active = true;
     
-    // Ensure enemy has proper position values
-    const enemyX = enemy.x || (enemy.sprite ? enemy.sprite.x : 0) || (enemy.container ? enemy.container.x : 0);
-    const enemyY = enemy.y || (enemy.sprite ? enemy.sprite.y : 0) || (enemy.container ? enemy.container.y : 0);
+    // Ensure enemy has proper position values - PRIORITIZE CONTAINER
+    const enemyX = (enemy.container ? enemy.container.x : (enemy.sprite ? enemy.sprite.x : enemy.x)) || 0;
+    const enemyY = (enemy.container ? enemy.container.y : (enemy.sprite ? enemy.sprite.y : enemy.y)) || 0;
     
     // Safety check - if we can't determine enemy position, skip
     if (!enemyX || !enemyY) {
@@ -431,8 +413,8 @@ export default class Defense {
     }
     
     // Calculate distance
-    const dx = enemyX - this.x;
-    const dy = enemyY - this.y;
+    const dx = this.x - enemyX;
+    const dy = this.y - enemyY;
     const distance = Math.sqrt(dx * dx + dy * dy);
     
     // Check if enemy is within range
@@ -447,19 +429,11 @@ export default class Defense {
     // This prevents enemies getting stuck at 1 HP
     if (enemy.health <= 2) {
       // GUARANTEED KILL: Set damage higher than remaining health
-      damageAmount = enemy.health * 10; // Increased dramatically to ensure kill
+      damageAmount = enemy.health * 5; // Increased from 3
       
       // Force health to zero for critical hits
       if (enemy.health <= 1.1) {
-        console.log(`Critical hit on enemy with ${enemy.health.toFixed(1)} health! Forcing to 0.`);
         enemy.health = 0; // Force to zero
-        
-        // Force call to defeated if available
-        if (typeof enemy.defeated === 'function') {
-          enemy.defeated();
-          this.showDamageText(enemy, "CRITICAL!", 0xFFFF00);
-          return true;
-        }
       }
       
       // Display critical hit message
@@ -467,7 +441,7 @@ export default class Defense {
     }
     
     // Apply damage to primary target
-    const defeated = this.applyDamageToEnemy(enemy, damageAmount);
+    this.applyDamageToEnemy(enemy, damageAmount);
     
     // Apply area of effect damage to nearby enemies
     if (this.type === 'scarecrow') {
@@ -541,32 +515,26 @@ export default class Defense {
       
       // Show spell effect
       this.showDamageText(enemy, `${damageAmount.toFixed(1)}`, 0xFF4400);
-    } else {
-      // Generic attack effect
-      this.createAttackEffect(enemy);
     }
     
-    return defeated;
+    // Add simple attack effect
+    this.createAttackEffect(enemy);
+    
+    return true;
   }
   
   // Apply damage to a single enemy
   applyDamageToEnemy(enemy, damageAmount) {
     try {
-      // Safety check
-      if (!enemy || !enemy.active) {
-        console.log("Cannot damage inactive enemy");
-        return false;
-      }
-      
-      console.log(`Applying ${damageAmount.toFixed(1)} damage to ${enemy.type} enemy with health ${enemy.health.toFixed(1)}/${enemy.maxHealth}`);
+      // ADDED: Log entry
+      console.log(`Applying ${damageAmount.toFixed(1)} damage to enemy ${enemy.id}`);
       
       // Store initial health to check if this attack defeats the enemy
       const initialHealth = enemy.health || 0;
       
       // First try the standard takeDamage method
-      let defeated = false;
       if (typeof enemy.takeDamage === 'function') {
-        defeated = enemy.takeDamage(damageAmount);
+        enemy.takeDamage(damageAmount);
       } 
       // If that fails, apply damage directly
       else {
@@ -575,41 +543,30 @@ export default class Defense {
         // If health is zero or below, destroy the enemy
         if (enemy.health <= 0) {
           enemy.health = 0;
-          defeated = true;
           
           // Try different destruction methods
-          if (typeof enemy.defeated === 'function') {
-            console.log("Calling enemy.defeated()");
-            enemy.defeated();
-          } else if (typeof enemy.defeat === 'function') {
-            console.log("Calling enemy.defeat()");
+          if (typeof enemy.defeat === 'function') {
             enemy.defeat();
           } else if (typeof enemy.destroy === 'function') {
-            console.log("Calling enemy.destroy()");
             enemy.destroy();
           }
         }
       }
       
       // Check if this attack defeated the enemy
-      if (initialHealth > 0 && (enemy.health <= 0 || defeated)) {
-        console.log(`Enemy defeated by defense attack! Initial health: ${initialHealth.toFixed(1)}, Final health: ${enemy.health.toFixed(1)}`);
-        
-        // Ensure defeated method is called if health is zero but the enemy is still active
-        if (enemy.health <= 0 && enemy.active && typeof enemy.defeated === 'function') {
-          console.log("Forcing enemy.defeated() call");
-          enemy.defeated();
-        }
-        
+      if (initialHealth > 0 && enemy.health <= 0) {
         // Track this defeat for special attack charging
         this.onEnemyDefeated();
-        return true;
       }
       
       // Force health bar update
       if (typeof enemy.updateHealthBar === 'function') {
+        // ADDED: Log health bar call
+        console.log(`Calling updateHealthBar for enemy ${enemy.id}`);
         enemy.updateHealthBar();
       } else if (enemy.healthBar) {
+        // ADDED: Log manual update
+        console.log(`Manually updating healthBar for enemy ${enemy.id}`);
         // Manual health bar update
         const healthPercent = Math.max(0, enemy.health / enemy.maxHealth);
         
@@ -619,11 +576,8 @@ export default class Defense {
           enemy.healthBar.fill.x = enemyX - 20 + (enemy.healthBar.fill.width / 2);
         }
       }
-      
-      return false;
     } catch (error) {
       console.error("Error applying damage to enemy:", error);
-      return false;
     }
   }
   
@@ -1051,7 +1005,7 @@ export default class Defense {
       
       const spark = this.scene.add.circle(
         x, y, 3, 
-        this.type === 'scarecrow' ? 0x00AAFF : this.type === 'dog' ? 0xFF4400 : this.type === 'wizard' ? 0xFF00FF : this.type === 'cannon' ? 0xFF0000 : 0xFFFFFF, 
+        this.type === 'scarecrow' ? 0x00AAFF : 0xFF4400, 
         0.8
       );
       
@@ -1109,10 +1063,6 @@ export default class Defense {
       return 'ABS Ice Mage';
     } else if (this.type === 'dog') {
       return 'NOOT Fire Mage';
-    } else if (this.type === 'wizard') {
-      return 'Wizard';
-    } else if (this.type === 'cannon') {
-      return 'Cannon';
     } else {
       return this.type.charAt(0).toUpperCase() + this.type.slice(1);
     }
@@ -1124,10 +1074,6 @@ export default class Defense {
       return '#0088FF'; // Blue for ABS
     } else if (this.type === 'dog') {
       return '#FF4400'; // Red for NOOT
-    } else if (this.type === 'wizard') {
-      return '#FF00FF'; // Purple for Wizard
-    } else if (this.type === 'cannon') {
-      return '#FF0000'; // Red for Cannon
     } else {
       return '#FFFFFF'; // Default white
     }
@@ -1139,10 +1085,6 @@ export default class Defense {
       return 'ice';
     } else if (this.type === 'dog') {
       return 'fire';
-    } else if (this.type === 'wizard') {
-      return 'magic';
-    } else if (this.type === 'cannon') {
-      return 'rocket';
     } else {
       return 'normal';
     }
@@ -1160,12 +1102,6 @@ export default class Defense {
       } else if (this.type === 'dog') {
         const powerMultiplier = this.scene.upgradeSystem.getUpgradeValue('dogPower');
         this.updatePower(powerMultiplier);
-      } else if (this.type === 'wizard') {
-        const powerMultiplier = this.scene.upgradeSystem.getUpgradeValue('wizardPower');
-        this.updatePower(powerMultiplier);
-      } else if (this.type === 'cannon') {
-        const powerMultiplier = this.scene.upgradeSystem.getUpgradeValue('cannonPower');
-        this.updatePower(powerMultiplier);
       }
     } catch (err) {
       console.error("Error applying defense upgrades:", err);
@@ -1177,7 +1113,7 @@ export default class Defense {
     if (typeof multiplier !== 'number' || multiplier <= 0) return;
     
     // Store original damage for reference
-    const originalDamage = this.type === 'scarecrow' ? 1.2 : this.type === 'dog' ? 2.0 : this.type === 'wizard' ? 3.0 : this.type === 'cannon' ? 5.0 : 1;
+    const originalDamage = this.type === 'scarecrow' ? 1.2 : 2.0;
     
     // Apply multiplier to damage
     this.damage = originalDamage * multiplier;
@@ -1202,32 +1138,19 @@ export default class Defense {
       });
       
       // Create a color flash effect based on defense type
-      const tint = this.type === 'scarecrow' ? 0x00FFFF : this.type === 'dog' ? 0xFF4400 : this.type === 'wizard' ? 0xFF00FF : this.type === 'cannon' ? 0xFF0000 : 0xFFFFFF;
-      
-      // Check if sprite has tint method before using it
-      if (this.sprite.setTint && this.sprite.clearTint) {
-        this.scene.tweens.add({
-          targets: this.sprite,
-          tint: tint,
-          duration: 200,
-          yoyo: true,
-          repeat: 2,
-          onComplete: () => {
-            if (this.sprite && this.sprite.clearTint) {
-              this.sprite.clearTint();
-            }
+      const tint = this.type === 'scarecrow' ? 0x00FFFF : 0xFF4400;
+      this.scene.tweens.add({
+        targets: this.sprite,
+        tint: tint,
+        duration: 200,
+        yoyo: true,
+        repeat: 2,
+        onComplete: () => {
+          if (this.sprite) {
+            this.sprite.clearTint();
           }
-        });
-      } else {
-        // Alternative visual effect for sprites without tint support
-        this.scene.tweens.add({
-          targets: this.sprite,
-          alpha: 0.7,
-          duration: 100,
-          yoyo: true,
-          repeat: 5
-        });
-      }
+        }
+      });
     }
   }
   
@@ -1238,7 +1161,7 @@ export default class Defense {
     // Create line if it doesn't exist
     if (!this.targetLine) {
       this.targetLine = this.scene.add.line(0, 0, this.x, this.y, 
-        enemy.x, enemy.y, this.type === 'scarecrow' ? 0x00FFFF : this.type === 'dog' ? 0xFF4400 : this.type === 'wizard' ? 0xFF00FF : this.type === 'cannon' ? 0xFF0000 : 0xFFFFFF, 0.3);
+        enemy.x, enemy.y, this.type === 'scarecrow' ? 0x00FFFF : 0xFF4400, 0.3);
       this.targetLine.setLineWidth(1);
     } else {
       // Update existing line
@@ -1285,7 +1208,7 @@ export default class Defense {
     
     // Award coins based on mage type
     if (this.scene && this.scene.gameState) {
-      const coinReward = this.type === 'scarecrow' ? 3 : this.type === 'dog' ? 5 : this.type === 'wizard' ? 10 : this.type === 'cannon' ? 15 : 0;
+      const coinReward = this.type === 'scarecrow' ? 3 : 5;
       if (typeof this.scene.updateFarmCoins === 'function') {
         this.scene.updateFarmCoins(coinReward);
       }
@@ -1317,7 +1240,7 @@ export default class Defense {
   showSpecialAttackReady() {
     // Create or update the special attack ready indicator
     if (!this.specialAttackReadyIndicator && this.scene) {
-      const color = this.type === 'scarecrow' ? 0x00FFFF : this.type === 'dog' ? 0xFF6600 : this.type === 'wizard' ? 0xFF00FF : this.type === 'cannon' ? 0xFF0000 : 0xFFFFFF;
+      const color = this.type === 'scarecrow' ? 0x00FFFF : 0xFF6600;
       this.specialAttackReadyIndicator = this.scene.add.circle(this.x, this.y - 40, 10, color, 0.7);
       this.specialAttackReadyIndicator.setStrokeStyle(2, 0xFFFFFF);
       this.specialAttackReadyIndicator.setDepth(300);
@@ -1337,7 +1260,7 @@ export default class Defense {
         this.specialAttackText = this.scene.add.text(this.x, this.y - 60, "SPECIAL", {
           fontFamily: 'Arial',
           fontSize: '12px',
-          color: this.type === 'scarecrow' ? '#00FFFF' : this.type === 'dog' ? '#FF6600' : this.type === 'wizard' ? '#FF00FF' : this.type === 'cannon' ? '#FF0000' : '#FFFFFF',
+          color: this.type === 'scarecrow' ? '#00FFFF' : '#FF6600',
           stroke: '#000000',
           strokeThickness: 2
         }).setOrigin(0.5);
@@ -1356,7 +1279,7 @@ export default class Defense {
     
     if (this.specialAttackIndicator) {
       this.specialAttackIndicator.clear();
-      const color = this.type === 'scarecrow' ? 0x00FFFF : this.type === 'dog' ? 0xFF6600 : this.type === 'wizard' ? 0xFF00FF : this.type === 'cannon' ? 0xFF0000 : 0xFFFFFF;
+      const color = this.type === 'scarecrow' ? 0x00FFFF : 0xFF6600;
       this.specialAttackIndicator.fillStyle(color, 0.5);
       
       // Draw an arc around the mage showing cooldown
@@ -1375,61 +1298,105 @@ export default class Defense {
   // Perform the special "Cooldown Attack"
   performSpecialAttack() {
     // Check if special attack is available and not on cooldown
-    if (!this.specialAttackAvailable || 
-        !this.scene || 
-        (this.scene.time.now - this.specialAttackLastUsed < this.specialAttackCooldown)) {
+    const now = this.scene ? this.scene.time.now : 0;
+    if (!this.specialAttackAvailable || (now - this.specialAttackLastUsed < this.specialAttackCooldown)) {
       return false;
     }
     
-    console.log(`${this.type} special attack activated!`);
-    
-    // Get all enemies in range (increased range for special)
+    // Find all enemies within a much larger radius
     const specialRange = this.range * 1.5;
     const enemiesInRange = this.getEnemiesInRange(specialRange);
     
     if (enemiesInRange.length === 0) {
-      // No targets in range
-      return false;
+      return false; // No enemies to attack
     }
     
-    // Reset glow colors to avoid linter errors
-    const specialGlowColor = this.type === 'scarecrow' ? 0x00FFFF : 
-                             this.type === 'dog' ? 0xFF6600 : 
-                             this.type === 'wizard' ? 0xFF00FF : 
-                             this.type === 'cannon' ? 0xFF0000 : 0xFFFFFF;
+    // Set the last used time
+    this.specialAttackLastUsed = now;
     
-    // Perform different special attacks based on defense type
+    // Special attack animation
+    if (this.sprite) {
+      // Make the mage grow and glow
+      this.scene.tweens.add({
+        targets: this.sprite,
+        scaleX: 1.5,
+        scaleY: 1.5,
+        duration: 400,
+        yoyo: true,
+        onComplete: () => {
+          if (this.sprite && this.sprite.active) {
+            this.sprite.setScale(1.0);
+          }
+        }
+      });
+      
+      // Add a glow effect
+      const glowColor = this.type === 'scarecrow' ? 0x00FFFF : 0xFF6600;
+      const glow = this.scene.add.circle(this.x, this.y, 40, glowColor, 0.4);
+      glow.setDepth(99);
+      
+      this.scene.tweens.add({
+        targets: glow,
+        alpha: 0,
+        scale: 2,
+        duration: 500,
+        onComplete: () => glow.destroy()
+      });
+    }
+    
+    // For ice mage - freeze all enemies in range
     if (this.type === 'scarecrow') {
-      // Ice Mage: Freeze all enemies in range
-      this.performFreezeAttack(enemiesInRange);
-    } else if (this.type === 'dog') {
-      // Fire Mage: Meteor strike on all enemies
-      this.performMeteorAttack(enemiesInRange);
-    } else if (this.type === 'wizard') {
-      // Wizard: Chain lightning that hits all enemies
-      this.performChainLightningAttack(enemiesInRange);
-    } else if (this.type === 'cannon') {
-      // Cannon: Massive explosion that damages all enemies
-      this.performExplosionAttack(enemiesInRange);
+      // Launch multiple ice projectiles
+      enemiesInRange.forEach(enemy => {
+        this.launchFireball(enemy, 'blue', true);
+        
+        // Apply enhanced damage and slow effect
+        const damageAmount = this.damage * this.specialAttackDamageMultiplier;
+        this.applyDamageToEnemy(enemy, damageAmount);
+        
+        // Apply slow effect if possible
+        if (typeof enemy.applyStatusEffect === 'function') {
+          enemy.applyStatusEffect('freeze', 5); // Freeze for 5 seconds
+        }
+        
+        this.showDamageText(enemy, `${damageAmount.toFixed(1)}`, 0x00FFFF);
+      });
+      
+      // Create ice explosion in the center
+      this.performAreaAttack(this.x, this.y, specialRange, this.damage * this.specialAttackDamageMultiplier * 0.5, 'ice');
+    } 
+    // For fire mage - massive fire explosion
+    else if (this.type === 'dog') {
+      // Launch multiple fire projectiles
+      enemiesInRange.forEach(enemy => {
+        this.launchFireball(enemy, 'red', true);
+        
+        // Apply enhanced damage and burn effect
+        const damageAmount = this.damage * this.specialAttackDamageMultiplier;
+        this.applyDamageToEnemy(enemy, damageAmount);
+        
+        // Apply burn effect if possible
+        if (typeof enemy.applyStatusEffect === 'function') {
+          enemy.applyStatusEffect('burn', 5); // Burn for 5 seconds
+        }
+        
+        this.showDamageText(enemy, `${damageAmount.toFixed(1)}`, 0xFF6600);
+      });
+      
+      // Create fire explosion in the center
+      this.performAreaAttack(this.x, this.y, specialRange, this.damage * this.specialAttackDamageMultiplier * 0.7, 'fire');
     }
     
-    // Show special attack effect
-    const specialEffect = this.scene.add.graphics();
-    specialEffect.fillStyle(specialGlowColor, 0.6);
-    specialEffect.fillCircle(this.x, this.y, specialRange);
+    // Remove the special attack indicator
+    if (this.specialAttackReadyIndicator) {
+      this.specialAttackReadyIndicator.destroy();
+      this.specialAttackReadyIndicator = null;
+    }
     
-    // Animate and destroy the effect
-    this.scene.tweens.add({
-      targets: specialEffect,
-      alpha: 0,
-      duration: 1000,
-      onComplete: () => {
-        specialEffect.destroy();
-      }
-    });
-    
-    // Record last used time
-    this.specialAttackLastUsed = this.scene.time.now;
+    if (this.specialAttackText) {
+      this.specialAttackText.destroy();
+      this.specialAttackText = null;
+    }
     
     // Reset counter for next special
     this.enemiesDefeated = 0;
@@ -1468,1093 +1435,4 @@ export default class Defense {
     
     return enemiesInRange;
   }
-  
-  // Perform a freeze attack that temporarily slows enemies
-  performFreezeAttack(enemies) {
-    try {
-      if (!this.scene || !enemies || !enemies.length) return;
-      
-      console.log(`Performing freeze attack on ${enemies.length} enemies`);
-      
-      // Calculate damage based on level and special multiplier
-      const baseDamage = this.damage * this.specialAttackDamageMultiplier;
-      
-      // Blue ice color
-      const freezeColor = 0x00CCFF;
-      
-      // Create an expanding freeze wave effect
-      const freezeWave = this.scene.add.circle(this.x, this.y, 10, freezeColor, 0.3);
-      freezeWave.setStrokeStyle(4, freezeColor, 0.8);
-      
-      // Animate the freeze wave
-      this.scene.tweens.add({
-        targets: freezeWave,
-        radius: this.range * 1.2,
-        alpha: 0,
-        duration: 1000,
-        ease: 'Sine.easeOut',
-        onComplete: () => freezeWave.destroy()
-      });
-      
-      // Process each enemy
-      enemies.forEach(enemy => {
-        if (!enemy || !enemy.active) return;
-        
-        // Apply damage
-        const wasDefeated = this.applyDamageToEnemy(enemy, baseDamage);
-        
-        if (!wasDefeated) {
-          // Add slow effect (if enemy has the property)
-          if (typeof enemy.setSpeed === 'function') {
-            enemy.setSpeed(enemy.speed * 0.5); // Slow to 50% speed
-            
-            // Reset speed after 3 seconds
-            this.scene.time.delayedCall(3000, () => {
-              if (enemy && enemy.active && typeof enemy.resetSpeed === 'function') {
-                enemy.resetSpeed();
-              }
-            });
-          }
-          
-          // Create frost particle effect on the enemy
-          const frostEffect = this.scene.add.circle(enemy.x, enemy.y, 20, freezeColor, 0.4);
-          
-          // Animate the frost effect
-          this.scene.tweens.add({
-            targets: frostEffect,
-            alpha: 0,
-            scale: 0.5,
-            duration: 1000,
-            onComplete: () => frostEffect.destroy()
-          });
-          
-          // Add visual indicator that enemy is frozen
-          const freezeIcon = this.scene.add.text(enemy.x, enemy.y - 30, '❄️', {
-            fontSize: '20px'
-          }).setOrigin(0.5);
-          
-          // Animate the freeze icon
-          this.scene.tweens.add({
-            targets: freezeIcon,
-            y: enemy.y - 50,
-            alpha: 0,
-            duration: 2000,
-            onComplete: () => freezeIcon.destroy()
-          });
-        }
-      });
-      
-      // Play freeze sound if available
-      if (this.scene.sound && this.scene.sound.play) {
-        try {
-          // Safely try to play sound
-          this.scene.sound.play('freeze_sound', { volume: 0.5 });
-        } catch (error) {
-          console.log("Freeze sound not available or failed to play");
-        }
-      }
-      
-      return true;
-    } catch (error) {
-      console.error("Error in performFreezeAttack:", error);
-      return false;
-    }
-  }
-  
-  // Add the missing Meteor Attack function for Fire Mage
-  performMeteorAttack(enemies) {
-    try {
-      if (!this.scene || !enemies || !enemies.length) return;
-      
-      console.log(`Performing meteor attack on ${enemies.length} enemies`);
-      
-      // Calculate damage based on level and special multiplier
-      const baseDamage = this.damage * this.specialAttackDamageMultiplier;
-      
-      // Fire color
-      const fireColor = 0xFF4400;
-      
-      // Create meteor impact point at center of enemies
-      let centerX = 0;
-      let centerY = 0;
-      let validEnemies = 0;
-      
-      // Calculate center point of all enemies
-      enemies.forEach(enemy => {
-        if (!enemy || !enemy.active) return;
-        centerX += enemy.x;
-        centerY += enemy.y;
-        validEnemies++;
-      });
-      
-      if (validEnemies === 0) return false;
-      
-      // Get average position
-      centerX /= validEnemies;
-      centerY /= validEnemies;
-      
-      // Create meteor falling effect
-      const meteorStart = { x: centerX, y: centerY - 300 };
-      const meteorEnd = { x: centerX, y: centerY };
-      
-      // Create meteor visual
-      const meteor = this.scene.add.circle(meteorStart.x, meteorStart.y, 20, fireColor, 1);
-      meteor.setStrokeStyle(3, 0xFFAA00);
-      
-      // Add glow and trail to meteor
-      const meteorGlow = this.scene.add.circle(meteorStart.x, meteorStart.y, 30, fireColor, 0.3);
-      
-      // Animate meteor falling
-      this.scene.tweens.add({
-        targets: [meteor, meteorGlow],
-        x: meteorEnd.x,
-        y: meteorEnd.y,
-        duration: 600,
-        ease: 'Cubic.easeIn',
-        onUpdate: (tween) => {
-          // Create trailing particles
-          if (meteor.active && Math.random() < 0.3) {
-            const trail = this.scene.add.circle(
-              meteor.x + (Math.random() * 10 - 5), 
-              meteor.y - (Math.random() * 20), 
-              5 + Math.random() * 5, 
-              0xFFAA00, 
-              0.7
-            );
-            
-            this.scene.tweens.add({
-              targets: trail,
-              alpha: 0,
-              scale: 0.5,
-              y: '+=20',
-              duration: 300,
-              onComplete: () => trail.destroy()
-            });
-          }
-        },
-        onComplete: () => {
-          // Create explosion on impact
-          const explosion = this.scene.add.circle(centerX, centerY, 30, 0xFFFF00, 0.8);
-          
-          // Animate explosion
-          this.scene.tweens.add({
-            targets: explosion,
-            radius: this.range * 1.2,
-            alpha: 0,
-            duration: 800,
-            onComplete: () => explosion.destroy()
-          });
-          
-          // Create particle explosion
-          for (let i = 0; i < 20; i++) {
-            const angle = Math.random() * Math.PI * 2;
-            const distance = Math.random() * this.range * 0.8;
-            const speed = 2 + Math.random() * 3;
-            const size = 5 + Math.random() * 10;
-            
-            const particle = this.scene.add.circle(
-              centerX, 
-              centerY, 
-              size, 
-              0xFFAA00, 
-              0.8
-            );
-            
-            // Calculate end position
-            const endX = centerX + Math.cos(angle) * distance;
-            const endY = centerY + Math.sin(angle) * distance;
-            
-            // Animate particle
-            this.scene.tweens.add({
-              targets: particle,
-              x: endX,
-              y: endY,
-              alpha: 0,
-              radius: size * 0.5,
-              duration: 500 + Math.random() * 500,
-              ease: 'Cubic.easeOut',
-              onComplete: () => particle.destroy()
-            });
-          }
-          
-          // Destroy meteor and glow
-          meteor.destroy();
-          meteorGlow.destroy();
-          
-          // Apply damage to all enemies in range
-          enemies.forEach(enemy => {
-            if (!enemy || !enemy.active) return;
-            
-            // Calculate distance from impact
-            const dx = enemy.x - centerX;
-            const dy = enemy.y - centerY;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            
-            // Apply damage with falloff based on distance
-            if (distance <= this.range) {
-              // More damage closer to impact
-              const damageMultiplier = 1 - (distance / this.range) * 0.5;
-              const finalDamage = baseDamage * damageMultiplier;
-              
-              // Apply damage
-              this.applyDamageToEnemy(enemy, finalDamage);
-              
-              // Create hit effect on enemy
-              const hitEffect = this.scene.add.circle(enemy.x, enemy.y, 15, 0xFF6600, 0.6);
-              
-              this.scene.tweens.add({
-                targets: hitEffect,
-                alpha: 0,
-                radius: 30,
-                duration: 400,
-                onComplete: () => hitEffect.destroy()
-              });
-              
-              // Show damage text
-              this.showDamageText(enemy, finalDamage.toFixed(1), 0xFF4400);
-            }
-          });
-          
-          // Play explosion sound if available
-          if (this.scene.sound && this.scene.sound.play) {
-            try {
-              this.scene.sound.play('explosion_sound', { volume: 0.6 });
-            } catch (error) {
-              console.log("Explosion sound not available or failed to play");
-            }
-          }
-        }
-      });
-      
-      return true;
-    } catch (error) {
-      console.error("Error in performMeteorAttack:", error);
-      return false;
-    }
-  }
-  
-  performChainLightningAttack(enemies) {
-    if (!this.scene || enemies.length === 0) return;
-    
-    try {
-      // Calculate damage based on special attack multiplier
-      const specialDamage = this.damage * this.specialAttackDamageMultiplier;
-      
-      // Create lightning effect between enemies
-      let previousEnemy = null;
-      let delay = 0;
-      
-      // Start from mage to first enemy
-      const firstEnemy = enemies[0];
-      this.createLightningEffect(this.x, this.y, firstEnemy.x, firstEnemy.y, 0);
-      
-      // Chain through all enemies
-      enemies.forEach((enemy, index) => {
-        // Apply damage with delay
-        setTimeout(() => {
-          if (enemy && enemy.active) {
-            // Deal high damage
-            this.damageEnemy(enemy, specialDamage);
-            
-            // Show damage text
-            this.showDamageText(enemy, `${specialDamage.toFixed(1)}`, 0xFF00FF);
-            
-            // Create lightning flash effect on enemy
-            this.createLightningFlash(enemy);
-          }
-        }, delay);
-        
-        // Connect with lightning to previous enemy or mage
-        if (previousEnemy) {
-          this.createLightningEffect(
-            previousEnemy.x, previousEnemy.y,
-            enemy.x, enemy.y,
-            delay
-          );
-        }
-        
-        previousEnemy = enemy;
-        delay += 150; // Stagger the lightning effect
-      });
-      
-      // Show special attack text
-      this.showFloatingText(this.x, this.y - 50, "CHAIN LIGHTNING!", 0xFF00FF);
-      
-      return true;
-    } catch (error) {
-      console.error("Error performing chain lightning attack:", error);
-      return false;
-    }
-  }
-  
-  performExplosionAttack(enemies) {
-    try {
-      if (!this.scene || enemies.length === 0) return false;
-      
-      console.log(`Performing explosion attack on ${enemies.length} enemies`);
-      
-      // Calculate damage based on special attack multiplier
-      const specialDamage = this.damage * this.specialAttackDamageMultiplier;
-      
-      // Find center point of enemies for explosion
-      let centerX = 0;
-      let centerY = 0;
-      
-      enemies.forEach(enemy => {
-        if (!enemy || !enemy.active) return;
-        // Get enemy position with fallbacks
-        const enemyX = enemy.x || (enemy.container && enemy.container.x) || (enemy.sprite && enemy.sprite.x);
-        const enemyY = enemy.y || (enemy.container && enemy.container.y) || (enemy.sprite && enemy.sprite.y);
-        
-        if (enemyX && enemyY) {
-          centerX += enemyX;
-          centerY += enemyY;
-        }
-      });
-      
-      // Filter out any invalid enemies and get valid count
-      const validEnemies = enemies.filter(enemy => 
-        enemy && enemy.active && 
-        (enemy.x || (enemy.container && enemy.container.x) || (enemy.sprite && enemy.sprite.x)) &&
-        (enemy.y || (enemy.container && enemy.container.y) || (enemy.sprite && enemy.sprite.y))
-      );
-      
-      if (validEnemies.length === 0) {
-        console.log("No valid enemies found for explosion attack");
-        return false;
-      }
-      
-      centerX /= validEnemies.length;
-      centerY /= validEnemies.length;
-      
-      // Create explosion effect
-      this.createExplosionEffect(centerX, centerY);
-      
-      // Apply damage to all enemies with slight delay
-      if (this.scene && this.scene.time && typeof this.scene.time.delayedCall === 'function') {
-        this.scene.time.delayedCall(300, () => {
-          validEnemies.forEach(enemy => {
-            if (enemy && enemy.active) {
-              // Deal high damage
-              if (typeof this.damageEnemy === 'function') {
-                this.damageEnemy(enemy, specialDamage);
-              } else {
-                // Fallback to applyDamageToEnemy
-                this.applyDamageToEnemy(enemy, specialDamage);
-              }
-              
-              // Show damage text
-              this.showDamageText(enemy, `${specialDamage.toFixed(1)}`, 0xFF0000);
-              
-              // Knockback effect - push enemies away from center
-              if (enemy.x !== undefined && enemy.y !== undefined) {
-                const dx = enemy.x - centerX;
-                const dy = enemy.y - centerY;
-                const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-                
-                // Apply knockback (safely)
-                if (typeof enemy.x === 'number' && typeof enemy.y === 'number') {
-                  enemy.x += (dx / dist) * 50;
-                  enemy.y += (dy / dist) * 50;
-                }
-              }
-            }
-          });
-        });
-      } else {
-        // Immediate execution fallback if delayedCall not available
-        validEnemies.forEach(enemy => {
-          if (enemy && enemy.active) {
-            if (typeof this.damageEnemy === 'function') {
-              this.damageEnemy(enemy, specialDamage);
-            } else {
-              this.applyDamageToEnemy(enemy, specialDamage);
-            }
-            this.showDamageText(enemy, `${specialDamage.toFixed(1)}`, 0xFF0000);
-          }
-        });
-      }
-      
-      // Show special attack text
-      if (typeof this.showFloatingText === 'function') {
-        this.showFloatingText(this.x, this.y - 50, "MASSIVE EXPLOSION!", 0xFF0000);
-      } else if (this.scene && typeof this.scene.showFloatingText === 'function') {
-        this.scene.showFloatingText(this.x, this.y - 50, "MASSIVE EXPLOSION!", 0xFF0000);
-      }
-      
-      // Reset special attack state
-      this.specialAttackAvailable = false;
-      this.enemiesDefeated = 0;
-      this.specialAttackLastUsed = this.scene ? this.scene.time.now : Date.now();
-      
-      // Reset special attack indicators
-      if (this.specialAttackReadyIndicator) {
-        this.specialAttackReadyIndicator.destroy();
-        this.specialAttackReadyIndicator = null;
-      }
-      
-      if (this.specialAttackText) {
-        this.specialAttackText.destroy();
-        this.specialAttackText = null;
-      }
-      
-      return true;
-    } catch (error) {
-      console.error("Error performing explosion attack:", error);
-      
-      // Make sure to reset special attack state even if there's an error
-      this.specialAttackAvailable = false;
-      this.enemiesDefeated = 0;
-      this.specialAttackLastUsed = this.scene ? this.scene.time.now : Date.now();
-      
-      // Clean up any indicators
-      if (this.specialAttackReadyIndicator) {
-        this.specialAttackReadyIndicator.destroy();
-        this.specialAttackReadyIndicator = null;
-      }
-      
-      if (this.specialAttackText) {
-        this.specialAttackText.destroy();
-        this.specialAttackText = null;
-      }
-      
-      return false;
-    }
-  }
-  
-  createLightningEffect(x1, y1, x2, y2, delay) {
-    if (!this.scene) return;
-    
-    try {
-      setTimeout(() => {
-        // Create zigzag lightning path between points
-        const path = this.generateLightningPath(x1, y1, x2, y2);
-        
-        // Draw lightning
-        const lightning = this.scene.add.graphics();
-        lightning.lineStyle(3, 0xFF00FF, 0.8);
-        
-        // Draw the path
-        lightning.beginPath();
-        lightning.moveTo(path[0].x, path[0].y);
-        
-        for (let i = 1; i < path.length; i++) {
-          lightning.lineTo(path[i].x, path[i].y);
-        }
-        
-        lightning.strokePath();
-        
-        // Flash and fade out
-        this.scene.tweens.add({
-          targets: lightning,
-          alpha: 0,
-          duration: 300,
-          onComplete: () => {
-            lightning.destroy();
-          }
-        });
-      }, delay);
-    } catch (error) {
-      console.error("Error creating lightning effect:", error);
-    }
-  }
-  
-  generateLightningPath(x1, y1, x2, y2) {
-    const path = [];
-    path.push({ x: x1, y: y1 });
-    
-    // Generate random zigzag points
-    const segments = 5;
-    const dx = (x2 - x1) / segments;
-    const dy = (y2 - y1) / segments;
-    
-    for (let i = 1; i < segments; i++) {
-      const deviation = 20 * (Math.random() - 0.5);
-      path.push({
-        x: x1 + dx * i + deviation,
-        y: y1 + dy * i + deviation
-      });
-    }
-    
-    path.push({ x: x2, y: y2 });
-    return path;
-  }
-  
-  createLightningFlash(enemy) {
-    if (!this.scene || !enemy) return;
-    
-    // Create flash effect around enemy
-    const flash = this.scene.add.graphics();
-    flash.fillStyle(0xFF00FF, 0.6);
-    flash.fillCircle(enemy.x, enemy.y, 30);
-    
-    // Fade out
-    this.scene.tweens.add({
-      targets: flash,
-      alpha: 0,
-      duration: 200,
-      onComplete: () => {
-        flash.destroy();
-      }
-    });
-  }
-  
-  createExplosionEffect(x, y) {
-    if (!this.scene) return;
-    
-    try {
-      // Create explosion circle
-      const explosion = this.scene.add.graphics();
-      explosion.fillStyle(0xFF0000, 0.7);
-      explosion.fillCircle(x, y, 20);
-      
-      // Expand and fade
-      this.scene.tweens.add({
-        targets: explosion,
-        scaleX: 8,
-        scaleY: 8,
-        alpha: 0,
-        duration: 800,
-        onComplete: () => {
-            explosion.destroy();
-          }
-      });
-      
-      // Add some particles for extra effect
-      for (let i = 0; i < 20; i++) {
-        const angle = Math.random() * Math.PI * 2;
-        const speed = 2 + Math.random() * 4;
-        const distance = 30 + Math.random() * 100;
-        const size = 3 + Math.random() * 4; // Define the size variable
-        
-        const particle = this.scene.add.circle(
-          x, y, size, 
-          0xFF0000, 0.8
-        );
-          
-        // Set movement
-        this.scene.tweens.add({
-          targets: particle,
-          x: x + Math.cos(angle) * distance,
-          y: y + Math.sin(angle) * distance,
-          alpha: 0,
-          radius: size * 0.5,
-          duration: 500 + Math.random() * 500,
-          ease: 'Cubic.easeOut',
-          onComplete: () => {
-            particle.destroy();
-          }
-        });
-      }
-    } catch (error) {
-      console.error("Error creating explosion effect:", error);
-    }
-  }
-  
-  // Add these methods right before the createWizard method
-
-  // Helper method to damage an enemy
-  damageEnemy(enemy, amount) {
-    if (!enemy || !enemy.active) return false;
-    
-    // Try to use takeDamage method first
-    if (typeof enemy.takeDamage === 'function') {
-      return enemy.takeDamage(amount);
-    } 
-    // Fallback to direct damage
-    else {
-      // Ensure enemy has a health property
-      if (typeof enemy.health !== 'number') return false;
-      
-      enemy.health -= amount;
-      
-      // Check if defeated
-      if (enemy.health <= 0) {
-        enemy.health = 0;
-        
-        // Try different defeat methods
-        if (typeof enemy.defeated === 'function') {
-          enemy.defeated();
-        } else if (typeof enemy.defeat === 'function') {
-          enemy.defeat();
-        } else if (typeof enemy.destroy === 'function') {
-          enemy.destroy();
-        }
-        
-        return true;
-      }
-      
-      return false;
-    }
-  }
-
-  // Helper for showing floating text if method doesn't exist
-  showFloatingText(x, y, message, color) {
-    if (!this.scene) return;
-    
-    try {
-      // Create text
-      const text = this.scene.add.text(x, y, message, {
-        fontFamily: 'Arial',
-        fontSize: '16px',
-        color: color ? '#' + color.toString(16).padStart(6, '0') : '#FFFFFF',
-        stroke: '#000000',
-        strokeThickness: 2
-      }).setOrigin(0.5);
-      
-      // Animate text
-      this.scene.tweens.add({
-        targets: text,
-        y: y - 30,
-        alpha: 0,
-        duration: 1000,
-        onComplete: () => text.destroy()
-      });
-    } catch (error) {
-      console.error("Error showing floating text:", error);
-    }
-  }
-  
-  createWizard() {
-    try {
-      // Create the wizard sprite
-      if (this.scene.textures.exists('wizard_idle')) {
-        this.sprite = this.scene.add.sprite(this.x, this.y, 'wizard_idle');
-        this.sprite.setScale(0.8);
-      } else {
-        // Fallback if texture is missing
-        this.sprite = this.scene.add.rectangle(this.x, this.y, 40, 40, 0xFF00FF); // Purple for wizard
-        // Add wizard emoji representation
-        this.label = this.scene.add.text(this.x, this.y, '🧙', {
-          fontSize: '24px',
-          fontFamily: 'Arial'
-        }).setOrigin(0.5);
-      }
-      
-      // Make sprite interactive
-      if (this.sprite) {
-        this.sprite.setInteractive({ useHandCursor: true });
-        this.sprite.on('pointerdown', () => {
-          this.showInfoPanel();
-        });
-      }
-      
-      // Add special effect for wizard placement
-      this.createPlacementEffect('purple');
-      
-      // Create magic aura
-      this.createMagicAura();
-      
-      // Add wizard-specific details
-      this.createInfoPanel();
-      
-      // Create health bar/status indicator
-      this.createHealthBar();
-      
-      // Special attack stats for wizard
-      this.specialAttackCooldown = 8000; // 8 seconds
-      this.enemiesNeededForSpecial = 4; // Easier to charge
-      this.specialAttackDamageMultiplier = 3.0; // Higher damage multiplier
-      
-      // Set base stats
-      this.damage = 3.0;
-      this.range = 300; // Longer range
-      this.cooldown = 1000; // Fast attacks
-      this.aoeRadius = 100; // Medium area effect
-      this.aoeDamageMultiplier = 0.5; // 50% damage to nearby enemies
-
-      console.log(`Created wizard at ${this.x}, ${this.y} with range ${this.range}`);
-    } catch (error) {
-      console.error("Error creating wizard:", error);
-    }
-  }
-  
-  createCannon() {
-    try {
-      // Create the cannon sprite
-      if (this.scene.textures.exists('cannon_idle')) {
-        this.sprite = this.scene.add.sprite(this.x, this.y, 'cannon_idle');
-        this.sprite.setScale(0.9);
-      } else {
-        // Fallback if texture is missing
-        this.sprite = this.scene.add.rectangle(this.x, this.y, 45, 45, 0xFF0000); // Red for cannon
-        // Add cannon emoji representation
-        this.label = this.scene.add.text(this.x, this.y, '💣', {
-          fontSize: '24px',
-          fontFamily: 'Arial'
-        }).setOrigin(0.5);
-      }
-      
-      // Make sprite interactive
-      if (this.sprite) {
-        this.sprite.setInteractive({ useHandCursor: true });
-        this.sprite.on('pointerdown', () => {
-          this.showInfoPanel();
-        });
-      }
-      
-      // Add special effect for cannon placement
-      this.createPlacementEffect('red');
-      
-      // Create aura for range indication
-      this.createCombatAura();
-      
-      // Add cannon-specific details
-      this.createInfoPanel();
-      
-      // Create health bar/status indicator
-      this.createHealthBar();
-      
-      // Special attack stats for cannon
-      this.specialAttackCooldown = 12000; // 12 seconds
-      this.enemiesNeededForSpecial = 6; // Harder to charge
-      this.specialAttackDamageMultiplier = 4.0; // Very high damage
-      
-      // Set base stats
-      this.damage = 5.0; // Highest base damage
-      this.range = 350; // Longest range
-      this.cooldown = 2000; // Slow attacks
-      this.aoeRadius = 150; // Large area effect
-      this.aoeDamageMultiplier = 0.7; // 70% damage to nearby enemies
-
-      console.log(`Created cannon at ${this.x}, ${this.y} with range ${this.range}`);
-    } catch (error) {
-      console.error("Error creating cannon:", error);
-    }
-  }
-  
-  createMagicAura() {
-    try {
-      if (!this.scene) return;
-      
-      // Create a simple pulsing aura instead of particles
-      // This is more reliable than the particle system
-      this.aura = this.scene.add.circle(this.x, this.y, 15, 0xFF00FF, 0.3);
-      this.aura.setStrokeStyle(2, 0xFF00FF, 0.7);
-      
-      // Create pulsing animation for the aura
-      this.scene.tweens.add({
-        targets: this.aura,
-        scaleX: 1.3,
-        scaleY: 1.3,
-        alpha: 0.1,
-        duration: 1500,
-        yoyo: true,
-        repeat: -1,
-        ease: 'Sine.easeInOut'
-      });
-      
-      // Add occasional magic sparkle effects
-      if (this.scene.time && typeof this.scene.time.addEvent === 'function') {
-        this.sparkleTimer = this.scene.time.addEvent({
-          delay: 800,
-          callback: () => {
-            if (!this.active) return;
-            
-            // Create small sparkle
-            const angle = Math.random() * Math.PI * 2;
-            const distance = 20 + Math.random() * 15;
-            const sparkleX = this.x + Math.cos(angle) * distance;
-            const sparkleY = this.y + Math.sin(angle) * distance;
-            
-            const sparkle = this.scene.add.circle(sparkleX, sparkleY, 2, 0xFF00FF, 0.8);
-            
-            // Animate sparkle
-            this.scene.tweens.add({
-              targets: sparkle,
-              scaleX: 2,
-              scaleY: 2,
-              alpha: 0,
-              duration: 600,
-              ease: 'Cubic.easeOut',
-              onComplete: () => sparkle.destroy()
-            });
-          },
-          callbackScope: this,
-          loop: true
-        });
-      }
-    } catch (error) {
-      console.error("Error creating magic aura:", error);
-    }
-  }
-  
-  createCombatAura() {
-    try {
-      if (!this.scene) return;
-      
-      // Create a red pulsing aura
-      const aura = this.scene.add.circle(this.x, this.y, 20, 0xFF0000, 0.2);
-      
-      // Pulse animation
-      this.scene.tweens.add({
-        targets: aura,
-        alpha: 0.4,
-        scale: 1.2,
-        duration: 1000,
-        yoyo: true,
-        repeat: -1
-      });
-      
-      this.aura = aura;
-    } catch (error) {
-      console.error("Error creating combat aura:", error);
-    }
-  }
-  
-  // Helper method to create placement effect with different colors
-  createPlacementEffect(color) {
-    try {
-      if (!this.scene) return;
-      
-      let effectColor;
-      switch (color) {
-        case 'blue':
-          effectColor = 0x0088FF;
-          break;
-        case 'red':
-          effectColor = 0xFF4400;
-          break;
-        case 'purple':
-          effectColor = 0xFF00FF;
-          break;
-        default:
-          effectColor = 0xFFFFFF;
-      }
-      
-      // Create expanding circle
-      const effect = this.scene.add.circle(this.x, this.y, 10, effectColor, 0.7);
-      
-      // Animate and destroy
-      this.scene.tweens.add({
-        targets: effect,
-        alpha: 0,
-        radius: this.range,
-        duration: 1000,
-        onComplete: () => {
-          effect.destroy();
-        }
-      });
-    } catch (error) {
-      console.error("Error creating placement effect:", error);
-    }
-  }
-  
-  // Create info panel on hover/click
-  createInfoPanel() {
-    // Simple empty implementation to avoid errors
-    // Will be enhanced in future updates
-    console.log(`Created empty info panel for ${this.type}`);
-  }
-  
-  createHealthBar() {
-    // Simple empty implementation to avoid errors
-    // Will be enhanced in future updates
-    console.log(`Created empty health bar for ${this.type}`);
-  }
-  
-  // Show info panel when defense is clicked
-  showInfoPanel() {
-    try {
-      if (!this.infoPanel || !this.infoPanel.container) return;
-      
-      // For now, just log that the panel was clicked
-      console.log(`${this.getDisplayName()} clicked at (${this.x}, ${this.y})`);
-      
-      // Show a simple floating text with defense info
-      if (this.scene && typeof this.scene.showFloatingText === 'function') {
-        this.scene.showFloatingText(
-          this.x, 
-          this.y - 40, 
-          `${this.getDisplayName()}\nDMG: ${this.damage.toFixed(1)}`, 
-          this.getColor()
-        );
-      }
-    } catch (error) {
-      console.error("Error showing info panel:", error);
-    }
-  }
-  
-  // Get color based on defense type
-  getColor() {
-    switch(this.type) {
-      case 'scarecrow': return 0x0088FF; // Blue for ice mage
-      case 'dog': return 0xFF4400; // Red for fire mage
-      case 'wizard': return 0xFF00FF; // Purple for wizard
-      case 'cannon': return 0xFF0000; // Red for cannon
-      default: return 0xFFFFFF;
-    }
-  }
-  
-  // Enhanced createProjectile method using animated particles
-  createProjectile(enemy) {
-    try {
-      if (!this.scene || !enemy) return null;
-      
-      // Get projectile type and texture based on defense type
-      let textureKey = 'fireball_red';
-      let particleEffect = null;
-      
-      // Select appropriate projectile style based on defense type
-      switch (this.type) {
-        case 'NOOT': // Fire Mage
-          textureKey = 'fireball_red';
-          particleEffect = 'fire_sparks_anim';
-          break;
-        case 'ABS': // Ice Mage
-          textureKey = 'fireball_blue';
-          particleEffect = 'rocket_fire_anim';
-          break;
-        case 'wizard':
-          textureKey = 'magic_particle';
-          particleEffect = 'fire_sparks_anim';
-          break;
-        case 'cannon':
-          textureKey = 'fireball_red';
-          particleEffect = 'rocket_fire_anim';
-          break;
-        default:
-          textureKey = 'fireball_red';
-          particleEffect = 'fire_sparks_anim';
-      }
-      
-      // Create the projectile
-      const projectile = this.scene.add.sprite(this.x, this.y, textureKey);
-      projectile.setScale(0.75);
-      
-      // Add animated particle effect
-      if (particleEffect) {
-        try {
-          // Create a particle sprite behind the projectile
-          const particleSprite = this.scene.add.sprite(this.x, this.y, 
-            particleEffect === 'fire_sparks_anim' ? 'fire_particle' : 'rocket_fire');
-          
-          // Play the animation
-          particleSprite.play(particleEffect);
-          particleSprite.setScale(0.8);
-          particleSprite.setAlpha(0.8);
-          
-          // Link the particle to the projectile
-          projectile.particleEffect = particleSprite;
-          
-          // Update particle position along with projectile
-          const originalUpdate = projectile.update;
-          projectile.update = function(x, y) {
-            if (originalUpdate) originalUpdate.call(this, x, y);
-            if (this.particleEffect && !this.particleEffect.destroyed) {
-              this.particleEffect.x = this.x - 5; // Slight offset so it looks like a trail
-              this.particleEffect.y = this.y - 5;
-            }
-          };
-        } catch (error) {
-          console.error("Error creating particle effect:", error);
-        }
-      }
-      
-      // Set projectile properties
-      projectile.damage = this.damage;
-      projectile.defense = this;
-      projectile.target = enemy;
-      projectile.speed = 300;
-      
-      // Add to scene's projectiles array if it exists
-      if (this.scene.projectiles) {
-        this.scene.projectiles.push(projectile);
-      }
-      
-      // Simple tween animation
-      const distance = Phaser.Math.Distance.Between(this.x, this.y, enemy.x, enemy.y);
-      const duration = distance / projectile.speed * 1000; // Convert to ms
-      
-      this.scene.tweens.add({
-        targets: projectile,
-        x: enemy.x,
-        y: enemy.y,
-        duration: duration,
-        onUpdate: () => {
-          // Update the particle with projectile position
-          if (projectile.particleEffect && !projectile.particleEffect.destroyed) {
-            projectile.update(projectile.x, projectile.y);
-          }
-          
-          // Check if enemy still exists and update target position
-          if (enemy && enemy.active) {
-            // Update destination if enemy moves
-            const tween = this.scene.tweens.getTweensOf(projectile)[0];
-            if (tween) {
-              tween.updateTo('x', enemy.x, true);
-              tween.updateTo('y', enemy.y, true);
-            }
-          }
-        },
-        onComplete: () => {
-          if (enemy && enemy.active) {
-            // Apply damage
-            if (typeof enemy.takeDamage === 'function') {
-              enemy.takeDamage(projectile.damage);
-            }
-            
-            // Create hit effect
-            if (this.scene && typeof this.scene.createHitEffect === 'function') {
-              this.scene.createHitEffect(projectile.x, projectile.y, this.type);
-            }
-          }
-          
-          // Destroy the projectile and particle effect
-          if (projectile.particleEffect && !projectile.particleEffect.destroyed) {
-            projectile.particleEffect.destroy();
-          }
-          
-          projectile.destroy();
-        }
-      });
-      
-      return projectile;
-    } catch (error) {
-      console.error("Error creating projectile:", error);
-      return null;
-    }
-  }
-  
-  // Create hit effect when projectile hits target
-  createHitEffect(x, y, defenseType) {
-    try {
-      if (!this.scene) return;
-      
-      // Determine effect color based on defense type
-      let color = 0xff0000;
-      
-      switch (defenseType) {
-        case 'ABS': // Ice Mage
-          color = 0x66ccff;
-          break;
-        case 'NOOT': // Fire Mage
-          color = 0xff6600;
-          break;
-        case 'wizard':
-          color = 0xff00ff;
-          break;
-        case 'cannon':
-          color = 0xff0000;
-          break;
-      }
-      
-      // Create impact particle
-      const particles = this.scene.add.particles(x, y, 'pixel', {
-        speed: { min: 50, max: 150 },
-        scale: { start: 1, end: 0 },
-        tint: color,
-        blendMode: 'ADD',
-        lifespan: 300,
-        quantity: 15
-      });
-      
-      // Clean up after animation completes
-      this.scene.time.delayedCall(300, () => {
-        particles.destroy();
-      });
-    } catch (error) {
-      console.error("Error creating hit effect:", error);
-    }
-  }
-}
+} 

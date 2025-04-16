@@ -103,7 +103,9 @@ export default function ClientWrapper(props) {
       }
     >
       <ErrorBoundary>
-        <FarmGameComponent {...props} />
+        <div className="w-full max-w-full overflow-hidden">
+          <FarmGameComponent {...props} />
+        </div>
       </ErrorBoundary>
     </Suspense>
   );

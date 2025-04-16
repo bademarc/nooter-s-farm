@@ -6,6 +6,10 @@ export default class Enemy {
     this.type = type;
     this.x = x;
     this.y = y;
+    
+    // ADDED: Debug logging for initial position
+    console.log(`Enemy ${type} created at initial position (${x}, ${y})`);
+    
     this.active = true;
     this.visible = true;
     this.stuck = false;
@@ -16,6 +20,9 @@ export default class Enemy {
     this.lastMoveTime = this.scene.time.now;
     this.removeTimeout = null;
     
+    // Generate a unique ID for this enemy
+    this.id = `${this.type}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+    
     // Get current wave for scaling difficulty
     const currentWave = this.scene.gameState?.wave || 1;
     const waveScaling = Math.min(2.5, 1 + (currentWave * 0.2)); // Increased scaling
@@ -23,290 +30,128 @@ export default class Enemy {
     // Set properties based on type with wave scaling
     if (type === 'bird') {
       // Base properties - increased health
-      this.baseSpeed = 2.0;
-      this.baseHealth = 3; // Increased from 1
+      this.baseSpeed = 1.8;
+      this.baseHealth = 3;
       this.baseValue = 8;
       
       // Scale with wave
-      this.speed = this.baseSpeed + (currentWave * 0.2); // Increased speed scaling
+      this.speed = this.baseSpeed + (currentWave * 0.15);
       this.health = Math.floor(this.baseHealth * waveScaling);
       this.maxHealth = this.health;
       this.value = Math.floor(this.baseValue * waveScaling);
       
       this.color = 0x3498db;
       this.weakAgainst = 'scarecrow';
-      this.weaknessMultiplier = 1.5; // Reduced from 2.0
-    } else if (type === 'fox') {
-      // Base properties for fox - stealthy and evasive
-      this.baseSpeed = 2.5; // Faster than other enemies
-      this.baseHealth = 5; // Good health
-      this.baseValue = 12; // Higher reward value
-      
-      // Scale with wave
-      this.speed = this.baseSpeed + (currentWave * 0.25); // Higher speed scaling
-      this.health = Math.floor(this.baseHealth * waveScaling);
-      this.maxHealth = this.health;
-      this.value = Math.floor(this.baseValue * waveScaling);
-      
-      this.color = 0xff9933; // Orange for fox
-      this.weakAgainst = 'wizard'; // Weak against advanced defense
-      this.weaknessMultiplier = 2.0; // Higher weakness multiplier
-      
-      // Special fox abilities
-      this.canDodge = true; // Can dodge attacks
-      this.dodgeChance = 0.25; // 25% chance to dodge
-      this.stealthDuration = 0; // Tracks stealth duration
-      this.stealthCooldown = 6000; // Cooldown between stealth attempts
-      this.lastStealthTime = 0; // Last time stealth was activated
-      
-      // Use fox sprite
-      this.spriteKey = 'enemy_fox';
-    } else if (type === 'slime') {
-      this.baseSpeed = 1.2; // Slower but resilient
-      this.baseHealth = 6; // Higher health
-      this.baseValue = 7;
-      
-      this.speed = this.baseSpeed + (currentWave * 0.1);
-      this.health = Math.floor(this.baseHealth * waveScaling);
-      this.maxHealth = this.health;
-      this.value = Math.floor(this.baseValue * waveScaling);
-      
-      this.color = 0x22cc22; // Green for slime
-      this.weakAgainst = 'trap';
-      this.weaknessMultiplier = 1.8;
-      
-      // Slime special ability: regeneration
-      this.canRegenerate = true;
-      this.regenAmount = 0.05;
-    } else if (type === 'ghost') {
-      this.baseSpeed = 1.8;
-      this.baseHealth = 4;
-      this.baseValue = 9;
-      
-      this.speed = this.baseSpeed + (currentWave * 0.15);
-      this.health = Math.floor(this.baseHealth * waveScaling);
-      this.maxHealth = this.health;
-      this.value = Math.floor(this.baseValue * waveScaling);
-      
-      this.color = 0xaaaaff; // Light blue for ghost
-      this.weakAgainst = 'wizard';
-      this.weaknessMultiplier = 2.0;
-      
-      // Ghost special ability: phase through defenses
-      this.canPhase = true;
-      this.phaseCooldown = 5000;
-      this.lastPhaseTime = 0;
-    } else if (type === 'skeleton') {
-      this.baseSpeed = 1.6;
-      this.baseHealth = 5;
-      this.baseValue = 10;
-      
-      this.speed = this.baseSpeed + (currentWave * 0.12);
-      this.health = Math.floor(this.baseHealth * waveScaling);
-      this.maxHealth = this.health;
-      this.value = Math.floor(this.baseValue * waveScaling);
-      
-      this.color = 0xf0f0f0; // Off-white for skeleton
-      this.weakAgainst = 'wizard';
-      this.weaknessMultiplier = 1.7;
-    } else if (type === 'bat') {
-      this.baseSpeed = 2.2; // Fast
-      this.baseHealth = 2; // Low health
-      this.baseValue = 6;
-      
-      this.speed = this.baseSpeed + (currentWave * 0.22);
-      this.health = Math.floor(this.baseHealth * waveScaling);
-      this.maxHealth = this.health;
-      this.value = Math.floor(this.baseValue * waveScaling);
-      
-      this.color = 0x442244; // Dark purple for bat
-      this.weakAgainst = 'scarecrow';
-      this.weaknessMultiplier = 1.9;
-      
-      // Bat special ability: erratic movement
-      this.movementVariance = 0.3;
-    } else if (type === 'spider') {
-      this.baseSpeed = 1.9;
-      this.baseHealth = 3;
-      this.baseValue = 8;
-      
-      this.speed = this.baseSpeed + (currentWave * 0.18);
-      this.health = Math.floor(this.baseHealth * waveScaling);
-      this.maxHealth = this.health;
-      this.value = Math.floor(this.baseValue * waveScaling);
-      
-      this.color = 0x442222; // Dark red for spider
-      this.weakAgainst = 'dog';
-      this.weaknessMultiplier = 1.8;
-    } else if (type === 'wolf') {
-      this.baseSpeed = 2.3; // Very fast
-      this.baseHealth = 6; // Good health
-      this.baseValue = 14;
-      
-      this.speed = this.baseSpeed + (currentWave * 0.2);
-      this.health = Math.floor(this.baseHealth * waveScaling);
-      this.maxHealth = this.health;
-      this.value = Math.floor(this.baseValue * waveScaling);
-      
-      this.color = 0x664422; // Brown for wolf
-      this.weakAgainst = 'fence';
-      this.weaknessMultiplier = 1.7;
-    } else if (type === 'snake') {
-      this.baseSpeed = 1.7;
-      this.baseHealth = 4;
-      this.baseValue = 9;
-      
-      this.speed = this.baseSpeed + (currentWave * 0.15);
-      this.health = Math.floor(this.baseHealth * waveScaling);
-      this.maxHealth = this.health;
-      this.value = Math.floor(this.baseValue * waveScaling);
-      
-      this.color = 0x88aa22; // Yellow-green for snake
-      this.weakAgainst = 'dog';
-      this.weaknessMultiplier = 1.6;
-    } else if (type === 'goblin') {
-      this.baseSpeed = 1.8;
-      this.baseHealth = 7;
-      this.baseValue = 15;
-      
-      this.speed = this.baseSpeed + (currentWave * 0.16);
-      this.health = Math.floor(this.baseHealth * waveScaling);
-      this.maxHealth = this.health;
-      this.value = Math.floor(this.baseValue * waveScaling);
-      
-      this.color = 0x22aa22; // Green for goblin
-      this.weakAgainst = 'fence';
       this.weaknessMultiplier = 1.5;
-    } else if (type === 'dragon') {
-      this.baseSpeed = 1.4; // Slower but very powerful
-      this.baseHealth = 12; // Very high health
-      this.baseValue = 25; // High reward
+    } else if (type === 'deer') {
+      // Deer: Tougher, slower, higher value, appears later
+      this.baseSpeed = 1.0; // Slower than rabbit/bird
+      this.baseHealth = 10; // Tougher
+      this.baseValue = 15; // Higher reward
       
-      this.speed = this.baseSpeed + (currentWave * 0.1);
-      this.health = Math.floor(this.baseHealth * waveScaling);
+      // Scale with wave
+      this.speed = this.baseSpeed + (currentWave * 0.08); // Scales slower
+      this.health = Math.floor(this.baseHealth * waveScaling * 1.2); // Extra health scaling
       this.maxHealth = this.health;
       this.value = Math.floor(this.baseValue * waveScaling);
       
-      this.color = 0xcc2222; // Red for dragon
-      this.weakAgainst = 'wizard';
-      this.weaknessMultiplier = 1.4;
+      this.color = 0x8B4513; // Brown color for deer
+      this.weakAgainst = 'cannon'; // Weak against heavy hitters (Placeholder, cannon not yet implemented)
+      this.weaknessMultiplier = 1.8;
       
-      // Dragon special ability: fire resistance
-      this.fireResistance = 0.5;
-    } else if (type === 'demon') {
-      this.baseSpeed = 1.7;
-      this.baseHealth = 10;
-      this.baseValue = 20;
+      // Deer might have higher damage resistance
+      this.damageResistance = Math.min(0.4, (currentWave - 4) * 0.05); // Starts resistance later
       
-      this.speed = this.baseSpeed + (currentWave * 0.14);
-      this.health = Math.floor(this.baseHealth * waveScaling);
-      this.maxHealth = this.health;
-      this.value = Math.floor(this.baseValue * waveScaling);
-      
-      this.color = 0x880000; // Dark red for demon
-      this.weakAgainst = 'wizard';
-      this.weaknessMultiplier = 1.6;
     } else {
-      // Default properties for rabbit or unknown types
+      // Base properties - increased health
       this.baseSpeed = 1.5;
-      this.baseHealth = 4; // Increased from 2
+      this.baseHealth = 4;
       this.baseValue = 6;
       
       // Scale with wave
-      this.speed = this.baseSpeed + (currentWave * 0.15); // Increased speed scaling
+      this.speed = this.baseSpeed + (currentWave * 0.1);
       this.health = Math.floor(this.baseHealth * waveScaling);
       this.maxHealth = this.health;
       this.value = Math.floor(this.baseValue * waveScaling);
       
       this.color = 0x9b59b6;
       this.weakAgainst = 'dog';
-      this.weaknessMultiplier = 1.5; // Reduced from 2.0
+      this.weaknessMultiplier = 1.5;
     }
     
-    // ANTI-STACKING: Add slight horizontal and vertical position variation
+    // Set a default damage value used when enemy reaches the end
+    this.damage = type === 'deer' ? 2 : 1; // Deer deals more damage if it reaches the end
+    
+    // RE-ENABLED: Anti-stacking position variation
     this.x += (Math.random() - 0.5) * 40; // Add some horizontal spread 
     this.y += (Math.random() - 0.5) * 100; // Add more vertical spread
     
-    // Generate a unique ID for this enemy
-    this.id = `${this.type}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+    // ADDED: Debug logging after position variation
+    console.log(`Enemy ${this.id} after position variation: (${this.x}, ${this.y})`);
     
-    // Ensure minimum values - increased minimums
-    this.health = Math.max(4, this.health); // Minimum health of 4 (increased from 2)
-    this.speed = Math.max(1.2, this.speed); // Increased minimum speed
-    this.value = Math.max(5, this.value); // Increased minimum value
+    // Ensure minimum values
+    this.health = Math.max(4, this.health);
+    this.speed = Math.max(0.8, this.speed);
+    this.value = Math.max(5, this.value);
     
-    // Apply difficulty bonuses to later waves - increased bonuses
+    // Cap maximum speed to prevent teleporting/sonic speed
+    this.speed = Math.min(3, this.speed);
+    
+    // Apply difficulty bonuses to later waves with reduced speed scaling
     if (currentWave > 2) {
-      this.health += Math.floor(currentWave * 0.4); // Increased health scaling (from 0.25)
-      this.speed += 0.15 * Math.floor(currentWave / 2); // Increased speed scaling (from 0.1)
-      this.damageResistance = Math.min(0.3, (currentWave - 2) * 0.03); // Increased resistance (from 0.2, 0.02)
+      this.health += Math.floor(currentWave * 0.4);
+      this.speed += 0.08 * Math.floor(currentWave / 2);
+      this.damageResistance = Math.min(0.3, (currentWave - 2) * 0.03);
     }
     
     // Boss waves - increased power
     if (currentWave % 5 === 0) {
-      this.health = Math.floor(this.health * 1.5); // Increased from 1.25
+      this.health = Math.floor(this.health * 1.5);
       this.maxHealth = this.health;
-      this.value = Math.floor(this.value * 2.0); // Increased from 1.5
+      this.value = Math.floor(this.value * 2.0);
       this.isBoss = true;
       
       if (this.damageResistance) {
-        this.damageResistance += 0.1; // Increased from 0.05
+        this.damageResistance += 0.1;
       } else {
-        this.damageResistance = 0.1; // Increased from 0.05
+        this.damageResistance = 0.1;
       }
       
       // Use boss sprite for boss waves
       this.spriteKey = 'enemy_boss';
     } else {
-      // Assign the appropriate sprite key based on enemy type
-      switch (type) {
-        case 'bird':
-          this.spriteKey = 'enemy_bird';
-          break;
-        case 'rabbit':
-          this.spriteKey = 'enemy_rabbit';
-          break;
-        case 'fox':
-          this.spriteKey = 'enemy_fox';
-          break;
-        case 'slime':
-          this.spriteKey = 'enemy_slime';
-          break;
-        case 'ghost':
-          this.spriteKey = 'enemy_ghost';
-          break;
-        case 'skeleton':
-          this.spriteKey = 'enemy_skeleton';
-          break;
-        case 'bat':
-          this.spriteKey = 'enemy_bat';
-          break;
-        case 'spider':
-          this.spriteKey = 'enemy_spider';
-          break;
-        case 'wolf':
-          this.spriteKey = 'enemy_wolf';
-          break;
-        case 'snake':
-          this.spriteKey = 'enemy_snake';
-          break;
-        case 'goblin':
-          this.spriteKey = 'enemy_goblin';
-          break;
-        case 'dragon':
-          this.spriteKey = 'enemy_dragon';
-          break;
-        case 'demon':
-          this.spriteKey = 'enemy_demon';
-          break;
-        default:
-          this.spriteKey = 'enemy_rabbit';
-          break;
+      // Use regular enemy sprites
+      if (type === 'bird') {
+        this.spriteKey = 'enemy_bird';
+      } else if (type === 'deer') {
+        this.spriteKey = 'enemy_deer'; // Use deer sprite
+      } else {
+        this.spriteKey = 'enemy_rabbit';
       }
     }
     
     // Create visual representation using sprite images with fallback
     try {
+      // CRITICAL FIX: Force textures to load if not in cache
+      if (!scene.textures.exists(this.spriteKey)) {
+        console.warn(`Texture key ${this.spriteKey} missing, attempting fallback...`);
+        // Fallback logic based on type
+        if (type === 'bird') {
+          this.spriteKey = 'enemy_bird';
+          if (!scene.textures.exists('enemy_bird')) {
+            this.spriteKey = 'enemy_rabbit'; // Ultimate fallback
+          }
+        } else if (type === 'deer') {
+          this.spriteKey = 'enemy_deer';
+          if (!scene.textures.exists('enemy_deer')) {
+            this.spriteKey = 'enemy_rabbit'; // Ultimate fallback
+          }
+        } else { // Rabbit or unknown
+           this.spriteKey = 'enemy_rabbit';
+        }
+        console.warn(`Using fallback texture key: ${this.spriteKey}`);
+      }
+      
       // Check if the sprite texture exists in the cache
       if (scene.textures.exists(this.spriteKey)) {
         // Create a container for the enemy (for better grouping)
@@ -330,6 +175,18 @@ export default class Enemy {
         // Add to container (no highlight circle)
         this.container.add([this.sprite]);
         
+        // CRITICAL: Make the container physics-enabled for collision detection
+        if (scene.physics && scene.physics.world) {
+          scene.physics.world.enable(this.container);
+          this.container.body.setSize(50, 50); // Set collision hitbox size
+          this.container.body.setCollideWorldBounds(false); // Allow movement off screen
+          this.container.body.setImmovable(false); // Allow movement
+          this.container.body.enable = true; // ADDED: Explicitly enable the body
+          
+          // ADDED: Set initial velocity immediately
+          this.setInitialVelocity();
+        }
+        
         console.log(`Created enemy sprite with texture: ${this.spriteKey}`);
       } else {
         // Fallback to colored circle if texture doesn't exist
@@ -339,26 +196,15 @@ export default class Enemy {
         this.container = scene.add.container(x, y);
         this.container.setDepth(100);
         
-        // Get appropriate emoji based on enemy type
-        let emoji = '❓';
-        switch (type) {
-          case 'bird': emoji = '🐦'; break;
-          case 'rabbit': emoji = '🐰'; break;
-          case 'fox': emoji = '🦊'; break;
-          case 'slime': emoji = '🟢'; break;
-          case 'ghost': emoji = '👻'; break;
-          case 'skeleton': emoji = '💀'; break;
-          case 'bat': emoji = '🦇'; break;
-          case 'spider': emoji = '🕷️'; break;
-          case 'wolf': emoji = '🐺'; break;
-          case 'snake': emoji = '🐍'; break;
-          case 'goblin': emoji = '👹'; break;
-          case 'dragon': emoji = '🐉'; break;
-          case 'demon': emoji = '😈'; break;
-        }
+        // FIX: Create a visible fallback graphic
+        const graphics = scene.add.graphics();
+        graphics.fillStyle(this.color, 1);
+        graphics.fillCircle(0, 0, 30);
+        graphics.lineStyle(2, 0x000000, 1);
+        graphics.strokeCircle(0, 0, 30);
         
-        // Create a larger, more visible sprite or icon
-        this.typeText = scene.add.text(0, 0, emoji, {
+        // Add text to show enemy type
+        this.typeText = scene.add.text(0, 0, this.getEmojiForType(type), { // Use helper function
           fontSize: '36px', // Larger text
           fontFamily: 'Arial',
           stroke: '#000000',
@@ -375,8 +221,20 @@ export default class Enemy {
           }
         });
         
-        // Add to container (no highlight circle)
-        this.container.add([this.typeText]);
+        // Add to container (graphics first, then text)
+        this.container.add([graphics, this.typeText]);
+        
+        // CRITICAL: Make the container physics-enabled for collision detection
+        if (scene.physics && scene.physics.world) {
+          scene.physics.world.enable(this.container);
+          this.container.body.setSize(50, 50); // Set collision hitbox size
+          this.container.body.setCollideWorldBounds(false); // Allow movement off screen
+          this.container.body.setImmovable(false); // Allow movement
+          this.container.body.enable = true; // ADDED: Explicitly enable the body
+          
+          // ADDED: Set initial velocity immediately (Fallback)
+          this.setInitialVelocity();
+        }
       }
       
       // Make the container interactive to improve clicking
@@ -391,6 +249,11 @@ export default class Enemy {
           console.log(`Enemy container clicked and taking ${clickDamage} damage`);
         }
       });
+      
+      // Force visibility on all components
+      if (this.container) this.container.setAlpha(1);
+      if (this.sprite) this.sprite.setAlpha(1);
+      
     } catch (error) {
       console.error('Error creating enemy sprite:', error);
       // Ultra fallback - create a minimal emergency representation
@@ -399,28 +262,45 @@ export default class Enemy {
       this.container.setSize(60, 60);
       this.container.setInteractive();
       
+      // FIX: Create a highly visible emergency representation  
+      const emergencyGraphics = scene.add.graphics();
+      emergencyGraphics.fillStyle(0xFF0000, 1);
+      emergencyGraphics.fillCircle(0, 0, 25);
+      emergencyGraphics.lineStyle(4, 0xFFFF00, 1);
+      emergencyGraphics.strokeCircle(0, 0, 25);
+      
       const emergencyText = scene.add.text(0, 0, "!", {
         fontSize: '36px',
         fontFamily: 'Arial',
-        color: '#FF0000',
+        color: '#FFFFFF',
         stroke: '#000000',
         strokeThickness: 4
       }).setOrigin(0.5);
       
-      this.container.add([emergencyText]);
+      this.container.add([emergencyGraphics, emergencyText]);
+      
+      // CRITICAL: Make the container physics-enabled for collision detection even in fallback
+      if (scene.physics && scene.physics.world) {
+        scene.physics.world.enable(this.container);
+        this.container.body.setSize(50, 50); // Set collision hitbox size
+        this.container.body.enable = true; // ADDED: Explicitly enable the body
+        // ADDED: Set initial velocity immediately (Emergency Fallback)
+        this.setInitialVelocity();
+      }
     }
     
     // Add health bar with high visibility
     this.healthBar = {
       background: scene.add.rectangle(x, y - 35, 40, 8, 0xFF0000)
-        .setDepth(101)
+        .setDepth(2001)
         .setStrokeStyle(1, 0x000000),
       fill: scene.add.rectangle(x, y - 35, 40, 8, 0x00FF00)
-        .setDepth(102)
+        .setDepth(2002)
     };
     
-    // Remove the emoji text since we're using sprites now
-    this.typeText = null;
+    // CRITICAL FIX: Make health bar more visible
+    this.healthBar.background.setAlpha(1);
+    this.healthBar.fill.setAlpha(1);
     
     // Add wave indicator for stronger enemies
     if (currentWave > 1) {
@@ -436,212 +316,81 @@ export default class Enemy {
         this.waveIndicator.setColor('#FF00FF');
         
         // Make the enemy appear larger for boss waves
-        this.sprite.setScale(1.2);
+        if (this.sprite) {
+          this.sprite.setScale(1.2);
+        }
       }
     }
     
-    console.log(`Created ${type} enemy ${this.id} at ${x},${y} - health: ${this.health}, speed: ${this.speed.toFixed(1)}, wave: ${currentWave}`);
+    // CRITICAL FIX: Force update visuals to ensure everything is positioned correctly
+    this.updateVisuals();
+    
+    console.log(`Created ${type} enemy ${this.id} at ${x},${y} - health: ${this.health}, speed: ${typeof this.speed === 'number' ? this.speed.toFixed(1) : this.speed}, wave: ${currentWave}`);
   }
   
   update(delta) {
-    try {
-      if (!this.active) return;
-      
-      // Store previous position to detect if enemy is stuck
-      this.lastX = this.x;
-      this.lastY = this.y;
-      
-      // Get current time for movement tracking
-      const currentTime = this.scene.time.now;
-      if (!this.lastMoveTime) {
-        this.lastMoveTime = currentTime;
+    if (!this.active || !this.scene || !this.scene.time) {
+      // If inactive or scene missing, ensure physics body is stopped if it exists
+      if (this.container && this.container.body) {
+        this.container.body.setVelocity(0, 0);
       }
-      
-      // FIX FOR HIGH REFRESH RATE DEVICES (120Hz, 144Hz)
-      // Normalize movement to work consistently at all refresh rates
-      const targetFrameTime = 16.67; // Target 60fps
-      const timeMultiplier = delta ? Math.min(delta / targetFrameTime, 2.0) : 1.0;
-      
-      // ANTI-STACKING: Add small random y movement to avoid enemies moving in straight lines
-      const randomYOffset = (Math.random() - 0.5) * 0.5;
-      
-      // Move towards left side of screen - FIXED for high refresh rates
-      // Use a reduced base movement speed multiplied by timeMultiplier
-      this.x -= (this.speed * 0.3) * timeMultiplier; // Reduced from original speed
-      this.y += randomYOffset * timeMultiplier; // Add slight random y movement
-      
-      // Initialize stuck counter if not already set
-      if (this.stuckCounter === undefined) {
-        this.stuckCounter = 0;
-      }
-      
-      // Make sure the enemy is marked as moving
-      this.moving = true;
-      
-      // If enemy somehow got stuck outside the screen, fix it
-      if (this.x > 850) {
-        this.x = 800;
-        console.log(`Fixed enemy position that was outside screen: ${this.x}`);
-      }
-      
-      // Check if enemy is stuck (not moving despite having speed)
-      if (Math.abs(this.x - this.lastX) < 0.1) {
-        // Count time since last real movement
-        if (!this.timeSinceLastMove) {
-          this.timeSinceLastMove = 0;
-        }
-        this.timeSinceLastMove += delta || 16; // Use delta time if available
-        
-        // If stuck for too long, force movement
-        if (this.timeSinceLastMove > 500) { // 500ms stuck threshold
-          this.stuckCounter++;
-          
-          // Force movement based on stuck counter
-          if (this.stuckCounter > 3) {
-            // More aggressive unsticking for longer stucks
-            console.log(`Enemy ${this.type} appears very stuck at (${this.x}, ${this.y}) - forcing stronger movement`);
-            this.x -= this.speed * 2 * timeMultiplier; // Reduced multiplier, adjusted for time
-            this.y += (Math.random() - 0.5) * 10; // Random Y jitter
-            
-            // If extremely stuck (10+ attempts), teleport
-            if (this.stuckCounter > 10) {
-              console.warn(`Enemy hopelessly stuck - teleporting`);
-              this.x -= 100; // Move far to the left
-              this.y = Math.random() * 400 + 100; // Random Y
-              this.stuckCounter = 0; // Reset counter
-            }
-          } else {
-            // Normal unstuck attempt
-            console.log(`Enemy appears stuck - forcing movement (attempt #${this.stuckCounter})`);
-            this.x -= this.speed * 1.5 * timeMultiplier; // Reduced multiplier, adjusted for time
-          }
-        }
-      } else {
-        // Reset stuck counter if moving normally
-        this.stuckCounter = 0;
-        this.timeSinceLastMove = 0;
-      }
-      
-      // Add slight vertical variation to avoid stacking
-      if (Math.random() < 0.05) {
-        this.y += (Math.random() - 0.5) * 4;
-      }
-      
-      // Ensure enemy stays within playable area
-      this.y = Math.max(100, Math.min(500, this.y));
-      
-      // Force active and visible states
-      this.active = true;
-      this.visible = true;
-      
-      // Update visual elements - ENSURE VISIBILITY
-      if (typeof this.updateVisuals === 'function') {
-        this.updateVisuals();
-      } else {
-        // Fallback update if updateVisuals is missing
-        if (this.container) {
-          this.container.x = this.x;
-          this.container.y = this.y;
-          this.container.visible = true;
-          this.container.setDepth(1000);
-        }
-        
-        if (this.sprite) {
-          this.sprite.visible = true;
-          this.sprite.setDepth(1000);
-        }
-        
-        if (this.healthBar) {
-          const healthPercent = Math.max(0, this.health / this.maxHealth || 1);
-          
-          if (this.healthBar.background) {
-            this.healthBar.background.x = this.x;
-            this.healthBar.background.y = this.y - 35;
-            this.healthBar.background.visible = true;
-          }
-          
-          if (this.healthBar.fill) {
-            this.healthBar.fill.width = 40 * healthPercent;
-            this.healthBar.fill.x = this.x - 20 + (this.healthBar.fill.width / 2);
-            this.healthBar.fill.y = this.y - 35;
-            this.healthBar.fill.visible = true;
-          }
-        }
-      }
-      
-      // Check if enemy has reached left side
-      if (this.x < 0) {
-        this.reachedEnd();
-      }
-      
-      // Fox special ability: Stealth mode
-      if (this.type === 'fox' && !this.stealthActive && 
-          currentTime - this.lastStealthTime > this.stealthCooldown &&
-          Math.random() < 0.01) { // 1% chance per update to go stealth when off cooldown
-        
-        this.activateStealth(currentTime);
-      }
-      
-      // Update stealth duration if active
-      if (this.stealthActive) {
-        if (currentTime - this.stealthStartTime > this.stealthDuration) {
-          this.deactivateStealth();
-        } else {
-          // Reduced visibility during stealth
-          if (this.sprite) this.sprite.alpha = 0.4;
-          if (this.container) this.container.alpha = 0.4;
-        }
-      }
-    } catch (error) {
-      console.error(`Error updating enemy ${this.type}:`, error);
+      return;
+    }
+
+    // Update visuals (like health bar)
+    this.updateVisuals();
+
+    // Update status effects
+    this.updateStatusEffects(delta);
+    
+    // ADDED: Log velocity in update
+    if (this.container && this.container.body && Math.random() < 0.05) { // Log occasionally
+      console.log(`Enemy ${this.id} velocity: vx=${this.container.body.velocity.x.toFixed(1)}, vy=${this.container.body.velocity.y.toFixed(1)}`);
+    }
+
+    // Check if enemy reached the end
+    if (this.x < 50) { // Check if x is near the left edge
+      this.reachedEnd();
     }
   }
   
   updateVisuals() {
-    if (!this.active) return;
+    if (!this.active || !this.container) return; // Check container exists
     
     // Force enemy to be active
     this.active = true;
     this.visible = true;
     
-    // Update container position (main approach)
-    if (this.container) {
-      this.container.x = this.x;
-      this.container.y = this.y;
-      this.container.visible = true; // Force visibility
-      this.container.setDepth(1000); // Extremely high depth to ensure visibility
-      
-      // Make container interactive if not already
-      if (!this.container.input) {
-        this.container.setInteractive();
-        this.container.input.hitArea.width = 60;
-        this.container.input.hitArea.height = 60;
-      }
-    } 
-    // Legacy fallback for sprite-only approach
-    else if (this.sprite) {
-      this.sprite.x = this.x;
-      this.sprite.y = this.y;
-      this.sprite.visible = true;
-      this.sprite.setDepth(1000);
-      
-      // Make sprite interactive if not already
-      if (!this.sprite.input) {
-        this.sprite.setInteractive();
-      }
-      
-      // If the sprite is a Phaser.GameObjects.Sprite, ensure it has the correct key
-      if (this.sprite.setTexture && this.scene.textures.exists(this.spriteKey)) {
-        this.sprite.setTexture(this.spriteKey);
-      }
-      
-      // Legacy text position update
-      if (this.typeText) {
-        this.typeText.x = this.x;
-        this.typeText.y = this.y;
-        this.typeText.visible = true;
-        this.typeText.setDepth(1001);
-      }
+    // Ensure container is visible and opaque
+    this.container.visible = true; // Force visibility
+    this.container.setDepth(2000); // INCREASED DEPTH
+    this.container.alpha = 1; // CRITICAL FIX: Force full opacity
+    
+    // Make container interactive if not already
+    if (!this.container.input) {
+      this.container.setInteractive();
+      // Ensure hit area matches visual size if needed (adjust size as necessary)
+      // Example: this.container.input.hitArea.setSize(60, 60); 
+    }
+    
+    // CRITICAL FIX: Force visibility on all child elements
+    if (this.container.list && this.container.list.length > 0) {
+      this.container.list.forEach(child => {
+        if (child) {
+          child.visible = true;
+          child.alpha = 1;
+        }
+      });
+    }
+    
+    // ADDED: Update internal x/y based on the *container's* current position
+    // This is needed for health bar and wave indicator positioning relative to the visual
+    this.x = this.container.x;
+    this.y = this.container.y;
+    
+    // ADDED: Log position before health bar update
+    if (Math.random() < 0.05) { // Log occasionally
+        console.log(`Enemy ${this.id} Pos before health bar: x=${this.x?.toFixed(1)}, y=${this.y?.toFixed(1)}`);
     }
     
     // Update wave indicator position - always separate from container
@@ -650,121 +399,167 @@ export default class Enemy {
       this.waveIndicator.y = this.y + 20;
       this.waveIndicator.visible = true;
       this.waveIndicator.setDepth(1002); // Very high depth
+      this.waveIndicator.alpha = 1; // CRITICAL FIX: Force full opacity
     }
     
     // Update health bar - always separate from container
     this.updateHealthBar();
     
+    // CRITICAL FIX: Force health bar visibility
+    if (this.healthBar) {
+      if (this.healthBar.background) {
+        this.healthBar.background.visible = true;
+        this.healthBar.background.alpha = 1;
+      }
+      if (this.healthBar.fill) {
+        this.healthBar.fill.visible = true;
+        this.healthBar.fill.alpha = 1;
+      }
+    }
+    
     // Debug log position occasionally
     if (Math.random() < 0.01) {
-      console.log(`Enemy at (${this.x.toFixed(0)}, ${this.y.toFixed(0)}), health: ${this.health.toFixed(1)}/${this.maxHealth}`);
+      // FIXED: Ensure x and y are numbers before calling toFixed
+      const xPos = typeof this.x === 'number' ? this.x.toFixed(0) : '?';
+      const yPos = typeof this.y === 'number' ? this.y.toFixed(0) : '?';
+      const healthVal = typeof this.health === 'number' ? this.health.toFixed(1) : '?';
+      
+      console.log(`Enemy at (${xPos}, ${yPos}), health: ${healthVal}/${this.maxHealth}`);
     }
   }
   
   reachedEnd() {
-    // Enemy reached the farm - reduce lives
+    // Enemy reached the farm - call enemyReachedEnd on the scene if available
+    try {
+      // ADDED: Log before calling scene method
+      console.log(`Enemy ${this.id} calling scene.enemyReachedEnd`);
+      
+      if (this.scene && typeof this.scene.enemyReachedEnd === 'function') {
+        // Call the scene's enemyReachedEnd method to handle damage to player
+        this.scene.enemyReachedEnd(this);
+      } else {
+        // Fallback if the scene doesn't have the method
         if (this.scene.gameState) {
           this.scene.gameState.lives--;
-          this.scene.updateLivesText();
-      
-      console.log("Enemy reached farm! Lives remaining:", this.scene.gameState.lives);
           
-          // Show warning text
-          this.scene.showFloatingText(50, 300, 'Farm Invaded! -1 Life', 0xFF0000);
-          
-      // Check for game over
-          if (this.scene.gameState.lives <= 0) {
-            this.endGame();
+          if (typeof this.scene.updateLivesText === 'function') {
+            this.scene.updateLivesText();
           }
+          
+          console.log("Enemy reached farm! Lives remaining:", this.scene.gameState.lives);
+          
+          // Show warning text if possible
+          if (typeof this.scene.showFloatingText === 'function') {
+            this.scene.showFloatingText(50, 300, 'Farm Invaded! -1 Life', 0xFF0000);
+          }
+          
+          // Check for game over
+          if (this.scene.gameState.lives <= 0) {
+            console.log("Game over! No lives remaining.");
+            if (typeof this.scene.endGame === 'function') {
+              this.scene.endGame();
+            }
+          }
+          
+          // Remove the enemy
+          this.destroy();
         }
-        
-    // Remove the enemy
-        this.destroy();
+      }
+    } catch (error) {
+      console.error("Error in reachedEnd:", error);
+      // Still try to destroy the enemy
+      this.destroy();
+    }
   }
   
   takeDamage(amount) {
-    try {
-      // Early return if dead or immune
-      if (this.health <= 0 || !this.active) {
-        console.log(`Enemy already defeated or inactive, health: ${this.health}`);
-        return false;
-      }
-      
-      // Check for dodge (some enemies might have dodge chance)
-      if (this.dodgeChance && Math.random() < this.dodgeChance) {
-        // Dodge successful
-        this.showDodgeEffect();
-        return false;
-      }
-      
-      // Calculate actual damage (incorporate defense if any)
-      const actualDamage = this.damageResistance ? amount * (1 - this.damageResistance) : amount;
-      
-      // Apply damage
-      this.health -= actualDamage;
-      
-      // Log damage taken
-      console.log(`${this.type} enemy took ${actualDamage.toFixed(1)} damage. Health now: ${this.health.toFixed(1)}/${this.maxHealth}`);
-      
-      // Update health bar
+    // Skip if already inactive
+    if (!this.active) return;
+    
+    // Force active status
+    this.active = true;
+    
+    // Ensure minimum damage is applied - INCREASED to ensure enemies die
+    const actualDamage = Math.max(1.0, amount);
+    
+    // Log damage for debugging
+    console.log(`Enemy ${this.type} taking ${actualDamage} damage, current health: ${this.health}`);
+    
+    // Apply damage resistance if applicable, but ensure minimum damage
+    let finalDamage = actualDamage;
+    if (this.damageResistance && this.damageResistance > 0) {
+      finalDamage = actualDamage * (1 - this.damageResistance);
+      finalDamage = Math.max(1, finalDamage); // Always do at least 1 damage
+    }
+    
+    // IMPORTANT FIX: Special handling for enemies with low health
+    // This prevents enemies getting stuck at 1 HP
+    if (this.health <= 3) {
+      // Guarantee the enemy dies with a critical hit
+      finalDamage = this.health * 2; // Double damage to ensure death
+      console.log(`Critical hit on low health enemy! Doing ${finalDamage} damage`);
+    }
+    
+    // Apply damage - ensure immediate health reduction
+    this.health -= finalDamage;
+    
+    // CRITICAL FIX: Ensure health never gets stuck at exactly 1
+    if (this.health > 0 && this.health < 1.5) {
+       this.health = 0;
+      console.log(`Enemy ${this.type} with <1.5 HP force killed`);
+    }
+    
+    // Play hit sound if soundManager is available
+    if (this.scene && this.scene.soundManager) {
+      this.scene.soundManager.play('enemy_hit', { volume: 0.4 });
+    }
+    
+    // Update health bar if available
+    if (typeof this.updateHealthBar === 'function') {
+      // ADDED: Log before calling updateHealthBar
+      console.log(`Enemy ${this.id} calling updateHealthBar from takeDamage`);
       this.updateHealthBar();
-      
-      // Show hit effect
-      this.showHitEffect();
-      
-      // Check if defeated - ensure health is exactly 0 to avoid floating point issues
-      if (this.health <= 0) {
-        console.log(`Enemy ${this.type} defeated by damage! Setting health to 0.`);
-        this.health = 0;
-        this.defeated();
-        return true;
-      }
-      
-      // Additional safety check for very low health (potential floating point issues)
-      if (this.health < 0.1) {
-        console.log(`Enemy ${this.type} has very low health (${this.health.toFixed(3)}). Forcing defeat.`);
-        this.health = 0;
-        this.defeated();
-        return true;
-      }
-      
-      return false;
-    } catch (error) {
-      console.error("Error in enemy takeDamage:", error);
-      return false;
     }
-  }
-  
-  // Show a visual effect when enemy is hit
-  showHitEffect() {
-    try {
-      if (!this.scene || !this.active || !this.sprite) return;
+    
+    // Show damage text
+    if (typeof this.showDamageText === 'function') {
+      this.showDamageText(finalDamage);
+    }
+    
+    // Check if enemy is defeated - STRONGLY ENSURE DEATH
+    if (this.health <= 0) {
+      // Play defeat sound
+      if (this.scene && this.scene.soundManager) {
+        this.scene.soundManager.play('enemy_defeat', { volume: 0.6 });
+      }
       
-      // Flash the sprite red
-      this.sprite.setTint(0xFF0000);
+      // Make sure health is exactly 0
+      this.health = 0;
       
-      // Reset the tint after a short delay
-      this.scene.time.delayedCall(100, () => {
-        if (this.sprite && this.sprite.clearTint) {
-          this.sprite.clearTint();
+      // Debug log
+      console.log(`Enemy defeated by takeDamage, health = ${this.health}`);
+      
+      // Ensure defeat is called properly by wrapping in try/catch
+      try {
+        // Call defeat directly to ensure proper cleanup and score updates
+        if (typeof this.defeat === 'function') {
+          console.log("Calling enemy defeat method");
+          this.defeat();
+        } else {
+          // Fallback if defeat method is missing
+          console.log("No defeat method, calling destroy directly");
+          this.destroy();
         }
-      });
+      } catch (err) {
+        console.error("Error in defeat logic:", err);
+        // Last resort - force destroy
+        this.destroy();
+      }
       
-      // Add a hit impact circle that expands and fades
-      const hitImpact = this.scene.add.circle(this.x, this.y, 10, 0xFFFFFF, 0.7);
-      
-      // Animate the impact effect
-      this.scene.tweens.add({
-        targets: hitImpact,
-        alpha: 0,
-        radius: 25,
-        duration: 300,
-        onComplete: () => hitImpact.destroy()
-      });
-      
-    } catch (error) {
-      console.error("Error in showHitEffect:", error);
+      return true; // Indicate successful kill
     }
+    
+    return false; // Enemy still alive
   }
   
   endGame() {
@@ -773,77 +568,88 @@ export default class Enemy {
     console.log("Game over!");
     
     // Set game to inactive
-      if (this.scene.gameState) {
-        this.scene.gameState.isActive = false;
-      }
-      
+    if (this.scene.gameState) {
+      this.scene.gameState.isActive = false;
+    }
+    
     // Show game over text
-      const gameOverText = this.scene.add.text(400, 300, 'GAME OVER', {
+    const gameOverText = this.scene.add.text(400, 300, 'GAME OVER', {
       fontSize: '48px',
-        fontFamily: 'Arial',
-        color: '#FF0000'
-      }).setOrigin(0.5);
-      
-      // Show score
+      fontFamily: 'Arial',
+      color: '#FF0000'
+    }).setOrigin(0.5);
+    
+    // Show score
     const scoreText = this.scene.add.text(400, 350, `Final Score: ${this.scene.gameState.score}`, {
       fontSize: '24px',
-        fontFamily: 'Arial',
-        color: '#FFFFFF'
-      }).setOrigin(0.5);
-      
-      // Show restart button
-      const restartButton = this.scene.add.rectangle(400, 420, 200, 50, 0xFFFFFF);
-      const restartText = this.scene.add.text(400, 420, 'Restart Game', {
+      fontFamily: 'Arial',
+      color: '#FFFFFF'
+    }).setOrigin(0.5);
+    
+    // Show restart button
+    const restartButton = this.scene.add.rectangle(400, 420, 200, 50, 0xFFFFFF);
+    const restartText = this.scene.add.text(400, 420, 'Restart Game', {
       fontSize: '18px',
-        fontFamily: 'Arial',
-        color: '#000000'
-      }).setOrigin(0.5);
-      
-      restartButton.setInteractive();
-      restartButton.on('pointerdown', () => {
-        this.scene.scene.restart();
-      });
+      fontFamily: 'Arial',
+      color: '#000000'
+    }).setOrigin(0.5);
+    
+    restartButton.setInteractive();
+    restartButton.on('pointerdown', () => {
+      this.scene.scene.restart();
+    });
   }
   
-  destroy() {
-    try {
-      console.log(`Destroying enemy at (${this.x}, ${this.y})`);
+  destroy(silent = false) {
+    if (!this.active || this.dead) {
+      return;
+    }
+    
+    // Mark as destroyed
+    this.active = false;
+    this.dead = true;
+    this.destroyed = true; // Add explicit destroyed flag
+    this.health = 0; // Ensure health is zero
+    
+    // Set a flag for pending removal to prevent targeting while animating
+    this._pendingRemoval = true;
+    
+    // Apply death animation or visual effect
+    this.applyDeathEffect();
+    
+    // Log the destruction with position for debugging
+    if (!silent) {
+      // Make sure position values are numbers before calling toFixed
+      const xDisplay = typeof this.x === 'number' ? this.x.toFixed(2) : String(this.x);
+      const yDisplay = typeof this.y === 'number' ? this.y.toFixed(2) : String(this.y);
       
-      // Set as inactive 
-      this.active = false;
-      this.visible = false;
-      
-      // Remove from enemies array immediately
-      if (this.scene && this.scene.enemies) {
-        const index = this.scene.enemies.indexOf(this);
-        if (index !== -1) {
-          this.scene.enemies.splice(index, 1);
-        }
-      }
-      
-      // Still use a delay for visual cleanup
-      if (this.scene && this.scene.time && typeof this.scene.time.delayedCall === 'function') {
-        this.scene.time.delayedCall(300, () => {
-          // Clean up sprites after the delay
-          this.cleanupSprites();
-        });
+      console.log(`Destroying enemy ${this.id} at (${xDisplay}, ${yDisplay})`);
+    }
+    
+    // Remove from enemies array IMMEDIATELY using splice
+    if (this.scene && this.scene.enemies) {
+      const index = this.scene.enemies.indexOf(this);
+      if (index !== -1) {
+        console.log(`Splicing enemy ${this.id} from scene array at index ${index}`);
+        this.scene.enemies.splice(index, 1);
       } else {
-        // If delayed call is not available, clean up immediately
+        console.warn(`Enemy ${this.id} not found in scene array during destroy.`);
+      }
+    }
+    
+    // Cleanup sprites with delay to allow animations to finish
+    if (this.scene && this.scene.time && typeof this.scene.time.delayedCall === 'function') {
+      this.scene.time.delayedCall(300, () => {
         this.cleanupSprites();
-      }
-    } catch (error) {
-      console.error("Error destroying enemy:", error);
-      
-      // Fallback cleanup to prevent memory leaks
+      });
+    } else {
+      // If delayed call is not available, clean up immediately
       this.cleanupSprites();
-      
-      // Emergency removal from the enemies array
-      if (this.scene && this.scene.enemies) {
-        const index = this.scene.enemies.indexOf(this);
-        if (index !== -1) {
-          this.scene.enemies.splice(index, 1);
-        }
-      }
+    }
+    
+    // Stop any sounds being played by this enemy
+    if (this.scene && this.scene.sound) {
+      // No specific sounds to stop for now, but adding this for future sounds
     }
   }
   
@@ -868,87 +674,97 @@ export default class Enemy {
   }
   
   defeatAnimation() {
-    if (!this.scene || !this.sprite) return;
+    if (!this.scene || !this.active) return;
     
-    // Create a more dramatic explosion effect
-    const explosion = this.scene.add.circle(this.x, this.y, 40, 0xFFFF00, 0.8);
-    
-    // Add particles if available
-    if (this.scene.add.particles) {
-      try {
-        // Create particles in the enemy's color
-        const particleColor = this.type === 'bird' ? 0x3498db : 0x9b59b6;
-        const particles = this.scene.add.particles(this.x, this.y, 'pixel', {
-          speed: 150,
-          scale: { start: 2, end: 0 },
-          blendMode: 'ADD',
-          lifespan: 800,
-          tint: particleColor
-        });
-        
-        // Explode with more particles
-        particles.explode(30);
-        
-        // Destroy after animation completes
-        this.scene.time.delayedCall(800, () => particles.destroy());
-      } catch (error) {
-        console.log("Particle system not available:", error);
+    try {
+      // Create a more dramatic explosion effect
+      const explosion = this.scene.add.circle(this.x, this.y, 40, 0xFFFF00, 0.8);
+      
+      // Add particles if available
+      if (this.scene.add.particles) {
+        try {
+          // Create particles in the enemy's color
+          const particleColor = this.type === 'bird' ? 0x3498db : 0x9b59b6;
+          const particles = this.scene.add.particles(this.x, this.y, 'pixel', {
+            speed: 150,
+            scale: { start: 2, end: 0 },
+            blendMode: 'ADD',
+            lifespan: 800,
+            tint: particleColor
+          });
+          
+          // Explode with more particles
+          particles.explode(30);
+          
+          // Destroy after animation completes
+          this.scene.time.delayedCall(800, () => particles.destroy());
+        } catch (error) {
+          console.log("Particle system not available:", error);
+        }
       }
-    }
-    
-    // Animate explosion with more dramatic effect
-    this.scene.tweens.add({
-      targets: explosion,
-      alpha: 0,
-      scale: 3,
-      duration: 500,
-      onComplete: () => explosion.destroy()
-    });
-    
-    // Add defeat text with coin value - make it more visible
-    const defeatText = this.scene.add.text(this.x, this.y - 20, `+${this.value}`, {
-      fontSize: '24px',
-      fontFamily: 'Arial',
-      color: '#FFFF00',
-      stroke: '#000000',
-      strokeThickness: 3
-    }).setOrigin(0.5);
-    
-    // Animate the text with a more dramatic effect
-    this.scene.tweens.add({
-      targets: defeatText,
-      y: this.y - 80,
-      alpha: 0,
-      scale: 1.5,
-      duration: 1500,
-      onComplete: () => defeatText.destroy()
-    });
-    
-    // Add a special effect for boss enemies
-    if (this.isBoss) {
-      const bossText = this.scene.add.text(this.x, this.y - 40, 'BOSS DEFEATED!', {
-        fontSize: '20px',
+      
+      // Animate explosion with more dramatic effect
+      this.scene.tweens.add({
+        targets: explosion,
+        alpha: 0,
+        scale: 3,
+        duration: 500,
+        onComplete: () => explosion.destroy()
+      });
+      
+      // Add defeat text with coin value - make it more visible
+      const defeatText = this.scene.add.text(this.x, this.y - 20, `+${this.value}`, {
+        fontSize: '24px',
         fontFamily: 'Arial',
-        color: '#FF00FF',
+        color: '#FFFF00',
         stroke: '#000000',
         strokeThickness: 3
       }).setOrigin(0.5);
       
+      // Animate the text with a more dramatic effect
       this.scene.tweens.add({
-        targets: bossText,
-        y: this.y - 100,
+        targets: defeatText,
+        y: this.y - 80,
         alpha: 0,
         scale: 1.5,
         duration: 1500,
-        onComplete: () => bossText.destroy()
+        onComplete: () => defeatText.destroy()
       });
+      
+      // Add a special effect for boss enemies
+      if (this.isBoss) {
+        const bossText = this.scene.add.text(this.x, this.y - 40, 'BOSS DEFEATED!', {
+          fontSize: '20px',
+          fontFamily: 'Arial',
+          color: '#FF00FF',
+          stroke: '#000000',
+          strokeThickness: 3
+        }).setOrigin(0.5);
+        
+        this.scene.tweens.add({
+          targets: bossText,
+          y: this.y - 100,
+          alpha: 0,
+          scale: 1.5,
+          duration: 1500,
+          onComplete: () => bossText.destroy()
+        });
+      }
+    } catch (error) {
+      console.error("Error in defeatAnimation:", error);
     }
+  }
+  
+  // Add the missing applyDeathEffect method
+  applyDeathEffect() {
+    // Call our existing defeatAnimation method
+    this.defeatAnimation();
   }
   
   // Helper method to clean up sprites
   cleanupSprites() {
     try {
-      // Clean up container (will automatically destroy children)
+      // Clean up container
       if (this.container) {
         this.container.destroy();
         this.container = null;
@@ -995,54 +811,31 @@ export default class Enemy {
   
   // Add updateHealthBar method to ensure health bar is properly updated
   updateHealthBar() {
-    if (!this.healthBar || !this.active || !this.scene) return;
+    if (!this.healthBar || !this.scene || !this.active) return;
     
-    // Calculate health percentage
-    const healthPercent = Math.max(0, this.health / this.maxHealth);
+    // CRITICAL SAFETY CHECK: Ensure position is valid
+    if (typeof this.x !== 'number') this.x = parseFloat(this.x) || 0;
+    if (typeof this.y !== 'number') this.y = parseFloat(this.y) || 0;
     
-    // Update background
-    if (this.healthBar.background) {
-      this.healthBar.background.x = this.x;
-      this.healthBar.background.y = this.y - 35;
-      this.healthBar.background.width = 40;
-      this.healthBar.background.height = 8;
-      this.healthBar.background.visible = true;
-      this.healthBar.background.setDepth(1002);
-    }
+    // Position health bar above the enemy with offset
+    const offsetY = -35; // Distance above the enemy
     
-    // Update fill
-    if (this.healthBar.fill) {
-      this.healthBar.fill.width = 40 * healthPercent;
-      this.healthBar.fill.height = 8;
-      this.healthBar.fill.x = this.x - 20 + (this.healthBar.fill.width / 2);
-      this.healthBar.fill.y = this.y - 35;
-      this.healthBar.fill.visible = true;
-      this.healthBar.fill.setDepth(1003);
-      
-      // Change color based on health
-      if (healthPercent < 0.3) {
-        this.healthBar.fill.fillColor = 0xFF0000; // Red for low health
-      } else if (healthPercent < 0.6) {
-        this.healthBar.fill.fillColor = 0xFFFF00; // Yellow for medium health
-      } else {
-        this.healthBar.fill.fillColor = 0x00FF00; // Green for high health
-      }
-    }
+    this.healthBar.background.setPosition(this.x, this.y + offsetY);
+    this.healthBar.fill.setPosition(this.x, this.y + offsetY);
+    this.healthBar.background.setDepth(2501); // EVEN HIGHER DEPTH
+    this.healthBar.fill.setDepth(2502); // EVEN HIGHER DEPTH
     
-    // Pulse effect on damage
-    if (this.healthBar.fill && this.healthBar.fill.alpha !== undefined) {
-      this.scene.tweens.add({
-        targets: this.healthBar.fill,
-        alpha: 0.5,
-        duration: 100,
-        yoyo: true,
-        onComplete: () => {
-          if (this.healthBar && this.healthBar.fill) {
-            this.healthBar.fill.alpha = 1;
-          }
-        }
-      });
-    }
+    // Calculate health percentage and update health bar width
+    const healthPercent = Math.max(0, Math.min(1, this.health / this.maxHealth));
+    const barWidth = 40; // Base width for health bar
+    
+    // Update health bar fill width based on current health
+    this.healthBar.fill.width = barWidth * healthPercent;
+    this.healthBar.fill.setDisplaySize(barWidth * healthPercent, 8);
+    
+    // CRITICAL FIX: Center the health bar fill based on healthPercent
+    this.healthBar.fill.setOrigin(0, 0.5); // Center vertically, left align horizontally  
+    this.healthBar.fill.setX(this.x - (barWidth / 2)); // Align left side with background
   }
   
   // Add a method to show damage text
@@ -1050,24 +843,19 @@ export default class Enemy {
     if (!this.scene || !this.active) return;
     
     try {
-      // Convert amount to a readable format
-      const damageText = amount.toFixed(1);
-      
-      // Create the damage text
-      const text = this.scene.add.text(this.x, this.y - 20, `-${damageText}`, {
-        fontSize: '16px',
+      const text = this.scene.add.text(this.x, this.y - 20, `-${amount}`, {
+        fontSize: '20px',
         fontFamily: 'Arial',
         color: '#FF0000',
         stroke: '#000000',
         strokeThickness: 2
       }).setOrigin(0.5);
       
-      // Animate the text
       this.scene.tweens.add({
         targets: text,
-        y: this.y - 60,
+        y: this.y - 50,
         alpha: 0,
-        scale: 1.5,
+        scale: 1.2,
         duration: 800,
         onComplete: () => text.destroy()
       });
@@ -1077,154 +865,150 @@ export default class Enemy {
   }
   
   // Add this method to handle enemy defeat
-  defeated() {
+  defeat() {
     if (!this.active) return;
     
-    console.log(`Enemy ${this.type} defeated at (${this.x.toFixed(1)}, ${this.y.toFixed(1)})`);
-    
-    // Make sure the enemy is dead
-    this.health = 0;
-    
-    // Mark as inactive immediately to prevent multiple defeat calls
-    this.active = false;
-    
-    // Add coins to player
-    if (this.scene && this.scene.gameState) {
-      this.scene.gameState.farmCoins += this.value;
-      
-      // Update UI elements for score
-      if (typeof this.scene.updateFarmCoins === 'function') {
-        this.scene.updateFarmCoins(this.value);
-      }
-      
-      // Update score
-      this.scene.gameState.score += this.value * 10;
-      if (typeof this.scene.updateScoreText === 'function') {
-        this.scene.updateScoreText();
-      }
-      
-      // Show floating text for score
-      if (typeof this.scene.showFloatingText === 'function') {
-        this.scene.showFloatingText(this.x, this.y - 20, `+${this.value * 10}`, 0xFFFF00);
-      }
-    }
-    
-    // Play defeat animation
-    if (typeof this.defeatAnimation === 'function') {
-      this.defeatAnimation();
-    }
-    
-    // Destroy this enemy
-    this.destroy();
-  }
-  
-  // Add fox-specific methods
-  showDodgeEffect() {
-    if (!this.scene) return;
-    
     try {
-      // Create a yellow flash effect
-      const flash = this.scene.add.graphics();
-      flash.fillStyle(0xffaa22, 0.4);
-      flash.fillCircle(this.x, this.y, 30);
+      // FIXED: Ensure x and y are numbers before calling toFixed
+      const xPos = typeof this.x === 'number' ? this.x.toFixed(1) : '?';
+      const yPos = typeof this.y === 'number' ? this.y.toFixed(1) : '?';
       
-      // Animate and destroy
-      this.scene.tweens.add({
-        targets: flash,
-        alpha: 0,
-        scale: 1.5,
-        duration: 300,
-        onComplete: () => {
-          flash.destroy();
-        }
-      });
+      console.log(`Enemy ${this.type} defeated at (${xPos}, ${yPos})`);
       
-      // Slight position shift to show dodge movement
-      const angle = Math.random() * Math.PI * 2;
-      const dodgeDistance = 20;
+      // Make sure the enemy is dead
+      this.health = 0;
       
-      // Dodge animation
-      this.scene.tweens.add({
-        targets: this,
-        x: this.x + Math.cos(angle) * dodgeDistance,
-        y: this.y + Math.sin(angle) * dodgeDistance,
-        duration: 100,
-        yoyo: true
-      });
-    } catch (error) {
-      console.error("Error showing dodge effect:", error);
-    }
-  }
-  
-  activateStealth(currentTime) {
-    try {
-      this.stealthActive = true;
-      this.stealthStartTime = currentTime;
-      this.lastStealthTime = currentTime;
-      this.stealthDuration = 3000; // 3 seconds of stealth
+      // Mark as inactive immediately to prevent multiple defeat calls
+      this.active = false;
+      this.dead = true;
       
-      // Increase speed during stealth
-      this.speed *= 1.5;
-      
-      // Visual effect for stealth activation
-      if (this.scene) {
-        // Create stealth activation effect
-        const effect = this.scene.add.graphics();
-        effect.fillStyle(0xaaaaaa, 0.5);
-        effect.fillCircle(this.x, this.y, 40);
+      // Add coins to player
+      if (this.scene && this.scene.gameState) {
+        // Ensure value is a number
+        this.value = typeof this.value === 'number' ? this.value : 10;
         
-        // Animate and destroy
-        this.scene.tweens.add({
-          targets: effect,
-          alpha: 0,
-          scale: 1.5,
-          duration: 500,
-          onComplete: () => {
-            effect.destroy();
+        // Update coins
+        if (typeof this.scene.gameState.farmCoins === 'number') {
+          this.scene.gameState.farmCoins += this.value;
+          
+          // Update UI elements for coins
+          if (typeof this.scene.updateFarmCoins === 'function') {
+            this.scene.updateFarmCoins(this.value);
           }
-        });
+        }
         
-        // Show stealth text
+        // Update score
+        if (typeof this.scene.gameState.score === 'number') {
+          this.scene.gameState.score += this.value * 10;
+          if (typeof this.scene.updateScoreText === 'function') {
+            this.scene.updateScoreText();
+          }
+        }
+        
+        // Show floating text for score
         if (typeof this.scene.showFloatingText === 'function') {
-          this.scene.showFloatingText(this.x, this.y - 40, "STEALTH MODE!", 0xaaaaaa);
+          this.scene.showFloatingText(this.x, this.y - 20, `+${this.value * 10}`, 0xFFFF00);
         }
       }
+      
+      // Play defeat animation - but don't call destroy from there to avoid loop
+      if (typeof this.defeatAnimation === 'function') {
+        this.defeatAnimation();
+      }
+      
+      // Destroy this enemy with a slight delay to allow animations
+      if (this.scene && this.scene.time && typeof this.scene.time.delayedCall === 'function') {
+        this.scene.time.delayedCall(100, () => {
+          this.cleanupSprites();
+        });
+      } else {
+        // Immediate fallback
+        this.cleanupSprites();
+      }
+      
     } catch (error) {
-      console.error("Error activating stealth:", error);
+      console.error("Error in defeat method:", error);
+      // Ensure cleanup still happens
+      this.cleanupSprites();
     }
   }
   
-  deactivateStealth() {
-    try {
-      this.stealthActive = false;
+  // Add a simple implementation for updateStatusEffects to prevent errors
+  updateStatusEffects(delta) {
+    // Check if we have any status effects to update
+    if (!this.statusEffects) {
+      this.statusEffects = [];
+      return;
+    }
+    
+    // Update any status effects - remove expired ones
+    for (let i = this.statusEffects.length - 1; i >= 0; i--) {
+      const effect = this.statusEffects[i];
       
-      // Reset speed
-      this.speed = (this.baseSpeed + ((this.scene.gameState?.wave || 1) * 0.25));
-      
-      // Reset visibility
-      if (this.sprite) this.sprite.alpha = 1;
-      if (this.container) this.container.alpha = 1;
-      
-      // Visual effect for coming out of stealth
-      if (this.scene) {
-        // Create reveal effect
-        const reveal = this.scene.add.graphics();
-        reveal.fillStyle(0xff9933, 0.3);
-        reveal.fillCircle(this.x, this.y, 30);
-        
-        // Animate and destroy
-        this.scene.tweens.add({
-          targets: reveal,
-          alpha: 0,
-          scale: 1.3,
-          duration: 300,
-          onComplete: () => {
-            reveal.destroy();
-          }
-        });
+      if (!effect) {
+        this.statusEffects.splice(i, 1);
+        continue;
       }
+      
+      // Update the effect duration
+      effect.duration -= delta;
+      
+      // Remove expired effects
+      if (effect.duration <= 0) {
+        // Apply end-of-effect logic if needed
+        if (effect.type === 'freeze' && !this.frozen) {
+          this.frozen = false;
+          if (this.sprite) this.sprite.clearTint();
+        }
+        
+        this.statusEffects.splice(i, 1);
+      }
+    }
+  }
+  
+  // Helper function to get emoji based on type
+  getEmojiForType(type) {
+    switch (type) {
+      case 'bird': return '🐦';
+      case 'rabbit': return '🐰';
+      case 'deer': return '🦌';
+      default: return '❓';
+    }
+  }
+  
+  // ADDED: Method to set initial velocity
+  setInitialVelocity() {
+    if (!this.container || !this.container.body) {
+        console.warn(`Enemy ${this.id}: Cannot set initial velocity, body missing.`);
+        return;
+    }
+    try {
+      // Target the center-left of the farm area (e.g., x=100)
+      const targetX = 100;
+      const targetY = this.y; // Use the current y for horizontal movement target
+
+      // Calculate direction vector towards target
+      const currentX = this.container.body.center.x; // Use body center for calculation
+      const currentY = this.container.body.center.y;
+      const dx = targetX - currentX;
+      const dy = targetY - currentY;
+      const angle = Math.atan2(dy, dx);
+
+      // Calculate velocity based on speed and angle
+      const velocityX = Math.cos(angle) * this.speed * 45;
+      const velocityY = Math.sin(angle) * this.speed * 45;
+
+      // Set the velocity on the physics body
+      this.container.body.setVelocity(velocityX, velocityY);
+      
+      console.log(`Enemy ${this.id} initial velocity set: vx=${velocityX.toFixed(1)}, vy=${velocityY.toFixed(1)}`);
+
     } catch (error) {
-      console.error("Error deactivating stealth:", error);
+      console.error("Error in setInitialVelocity:", error, "Enemy:", this);
+      // Attempt to stop movement on error
+      if (this.container && this.container.body) {
+        this.container.body.setVelocity(0, 0);
+      }
     }
   }
 } 

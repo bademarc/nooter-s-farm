@@ -205,6 +205,11 @@ export default class Crop extends Phaser.GameObjects.Container {
     
     console.log(`Harvesting ${this.cropType} crop at ${this.x}, ${this.y}, generating coins`);
     
+    // Play harvest sound
+    if (this.scene.soundManager) {
+      this.scene.soundManager.play('harvest');
+    }
+    
     // Reset growth
     this.growthProgress = 0;
     this.isHarvestable = false;

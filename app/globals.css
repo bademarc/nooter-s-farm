@@ -6,11 +6,46 @@
 @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Satisfy&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Akaya+Kanadaka&display=swap');
+
+
+
+* {
+  font-family: "Akaya Kanadaka", system-ui;
+}
+
+/* Akaya Kanadaka font */
+@font-face {
+  font-family: "Akaya Kanadaka";
+  src: url('https://fonts.gstatic.com/s/akayakanadaka/v16/N0bM2S5CPO5oOQqvazoRRb-8-MfMQZRxBQ.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Akaya Kanadaka";
+  src: url('https://fonts.gstatic.com/s/akayakanadaka/v16/N0bM2S5CPO5oOQqvazoRRb-8-MfYQZRxBQ.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Akaya Kanadaka";
+  src: url('https://fonts.gstatic.com/s/akayakanadaka/v16/N0bM2S5CPO5oOQqvazoRRb-8-MfWQZQ.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+.akaya-kanadaka {
+  font-family: "Akaya Kanadaka", sans-serif;
+}
 
 body {
-  font-family: "Arial", "Helvetica", sans-serif;
+  font-family: var(--font-sans);
   @apply bg-background text-foreground;
-  background-color: #000000;
 }
 
 @layer utilities {
@@ -64,10 +99,11 @@ body {
     --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
     --font-fantasy: 'Cinzel', serif;
     --font-handwritten: 'Satisfy', cursive;
+    --font-akaya: "Akaya Kanadaka", cursive;
   }
   
   body {
-    font-family: var(--font-sans);
+    font-family: "Akaya Kanadaka", system-ui;
     @apply bg-background text-foreground;
   }
   
@@ -77,6 +113,10 @@ body {
   
   .handwritten {
     font-family: var(--font-handwritten);
+  }
+  
+  .akaya {
+    font-family: var(--font-akaya);
   }
   
   .high-contrast {
@@ -671,6 +711,12 @@ body {
   letter-spacing: -0.03em;
 }
 
+/* Akaya Kanadaka headers for noot theme */
+.noot-theme .akaya-header {
+  font-family: var(--font-akaya);
+  letter-spacing: 0.02em;
+}
+
 .noot-card {
   background-color: #111111;
   border: 2px solid var(--noot-border);
@@ -1221,4 +1267,68 @@ canvas {
 .scrollbar-none {
   -ms-overflow-style: none;  /* IE and Edge */
   scrollbar-width: none;     /* Firefox */
+}
+
+/* Game title using Akaya Kanadaka font */
+.game-title {
+  font-family: var(--font-akaya);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--highlight-gold);
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+/* Button with Akaya Kanadaka font */
+.akaya-button {
+  font-family: var(--font-akaya);
+  background-color: #111111;
+  color: var(--noot-text);
+  border: 2px solid #f9d77a;
+  border-radius: 8px;
+  padding: 0.6rem 1.2rem;
+  font-weight: 500;
+  font-size: 1.1rem;
+  transition: all 0.2s ease;
+}
+
+.akaya-button:hover {
+  background-color: #f9d77a;
+  color: #000000;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(249, 215, 122, 0.3);
+}
+
+.noot-input {
+  background-color: var(--noot-accent);
+  color: var(--noot-text);
+  border: 1px solid var(--noot-border);
+  border-radius: 0;
+  padding: 0.5rem;
+}
+
+/* Card with Akaya Kanadaka font for headers */
+.akaya-card {
+  background-color: #111111;
+  border: 2px solid #f9d77a;
+  border-radius: 12px;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.akaya-card-header {
+  font-family: var(--font-akaya);
+  font-size: 1.5rem;
+  font-weight: 500;
+  color: #f9d77a;
+  padding: 1rem;
+  border-bottom: 1px solid #333;
+}
+
+.akaya-card-body {
+  padding: 1rem;
+}
+
+.akaya-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 16px rgba(249, 215, 122, 0.2);
 }

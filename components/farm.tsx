@@ -1926,7 +1926,7 @@ export function Farm() {
   }, [playerLevel, playerXp, playerXpToNext]);
   
   return (
-    <div className="flex flex-col h-full min-h-screen bg-black text-white">
+    <div className="flex flex-col min-h-screen bg-black overflow-x-hidden text-white">
       {/* Expansion error alert */}
       {expansionError && expansionError.show && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" 
@@ -2030,89 +2030,82 @@ export function Farm() {
       
       {/* Main tabbed interface */}
       <div className="container mx-auto py-6 px-4 flex-grow">
-        <div className="grid grid-cols-9 md:w-[900px] bg-[#111] border border-[#333] mb-6 noot-text">
+        <div className="flex flex-wrap w-full bg-[#111] border border-[#333] mb-6 noot-text">
           <button 
             onClick={() => setActiveTab("farm")}
-            className={`px-4 py-2 flex items-center justify-center gap-2 ${activeTab === "farm" ? "bg-white text-black" : "text-white/80"}`}
+            className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${activeTab === "farm" ? "bg-white text-black" : "text-white/80"}`}
           >
-            <Sprout className="h-4 w-4" />
+            <Sprout className="h-3 w-3 sm:h-4 sm:w-4" />
             Farm
           </button>
           <button 
             onClick={() => setActiveTab("animals")}
-            className={`px-4 py-2 flex items-center justify-center gap-2 ${activeTab === "animals" ? "bg-white text-black" : "text-white/80"}`}
+            className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${activeTab === "animals" ? "bg-white text-black" : "text-white/80"}`}
           >
-            <span className="h-4 w-4 flex items-center justify-center">🐄</span>
+            <span className="h-3 w-3 sm:h-4 sm:w-4 flex items-center justify-center">🐄</span>
             Animals
           </button>
           <button 
             onClick={() => setActiveTab("crafting")}
-            className={`px-4 py-2 flex items-center justify-center gap-2 ${activeTab === "crafting" ? "bg-white text-black" : "text-white/80"}`}
+            className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${activeTab === "crafting" ? "bg-white text-black" : "text-white/80"}`}
           >
-            <Hammer className="h-4 w-4" />
+            <Hammer className="h-3 w-3 sm:h-4 sm:w-4" />
             Crafting
           </button>
           <button 
             onClick={() => setActiveTab("boosters")}
-            className={`px-4 py-2 flex items-center justify-center gap-2 ${activeTab === "boosters" ? "bg-white text-black" : "text-white/80"}`}
+            className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${activeTab === "boosters" ? "bg-white text-black" : "text-white/80"}`}
           >
-            <Rocket className="h-4 w-4" />
+            <Rocket className="h-3 w-3 sm:h-4 sm:w-4" />
             Boosters
           </button>
           <button 
             onClick={() => setActiveTab("quests")}
-            className={`px-4 py-2 flex items-center justify-center gap-2 ${activeTab === "quests" ? "bg-white text-black" : "text-white/80"}`}
+            className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${activeTab === "quests" ? "bg-white text-black" : "text-white/80"}`}
           >
-            <Trophy className="h-4 w-4" />
+            <Trophy className="h-3 w-3 sm:h-4 sm:w-4" />
             Quests
           </button>
           <button 
             onClick={() => setActiveTab("market")}
-            className={`px-4 py-2 flex items-center justify-center gap-2 ${activeTab === "market" ? "bg-white text-black" : "text-white/80"}`}
+            className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${activeTab === "market" ? "bg-white text-black" : "text-white/80"}`}
           >
-            <ShoppingBag className="h-4 w-4" />
+            <ShoppingBag className="h-3 w-3 sm:h-4 sm:w-4" />
             Market
           </button>
           <button 
             onClick={() => setActiveTab("swap")}
-            className={`px-4 py-2 flex items-center justify-center gap-2 ${activeTab === "swap" ? "bg-white text-black" : "text-white/80"}`}
+            className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${activeTab === "swap" ? "bg-white text-black" : "text-white/80"}`}
           >
-            <ArrowRightLeft className="h-4 w-4" />
+            <ArrowRightLeft className="h-3 w-3 sm:h-4 sm:w-4" />
             Swap
           </button>
           <button 
             onClick={() => setActiveTab("social")}
-            className={`px-4 py-2 flex items-center justify-center gap-2 ${activeTab === "social" ? "bg-white text-black" : "text-white/80"}`}
+            className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${activeTab === "social" ? "bg-white text-black" : "text-white/80"}`}
           >
-            <Users className="h-4 w-4" />
+            <Users className="h-3 w-3 sm:h-4 sm:w-4" />
             Social
           </button>
           <button 
-            onClick={() => window.location.href = '/farm-cases'}
-            className={`px-4 py-2 flex items-center justify-center gap-2 text-white/80 hover:text-white`}
-          >
-            <Package className="h-4 w-4" />
-            Cases
-          </button>
-          <button 
             onClick={() => window.location.href = '/farm-cases/noot-case'}
-            className={`px-4 py-2 flex items-center justify-center gap-2 text-white/80 hover:text-white`}
+            className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm text-white/80 hover:text-white`}
           >
-            <Leaf className="h-4 w-4" />
+            <Leaf className="h-3 w-3 sm:h-4 sm:w-4" />
             Noot Case
           </button>
           <button 
             onClick={() => setActiveTab("profile")}
-            className={`px-4 py-2 flex items-center justify-center gap-2 ${activeTab === "profile" ? "bg-white text-black" : "text-white/80"}`}
+            className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${activeTab === "profile" ? "bg-white text-black" : "text-white/80"}`}
           >
-            <User className="h-4 w-4" />
+            <User className="h-3 w-3 sm:h-4 sm:w-4" />
             Profile
           </button>
           <button 
             onClick={() => setActiveTab("defend")}
-            className={`px-4 py-2 flex items-center justify-center gap-2 ${activeTab === "defend" ? "bg-white text-black" : "text-white/80"}`}
+            className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${activeTab === "defend" ? "bg-white text-black" : "text-white/80"}`}
           >
-            <Shield className="h-4 w-4" />
+            <Shield className="h-3 w-3 sm:h-4 sm:w-4" />
             Defend Farm
           </button>
         </div>
@@ -2357,28 +2350,30 @@ export function Farm() {
                   )}
                   
                   <div className="p-6 relative z-1">
-                    <div className={`grid grid-cols-${farmSize} gap-4`} style={{ gridTemplateColumns: `repeat(${farmSize}, minmax(0, 1fr))` }}>
-                      {gamePlots.slice(0, farmSize * farmSize).map((plot, index) => (
-                        <div 
-                          key={index}
-                          onClick={() => handlePlotClick(index)}
-                          className="relative aspect-square hover:cursor-pointer overflow-hidden hoverable border border-[#333]"
-                        >
-                          <FarmPlot
-                            id={`plot-${index}`}
-                            plot={plot}
-                            onPlant={() => {}}
-                            onHarvest={() => {}}
-                          />
-                          
-                          {/* Ready indicator */}
-                          {plot.status === "ready" && (
-                            <div className="absolute top-2 right-2 bg-white p-1">
-                              <CircleCheck className="h-4 w-4 text-black" />
-                            </div>
-                          )}
-                        </div>
-                      ))}
+                    <div className="w-full overflow-x-auto" style={{ gridTemplateColumns: `repeat(${farmSize}, minmax(0, 1fr))` }}>
+                      <div className={`grid grid-cols-${farmSize} gap-4 w-full`}>
+                        {gamePlots.slice(0, farmSize * farmSize).map((plot, index) => (
+                          <div 
+                            key={index}
+                            onClick={() => handlePlotClick(index)}
+                            className="relative aspect-square hover:cursor-pointer overflow-hidden hoverable border border-[#333]"
+                          >
+                            <FarmPlot
+                              id={`plot-${index}`}
+                              plot={plot}
+                              onPlant={() => {}}
+                              onHarvest={() => {}}
+                            />
+                            
+                            {/* Ready indicator */}
+                            {plot.status === "ready" && (
+                              <div className="absolute top-2 right-2 bg-white p-1">
+                                <CircleCheck className="h-4 w-4 text-black" />
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                     
                     {/* Farm expansion button */}
@@ -3448,15 +3443,17 @@ export function Farm() {
               Defend Your Farm
             </h2>
             
-            <div className="noot-card p-1">
+            <div className="noot-card p-1 overflow-hidden">
               {isClient && (
-                <ClientWrapper 
-                  farmCoins={farmCoins} 
-                  addFarmCoins={addFarmCoins}
-                />
+                <div className="w-full max-w-full overflow-x-auto">
+                  <ClientWrapper 
+                    farmCoins={farmCoins} 
+                    addFarmCoins={addFarmCoins}
+                  />
+                </div>
               )}
               {!isClient && (
-                <div className="w-full h-[600px] flex items-center justify-center bg-black/20">
+                <div className="w-full h-[400px] sm:h-[500px] md:h-[600px] flex items-center justify-center bg-black/20">
                   <div className="text-white text-center">
                     <div className="mb-4">Loading farm defense...</div>
                   </div>

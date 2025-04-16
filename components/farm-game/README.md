@@ -1,4 +1,83 @@
-# Defend Your Farm - Game Documentation
+# Defend Your Farm - Game Component
+
+This is a casual farm defense game built with Phaser.js and integrated with React. Players protect their crops from waves of pests by placing defenses and directly interacting with enemies.
+
+## Features
+
+- Wave-based pest defense gameplay
+- Crop planting and resource management
+- Multiple defense types (scarecrows, dogs, wizards, cannons)
+- Upgrade system for improving defenses and farm capabilities
+- Various enemy types with unique behaviors
+- Victory and defeat conditions
+- Sound effects and music system
+
+## Technical Implementation
+
+The game is implemented as a React component that wraps Phaser.js:
+
+- `FarmGame.js` - React component that initializes and manages the Phaser game
+- `scenes/GameScene.js` - Main Phaser scene that handles game logic
+- `entities/` - Game object classes:
+  - `Crop.js` - Plantable crops that generate income
+  - `Enemy.js` - Enemy pests that attack the farm
+  - `Defense.js` - Defensive structures that fight enemies
+  - `Upgrade.js` - Upgrade system for improving player abilities
+
+## Sound System
+
+The game uses a comprehensive sound system managed by the `SoundManager` utility:
+
+### Key Features
+- Background music with volume control
+- Sound effects for all game actions:
+  - UI interactions (clicks, buttons)
+  - Game events (planting, harvesting, enemy attacks)
+  - Combat sounds (defenses attacking, enemies being defeated)
+  - Special effects for advanced defenses
+  - Victory and defeat fanfares
+- Mute/unmute functionality
+- Volume controls for both effects and music
+- Fallback mechanisms for missing audio files
+
+### Usage
+```javascript
+// Playing a sound effect
+this.soundManager.play('enemy_hit');
+
+// With custom options
+this.soundManager.play('explosion_sound', { volume: 0.8 });
+
+// Playing background music
+this.soundManager.playMusic();
+
+// Toggle muting
+this.soundManager.toggleMute();
+```
+
+## Required Sound Assets
+
+Sound assets should be placed in `public/assets/sounds/game/`. See `public/assets/sounds/game/README.md` for a complete list of required files and specifications.
+
+## How to Extend
+
+### Adding New Defenses
+To add new defense types:
+1. Extend the Defense class in `Defense.js`
+2. Add new defense type to the toolbar in `GameScene.js`
+3. Create appropriate sound effects for the new defense
+
+### Adding New Enemies
+To add new enemy types:
+1. Extend the Enemy class in `Enemy.js`
+2. Add new enemy type to the wave generator in `GameScene.js`
+3. Create appropriate sound effects for the new enemy
+
+### Adding New Sound Effects
+To add new sound effects:
+1. Add the sound file to `public/assets/sounds/game/`
+2. Update the `preload` method in `SoundManager.js`
+3. Add appropriate sound triggering code where needed
 
 ## Defense System
 

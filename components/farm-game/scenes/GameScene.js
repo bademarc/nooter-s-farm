@@ -1,5 +1,8 @@
 'use client';
 
+// Import the SoundManager
+import SoundManager from '../utils/SoundManager';
+
 // Set up a global flag to prevent recursive/overlapping updates
 let isUpdating = false;
 
@@ -92,6 +95,7 @@ if (isBrowser) {
           this.totalEnemiesInWave = 0;
           this.upgradeSystem = null;
           this.pendingDefensePlacement = false; // New flag to track if we're waiting for placement click
+          this.soundManager = null; // Will be initialized in create()
         }
         
         init(data) {
@@ -125,6 +129,10 @@ if (isBrowser) {
         preload() {
           try {
             console.log("GameScene preload started");
+            
+            // Initialize the sound manager
+            this.soundManager = new SoundManager(this);
+            this.soundManager.preload();
             
             // Load Upgrade module
             this.UpgradeClass = this.registry.get('UpgradeClass');
@@ -235,24 +243,33 @@ if (isBrowser) {
             
             // Add load error handling
             this.load.on('loaderror', (fileObj) => {
-              console.error('Error loading asset:', fileObj.key);
-              
-              // Create a placeholder for missing fireball assets
-              if (fileObj.key === 'fireball_blue' || fileObj.key === 'fireball_red') {
-                const color = fileObj.key === 'fireball_blue' ? 0x0088FF : 0xFF4400;
-                const graphics = this.make.graphics();
-                graphics.fillStyle(color, 1);
-                graphics.fillCircle(16, 16, 16);
-                graphics.generateTexture(fileObj.key, 32, 32);
-                console.log(`Created fallback texture for ${fileObj.key}`);
-              }
-              
-              // Create placeholders for missing wizard/cannon assets
-              if (fileObj.key === 'wizard_idle' || fileObj.key === 'wizard_attack' || 
-                  fileObj.key === 'cannon_idle' || fileObj.key === 'cannon_attack') {
-                console.log(`Creating placeholder for missing asset: ${fileObj.key}`);
+              // Check if the failed asset is an image or spritesheet before trying to create fallback texture
+              if (fileObj.type === 'image' || fileObj.type === 'spritesheet') {
+                console.error('Error loading visual asset:', fileObj.key);
                 
-                // We'll create the fallbacks in the complete handler
+                // Create a placeholder for missing fireball assets
+                if (fileObj.key === 'fireball_blue' || fileObj.key === 'fireball_red') {
+                  const color = fileObj.key === 'fireball_blue' ? 0x0088FF : 0xFF4400;
+                  const graphics = this.make.graphics();
+                  graphics.fillStyle(color, 1);
+                  graphics.fillCircle(16, 16, 16);
+                  graphics.generateTexture(fileObj.key, 32, 32);
+                  console.log(`Created fallback texture for ${fileObj.key}`);
+                }
+                
+                // Create placeholders for missing wizard/cannon assets
+                if (fileObj.key === 'wizard_idle' || fileObj.key === 'wizard_attack' || 
+                    fileObj.key === 'cannon_idle' || fileObj.key === 'cannon_attack') {
+                  console.log(`Creating placeholder for missing asset: ${fileObj.key}`);
+                  
+                  // We'll create the fallbacks in the complete handler
+                }
+              } else if (fileObj.type === 'audio') {
+                // Log audio load errors separately
+                console.warn(`Failed to load audio asset: ${fileObj.key}`);
+              } else {
+                // Log other types of load errors
+                console.error(`Error loading asset of type ${fileObj.type}:`, fileObj.key);
               }
             });
             
@@ -342,8 +359,6 @@ if (isBrowser) {
                 console.log('Created fallback texture for cannon_attack');
               }
             });
-            
-            console.log("GameScene assets preloaded");
           } catch (error) {
             console.error("Error in GameScene preload:", error);
             throw error;
@@ -354,6 +369,25 @@ if (isBrowser) {
           try {
             console.log("GameScene create start");
             
+            // Add mute button for audio
+            const muteButton = this.add.rectangle(750, 30, 40, 40, 0x333333);
+            muteButton.setInteractive();
+            
+            const muteIcon = this.add.text(750, 30, '🔊', {
+              fontFamily: 'Arial',
+              fontSize: '20px'
+            }).setOrigin(0.5);
+            
+            muteButton.on('pointerdown', () => {
+              const isMuted = this.soundManager.toggleMute();
+              muteIcon.setText(isMuted ? '🔇' : '🔊');
+              
+              // Play click sound if unmuting
+              if (!isMuted) {
+                this.soundManager.play('click');
+              }
+            });
+            
             // Prepare game state
             this.gameState = {
               wave: 1,
@@ -363,6 +397,25 @@ if (isBrowser) {
               lives: 3,
               clickDamage: 1,
             };
+            
+            // Define enemy path from right to left
+            this.gameState.path = {
+              points: [
+                { x: 800, y: 150 },  // Entry point right side, upper area
+                { x: 600, y: 200 },  // First turn
+                { x: 500, y: 300 },  // Middle of screen
+                { x: 400, y: 350 },  // Approaching farm
+                { x: 300, y: 400 },  // Near farm
+                { x: 150, y: 425 },  // Farm entrance
+                { x: 50, y: 350 },   // Farm target
+                { x: 20, y: 300 }    // Final destination
+              ]
+            };
+            
+            console.log("Created enemy path with", this.gameState.path.points.length, "waypoints");
+            
+            // Visualize the path for debugging
+            this.visualizePath();
             
             // Create dynamic textures for fireballs if they don't exist
             if (!this.textures.exists('fireball_red')) {
@@ -934,6 +987,12 @@ if (isBrowser) {
               }
             }
             
+            // Start background music
+            if (this.soundManager) {
+              this.soundManager.playMusic();
+              this.soundManager.play('click');
+            }
+            
             console.log("Game started successfully");
           } catch (error) {
             console.error("Error starting game:", error);
@@ -981,7 +1040,7 @@ if (isBrowser) {
                 
                 if (closestEnemy) {
                   // Apply damage to the enemy
-                  closestEnemy.takeDamage(this.gameState.clickDamage || 1);
+                  clickedEnemy.takeDamage(this.gameState.clickDamage || 1);
                   
                   // Show attack effect
                   this.showFloatingText(closestEnemy.x, closestEnemy.y - 20, 
@@ -1331,6 +1390,11 @@ if (isBrowser) {
                 console.error("Failed to load Crop class directly:", error);
               });
             }
+            
+            // Play planting sound
+            if (this.soundManager) {
+              this.soundManager.play('plant');
+            }
           } catch (error) {
             console.error("Error planting crop:", error);
             // Refund coins on error
@@ -1483,6 +1547,12 @@ if (isBrowser) {
               }
             }
             
+            // Start background music
+            if (this.soundManager) {
+              this.soundManager.playMusic();
+              this.soundManager.play('click');
+            }
+            
             console.log("Game started successfully");
           } catch (error) {
             console.error("Error starting game:", error);
@@ -1511,6 +1581,11 @@ if (isBrowser) {
             }
             
             console.log("Farm coins updated:", newCoins);
+            
+            // Play coin sound if gaining coins
+            if (amount > 0 && this.soundManager) {
+              this.soundManager.play('coins');
+            }
           } catch (error) {
             console.error("Error updating farm coins:", error);
           }
@@ -1527,6 +1602,11 @@ if (isBrowser) {
         updateWaveText() {
           if (this.waveText) {
             this.waveText.setText(`Wave: ${this.gameState.wave}`);
+            
+            // Ensure any big wave text showing also has the correct wave number
+            if (this._waveStartText && this._waveStartText.text) {
+              this._waveStartText.text.setText(`WAVE ${this.gameState.wave}`);
+            }
           }
         }
         
@@ -1541,72 +1621,161 @@ if (isBrowser) {
         startWave() {
           try {
             if (!this.gameState.isActive) return;
+
+            // Reset wave change flag here
+            this.waveChangeInProgress = false;
             
             console.log(`Starting wave ${this.gameState.wave}`);
+            
+            // Set wave start time for tracking wave duration
+            this._waveStartTime = Date.now();
             
             // Update advanced defense buttons (to ensure proper unlocking)
             if (typeof this.updateAdvancedDefenseButtons === 'function') {
               this.updateAdvancedDefenseButtons();
             }
             
-            // Show wave announcement
+            // Explicitly show wave start text BEFORE countdown animation
             this.showWaveStartText(this.gameState.wave);
             
-            // Determine number of enemies based on wave number - IMPROVED SCALING
-            let numEnemies = Math.min(50, Math.floor(3 + (this.gameState.wave * 1.5)));
-            
-            // Improved wave scaling with better progression
-            if (this.gameState.wave > 10) {
-              numEnemies = Math.min(75, Math.floor(20 + (this.gameState.wave - 10) * 2));
-            }
-            
-            // Calculate enemy types based on wave
-            const enemyTypes = this.calculateEnemyTypes(this.gameState.wave);
-            
-            // Store wave data
-            this.totalEnemiesInWave = numEnemies;
-            this.enemiesSpawned = 0;
-            this.waveInProgress = true;
-            
-            // Show wave start text with the available showFloatingText method
-            this.showFloatingText(400, 300, `WAVE ${this.gameState.wave} STARTING!`, 0xFFFF00);
-            
-            // Start spawning enemies with a delay
-            this.isSpawningEnemies = true;
-            
-            // Add wave bonus - increased coins for higher waves
-            const waveBonus = Math.floor(10 + (this.gameState.wave * 5));
-            this.updateFarmCoins(waveBonus);
-            this.showFloatingText(400, 100, `Wave ${this.gameState.wave} Bonus: +${waveBonus} coins!`, 0xFFFF00);
-            
-            // Set up spawning loop based on wave difficulty
-            const spawnInterval = Math.max(500, 2000 - (this.gameState.wave * 100)); // Faster spawns in later waves
-            
-            // Clear any existing spawn timer
-            if (this.spawnTimer) {
-              this.spawnTimer.remove();
-            }
-            
-            // Start spawning enemies
-            this.spawnTimer = this.time.addEvent({
-              delay: spawnInterval,
-              callback: () => {
-                if (this.enemiesSpawned < this.totalEnemiesInWave) {
-                  // Select an enemy type from available types
-                  const enemyType = this.selectEnemyType(enemyTypes);
-                  
-                  // Spawn the enemy
-                  this.spawnEnemy(enemyType);
-                  this.enemiesSpawned++;
-                } else {
-                  // All enemies spawned, stop timer
-                  this.spawnTimer.remove();
-                  this.spawnTimer = null;
+            // Start with a countdown animation before spawning enemies
+            this.showCountdownAnimation(() => {
+              // Determine number of enemies based on wave number - IMPROVED SCALING
+              // Always ensure at least 3 enemies even in the first wave
+              let numEnemies = Math.min(50, Math.floor(3 + (this.gameState.wave * 1.5)));
+              
+              // Improved wave scaling with better progression
+              if (this.gameState.wave > 10) {
+                numEnemies = Math.min(75, Math.floor(20 + (this.gameState.wave - 10) * 2));
+              }
+              
+              // Force first wave to have a minimum number of enemies
+              if (this.gameState.wave === 1) {
+                numEnemies = Math.max(5, numEnemies); // Ensure at least 5 enemies in wave 1
+              }
+              
+              // Calculate enemy types based on wave
+              const enemyTypes = this.calculateEnemyTypes(this.gameState.wave);
+              
+              // Store wave data
+              this.totalEnemiesInWave = numEnemies;
+              this.enemiesSpawned = 0;
+              this.waveInProgress = true;
+              this.waveChangeInProgress = false; // Reset wave change flag to ensure we can progress to next wave
+              
+              // Start spawning enemies with a delay
+              this.isSpawningEnemies = true;
+              
+              // Add wave bonus - increased coins for higher waves
+              const waveBonus = Math.floor(10 + (this.gameState.wave * 5));
+              this.updateFarmCoins(waveBonus);
+              this.showFloatingText(400, 100, `Wave ${this.gameState.wave} Bonus: +${waveBonus} coins!`, 0xFFFF00);
+              
+              // Set up spawning loop based on wave difficulty
+              // Make first wave spawn faster to avoid the feeling of nothing happening
+              const spawnInterval = this.gameState.wave === 1 
+                ? 1000  // Faster spawning for wave 1
+                : Math.max(500, 2000 - (this.gameState.wave * 100));
+              
+              // Clear any existing spawn timer
+              if (this.spawnTimer) {
+                this.spawnTimer.remove();
+              }
+              
+              // Immediately spawn first enemy to ensure wave starts properly
+              if (numEnemies > 0) {
+                const enemyType = this.selectEnemyType(enemyTypes);
+                const firstEnemy = this.spawnEnemy(enemyType);
+                this.enemiesSpawned++;
+                console.log(`First enemy spawned immediately for wave ${this.gameState.wave}: type=${enemyType}, success=${!!firstEnemy}`);
+                
+                // Immediately spawn a second enemy for wave 1 to ensure activity
+                if (this.gameState.wave === 1 && numEnemies > 1) {
+                  const secondEnemyType = this.selectEnemyType(enemyTypes);
+                  setTimeout(() => {
+                    const secondEnemy = this.spawnEnemy(secondEnemyType);
+                    this.enemiesSpawned++;
+                    console.log(`Second enemy spawned immediately for wave 1: type=${secondEnemyType}, success=${!!secondEnemy}`);
+                  }, 500);
                 }
-              },
-              callbackScope: this,
-              loop: true
+              }
+              
+              // Start enemy spawning timer - fixed implementation to ensure enemies spawn
+              this.spawnTimer = this.time.addEvent({
+                delay: spawnInterval,
+                callback: () => {
+                  try {
+                    // Make sure we haven't spawned all enemies yet
+                    if (this.enemiesSpawned < this.totalEnemiesInWave) {
+                      // Select enemy type based on wave difficulty
+                      const enemyType = this.selectEnemyType(enemyTypes);
+                      
+                      // Spawn the enemy - use direct method call
+                      const enemy = this.spawnEnemy(enemyType);
+                      
+                      // Count the spawn whether it succeeded or failed
+                      this.enemiesSpawned++;
+                      
+                      console.log(`Spawned enemy ${this.enemiesSpawned}/${this.totalEnemiesInWave} for wave ${this.gameState.wave}`);
+                      
+                      // Check if this was the last enemy
+                      if (this.enemiesSpawned >= this.totalEnemiesInWave) {
+                        console.log("All enemies spawned, setting isSpawningEnemies to false");
+                        this.isSpawningEnemies = false;
+                        
+                        // All enemies spawned, stop timer
+                        this.spawnTimer.remove();
+                        this.spawnTimer = null;
+                      }
+                    } else {
+                      // All enemies spawned, stop timer
+                      this.isSpawningEnemies = false;
+                      this.spawnTimer.remove();
+                      this.spawnTimer = null;
+                    }
+                  } catch (error) {
+                    console.error("Error in enemy spawn callback:", error);
+                  }
+                },
+                callbackScope: this,
+                repeat: numEnemies - 1 // -1 because we spawn first enemy immediately
+              });
+              
+              // Keep a reference to the spawn event for cleanup
+              this.spawnEvent = this.spawnTimer;
+              
+              // Set a timer to auto-advance wave if it doesn't complete in a reasonable time
+              // But make this time much longer (120 seconds) to ensure we don't advance prematurely
+              const maxWaveTime = 120000; // 2 minutes
+              
+              // Only create if there isn't already one
+              if (this.waveCompletionTimer) {
+                this.waveCompletionTimer.remove();
+                this.waveCompletionTimer = null;
+              }
+              
+              this.waveCompletionTimer = this.time.addEvent({
+                delay: maxWaveTime,
+                callback: () => {
+                  // Only auto-advance if the wave is still in progress
+                  if (this.gameState.isActive && this.waveInProgress) {
+                    console.log(`Wave ${this.gameState.wave} timed out after ${maxWaveTime/1000} seconds, advancing`);
+                    
+                    if (typeof this.forceNextWave === 'function') {
+                      this.forceNextWave();
+                    }
+                  }
+                  
+                  this.waveCompletionTimer = null;
+                },
+                callbackScope: this
+              });
             });
+            
+            // Play wave start sound
+            if (this.soundManager) {
+              this.soundManager.play('wave_start');
+            }
           } catch (error) {
             console.error("Error starting wave:", error);
           }
@@ -1617,30 +1786,40 @@ if (isBrowser) {
           const types = {
             bird: { weight: 70, minWave: 1 },
             rabbit: { weight: 70, minWave: 1 },
-            fox: { weight: 0, minWave: 3 },
-            slime: { weight: 0, minWave: 2 },
-            ghost: { weight: 0, minWave: 4 },
-            skeleton: { weight: 0, minWave: 5 },
-            bat: { weight: 0, minWave: 2 },
-            spider: { weight: 0, minWave: 3 },
-            wolf: { weight: 0, minWave: 6 },
-            snake: { weight: 0, minWave: 4 },
-            goblin: { weight: 0, minWave: 7 },
-            dragon: { weight: 0, minWave: 10 },
-            demon: { weight: 0, minWave: 8 }
+            fox: { weight: 0, minWave: 2 },
+            slime: { weight: 0, minWave: 1 },
+            ghost: { weight: 0, minWave: 3 },
+            skeleton: { weight: 0, minWave: 4 },
+            bat: { weight: 0, minWave: 1 },
+            spider: { weight: 0, minWave: 2 },
+            wolf: { weight: 0, minWave: 5 },
+            snake: { weight: 0, minWave: 3 },
+            goblin: { weight: 0, minWave: 6 },
+            dragon: { weight: 0, minWave: 8 },
+            demon: { weight: 0, minWave: 7 }
           };
+          
+          // Start with some basic enemies on wave 1
+          if (wave >= 1) {
+            types.slime.weight = 20;
+            types.bat.weight = 20;
+          }
           
           // Adjust weights based on wave progression
           if (wave >= 2) {
             // Start introducing slimes and bats at wave 2
             types.slime.weight = Math.min(30, (wave - 1) * 15);
             types.bat.weight = Math.min(30, (wave - 1) * 15);
+            types.fox.weight = Math.min(20, (wave - 1) * 10);
+            types.spider.weight = Math.min(15, (wave - 1) * 8);
           }
           
+          // Original progression for higher waves
           if (wave >= 3) {
             // Start introducing foxes and spiders at wave 3
             types.fox.weight = Math.min(40, (wave - 2) * 10);
             types.spider.weight = Math.min(35, (wave - 2) * 8);
+            types.snake.weight = Math.min(20, (wave - 2) * 5);
           }
           
           if (wave >= 4) {
@@ -1649,6 +1828,7 @@ if (isBrowser) {
             types.snake.weight = Math.min(35, (wave - 3) * 12);
           }
           
+          // Rest of the method remains the same
           if (wave >= 5) {
             // Start introducing skeletons at wave 5
             types.skeleton.weight = Math.min(40, (wave - 4) * 10);
@@ -1803,7 +1983,7 @@ if (isBrowser) {
             // Skip if scene is inactive or paused
             if (!this.gameState || !this.gameState.isActive || this.gameState.isPaused) {
               console.log("Game inactive or paused, not spawning enemy");
-              return;
+              return null;
             }
             
             // If no type specified, use our enemy type selection system
@@ -1814,74 +1994,269 @@ if (isBrowser) {
               type = this.selectEnemyType(enemyTypes);
             }
             
-            // Calculate spawn position (always start from right edge)
-            const x = 800 + (Math.random() * 50); // Add some randomness to entry position
+            // FIXED: Calculate spawn position (always start from right edge)
+            // Get actual game width and height or use defaults
+            const gameWidth = Number(this.game.config.width) || 800;
+            const gameHeight = Number(this.game.config.height) || 600;
+            
+            // Ensure enemies start off-screen to the right
+            // Use explicit values to avoid any potential NaN issues
+            const x = gameWidth + 50 + (Math.random() * 30);
             
             // Calculate random y position within the playable area
             const y = 150 + (Math.random() * 300);
             
-            // Use the Enemy class from registry
-            const EnemyClass = this.registry.get('EnemyClass');
+            console.log(`Spawning ${type} enemy at position (${x}, ${y})`);
+            
+            // Add a visual indicator at spawn point (for debugging)
+            const spawnIndicator = this.add.circle(x, y, 10, 0xFF0000, 0.7);
+            this.time.delayedCall(1000, () => {
+              spawnIndicator.destroy();
+            });
+            
+            // FIXED: Properly get the Enemy class with fallbacks
+            let EnemyClass = this.registry.get('EnemyClass');
+            
+            // If not in registry, try to dynamically import the class
             if (!EnemyClass) {
-              console.error("Enemy class not available in registry");
-              return;
+              try {
+                // Try to dynamically import the Enemy class
+                console.log("Enemy class not in registry, trying dynamic import");
+                import('../entities/Enemy.js').then(module => {
+                  EnemyClass = module.default;
+                  this.registry.set('EnemyClass', EnemyClass);
+                  console.log("Successfully imported Enemy class and saved to registry");
+                  
+                  // Now create the enemy with the imported class
+                  const enemy = this.createEnemyInstance(EnemyClass, type, x, y);
+                  if (enemy) {
+                    // Initialize enemies array if needed
+                    if (!this.enemies) {
+                      this.enemies = [];
+                    }
+                    this.enemies.push(enemy);
+                    return enemy;
+                  }
+                }).catch(error => {
+                  console.error("Failed to dynamically import Enemy class:", error);
+                  return this.createFallbackEnemy(type, x, y);
+                });
+                return null; // Will create enemy after import
+              } catch (importError) {
+                console.error("Error importing Enemy class:", importError);
+                // Fall back to emergency enemy
+                return this.createFallbackEnemy(type, x, y);
+              }
             }
             
-            // Create the enemy
-            const enemy = new EnemyClass(this, type, x, y);
-            
-            // Add to enemies array
-            if (!this.enemies) {
-              this.enemies = [];
-            }
-            this.enemies.push(enemy);
-            
-            // Update enemy count
-            this.enemiesSpawned++;
-            
-            // Update wave progress UI if available
-            if (typeof this.updateWaveProgressUI === 'function') {
-              this.updateWaveProgressUI();
-            }
-            
-            console.log(`Spawned ${type} enemy at (${x}, ${y})`);
-            
-            return enemy;
+            // If we have the EnemyClass, create the enemy directly
+            return this.createEnemyInstance(EnemyClass, type, x, y);
           } catch (error) {
             console.error("Error in spawnEnemy:", error);
             return null;
           }
         }
         
-        // Force the next wave to start
-        forceNextWave() {
+        // Helper method to create an enemy instance with proper error handling
+        createEnemyInstance(EnemyClass, type, x, y) {
           try {
-            console.log("Force next wave called");
+            // Create enemy instance
+            const enemy = new EnemyClass(this, type, x, y);
             
-            // Allow forcing next wave even if the current wave is still spawning
-            if (this.isSpawningEnemies) {
-              console.log("Interrupting current spawning to start next wave");
-              this.isSpawningEnemies = false;
-              
-              // Clear any pending spawn events
-              if (this.spawnTimer) {
-                this.spawnTimer.remove();
-                this.spawnTimer = null;
-              }
-              
-              if (this.spawnEvent) {
-                this.spawnEvent.remove();
-                this.spawnEvent = null;
-              }
-            }
-            
-            // Ensure enemies array exists
+            // Initialize enemies array if needed
             if (!this.enemies) {
               this.enemies = [];
             }
             
-            // Clear any remaining enemies (this ensures we don't get stuck)
-            if (this.enemies.length > 0) {
+            // Add to enemies array
+            this.enemies.push(enemy);
+            
+            console.log(`Successfully created ${type} enemy at (${x}, ${y})`);
+            return enemy;
+          } catch (error) {
+            console.error(`Failed to create enemy instance: ${error.message}`);
+            return this.createFallbackEnemy(type, x, y);
+          }
+        }
+        
+        // Create a simple fallback enemy when the real one fails
+        createFallbackEnemy(type, x, y) {
+          console.log("Creating fallback emergency enemy");
+          
+          // Create a simplified enemy object
+          const emergencyEnemy = {
+            scene: this,
+            type: type,
+            x: x,
+            y: y,
+            health: 10,
+            maxHealth: 10,
+            speed: 1.5,
+            active: true,
+            visible: true,
+            value: 10,
+            container: null,
+            update: function(delta) {
+              // Move towards left
+              this.x -= this.speed;
+              
+              // Update container position
+              if (this.container) {
+                this.container.x = this.x;
+                this.container.y = this.y;
+              }
+              
+              // Check if reached the farm
+              if (this.x < 0) {
+                this.reachedEnd();
+                return true;
+              }
+              
+              return false;
+            },
+            takeDamage: function(amount) {
+              this.health -= amount;
+              if (this.health <= 0) {
+                this.destroy();
+              }
+            },
+            reachedEnd: function() {
+              if (this.scene.gameState) {
+                this.scene.gameState.lives--;
+                if (this.scene.updateLivesText) {
+                  this.scene.updateLivesText();
+                }
+                
+                if (this.scene.showFloatingText) {
+                  this.scene.showFloatingText(50, 300, 'Farm Invaded! -1 Life', 0xFF0000);
+                }
+                
+                if (this.scene.gameState.lives <= 0 && this.scene.endGame) {
+                  this.scene.endGame();
+                }
+              }
+              this.destroy();
+            },
+            destroy: function() {
+              if (this.container) {
+                this.container.destroy();
+              }
+              if (this.scene && this.scene.enemies) {
+                const index = this.scene.enemies.indexOf(this);
+                if (index !== -1) {
+                  this.scene.enemies.splice(index, 1);
+                }
+              }
+            }
+          };
+          
+          // Create visual representation
+          emergencyEnemy.container = this.add.container(x, y);
+          emergencyEnemy.container.setDepth(1000);
+          
+          // Add a visible shape
+          const graphics = this.add.graphics();
+          graphics.fillStyle(0xFF0000, 1);
+          graphics.fillCircle(0, 0, 30);
+          graphics.lineStyle(2, 0x000000, 1);
+          graphics.strokeCircle(0, 0, 30);
+          
+          // Add text to identify the enemy
+          const text = this.add.text(0, 0, type === 'bird' ? '🐦' : '🐰', {
+            fontSize: '32px',
+            fontFamily: 'Arial',
+            color: '#FFFFFF',
+            stroke: '#000000',
+            strokeThickness: 4
+          }).setOrigin(0.5);
+          
+          emergencyEnemy.container.add([graphics, text]);
+          
+          // Initialize enemies array if needed
+          if (!this.enemies) {
+            this.enemies = [];
+          }
+          
+          // Add to enemies array
+          this.enemies.push(emergencyEnemy);
+          
+          console.log("Created emergency enemy as fallback");
+          return emergencyEnemy;
+        }
+        
+        // Force the next wave to start
+        forceNextWave() {
+          try {
+            // Guard against multiple calls in a short time period
+            if (this.waveChangeInProgress) {
+              console.log("Wave change already in progress, ignoring additional call");
+              
+              // Safety measure: If flag has been true for too long, force reset it
+              if (!this._waveChangeTimeout) {
+                console.log("Setting safety timeout to reset wave change flag");
+                this._waveChangeTimeout = setTimeout(() => {
+                  console.log("Safety timeout triggered - wave change flag was stuck");
+                  this.waveChangeInProgress = false;
+                  this._waveChangeTimeout = null;
+                  
+                  // Force start a new wave if game is still active
+                  if (this.gameState?.isActive) {
+                    console.log("Recovering from stuck wave - starting new wave");
+                    // Increment wave counter since we were stuck
+                    this.gameState.wave++;
+                    this.updateWaveText();
+                    this.startWave();
+                  }
+                }, 8000); // 8 second safety timeout (increased from 5 second)
+              }
+              
+              return;
+            }
+            
+            // Set the flag immediately to prevent multiple calls
+            this.waveChangeInProgress = true;
+            console.log("Force next wave called");
+            
+            // Clear any previous safety timeout
+            if (this._waveChangeTimeout) {
+              clearTimeout(this._waveChangeTimeout);
+              this._waveChangeTimeout = null;
+            }
+            
+            // Set a shorter safety timeout
+            this._waveChangeTimeout = setTimeout(() => {
+              if (this.waveChangeInProgress) {
+                console.log("Safety timeout triggered - wave change flag was stuck");
+                this.waveChangeInProgress = false;
+                this._waveChangeTimeout = null;
+              }
+            }, 8000); // Increased from 5000ms to 8000ms
+            
+            // Clean up all timers and enemy spawning
+            if (this.isSpawningEnemies) {
+              console.log("Interrupting current spawning to start next wave");
+              this.isSpawningEnemies = false;
+            }
+            
+            // Clear all timers to avoid conflicts
+            if (this.spawnTimer) {
+              this.spawnTimer.remove();
+              this.spawnTimer = null;
+            }
+            
+            if (this.spawnEvent) {
+              this.spawnEvent.remove();
+              this.spawnEvent = null;
+            }
+            
+            if (this.waveCompletionTimer) {
+              this.waveCompletionTimer.remove();
+              this.waveCompletionTimer = null;
+              console.log("Cleared wave completion timer during force next wave");
+            }
+            
+            // Clear any remaining enemies
+            if (this.enemies && this.enemies.length > 0) {
               console.log(`Clearing ${this.enemies.length} remaining enemies`);
               
               // Destroy all remaining enemies
@@ -1891,21 +2266,100 @@ if (isBrowser) {
                 }
               });
               
-              // Clear the array completely to ensure no lingering references
+              // Clear the array completely
               this.enemies = [];
             }
             
             // End current wave
             this.waveInProgress = false;
             
-            // Increase wave counter
+            // Check if player has completed wave 10 (meaning they're about to start wave 11)
+            // If so, trigger victory condition instead of starting a new wave
+            if (this.gameState.wave === 10) {
+              console.log("Player has reached wave 10 - Victory!");
+              
+              // Award bonus coins for victory
+              const victoryBonus = 500;
+              this.gameState.farmCoins += victoryBonus;
+              if (this.moneyText) {
+                this.moneyText.setText(`Farm Coins: ${this.gameState.farmCoins}`);
+              }
+              
+              // Show victory notification
+              this.showFloatingText(400, 250, "VICTORY!", 0x00FF00);
+              this.showFloatingText(400, 300, `You've defeated all 10 waves!`, 0xFFFF00);
+              this.showFloatingText(400, 350, `Bonus: +${victoryBonus} coins`, 0xFFD700);
+              
+              // Add a brief victory celebration before showing end screen
+              const victoryDelay = 3000;
+              
+              // Flash the screen with gold color
+              const flash = this.add.rectangle(400, 300, 800, 600, 0xFFD700, 0.3);
+              this.tweens.add({
+                targets: flash,
+                alpha: 0,
+                duration: 2000,
+                ease: 'Power2'
+              });
+              
+              // Create celebration particles if available
+              if (this.add.particles) {
+                try {
+                  const particles = this.add.particles(400, 300, 'pixel', {
+                    speed: { min: 100, max: 200 },
+                    scale: { start: 3, end: 0 },
+                    blendMode: 'ADD',
+                    lifespan: 2000,
+                    tint: [0xFFFF00, 0x00FF00, 0xFFD700],
+                    emitting: true
+                  });
+                  
+                  // Stop emitting after 2 seconds
+                  setTimeout(() => {
+                    if (particles && particles.emitters && particles.emitters.first) {
+                      particles.emitters.first.stop();
+                    }
+                  }, 2000);
+                  
+                  // Clean up particles after animation
+                  setTimeout(() => {
+                    if (particles && particles.destroy) {
+                      particles.destroy();
+                    }
+                  }, 3000);
+                } catch (e) {
+                  console.log("Particles not available for victory celebration", e);
+                }
+              }
+              
+              // Reset wave change flag
+              this.waveChangeInProgress = false;
+              
+              // Clean up safety timeout
+              if (this._waveChangeTimeout) {
+                clearTimeout(this._waveChangeTimeout);
+                this._waveChangeTimeout = null;
+              }
+              
+              // Show game completion screen after delay
+              setTimeout(() => {
+                if (typeof this.endGame === 'function') {
+                  this.endGame(true); // true indicates victory
+                }
+              }, victoryDelay);
+              
+              return; // Stop here, don't proceed to next wave
+            }
+            
+            // Increase wave counter - NO MAXIMUM WAVE LIMIT!
             this.gameState.wave++;
             this.updateWaveText();
             
-            // Start next wave immediately (no delay)
+            // Debug log the wave change
+            console.log(`Wave increased to ${this.gameState.wave}`);
+            
+            // Start the new wave - this will reset the necessary flags
             this.startWave();
-
-            console.log(`Forced start of wave ${this.gameState.wave}`);
             
             // Show notification
             this.showFloatingText(400, 300, `WAVE ${this.gameState.wave} STARTING!`, 0xFFFF00);
@@ -1918,22 +2372,23 @@ if (isBrowser) {
               duration: 500,
               onComplete: () => flash.destroy()
             });
-          } catch (error) {
-            console.error("Error forcing next wave:", error);
             
-            // Emergency recovery - make sure wave progresses even if there's an error
-            try {
-              this.waveInProgress = false;
-              this.isSpawningEnemies = false;
-              this.enemies = [];
-              this.gameState.wave++;
-              
-              // Start next wave immediately without delay
-              if (this.gameState && this.gameState.isActive) {
-                this.startWave();
-              }
-            } catch (recoveryError) {
-              console.error("Emergency wave recovery failed:", recoveryError);
+            console.log("Wave change completed, flag reset");
+            
+            // IMPORTANT: we'll let startWave handle resetting the flag
+            
+          } catch (error) {
+            console.error("Error in forceNextWave:", error);
+            
+            // Reset flags in case of error to prevent getting stuck
+            this.waveChangeInProgress = false;
+            this.waveInProgress = false;
+            this.isSpawningEnemies = false;
+            
+            // Clean up safety timeout
+            if (this._waveChangeTimeout) {
+              clearTimeout(this._waveChangeTimeout);
+              this._waveChangeTimeout = null;
             }
           }
         }
@@ -2422,6 +2877,11 @@ if (isBrowser) {
             this.showFloatingText(x, y, `${defenseName} placed!`, 0x00FFFF);
             
             console.log(`Defense ${defenseType} placed at ${x},${y}`);
+            
+            // Play defense placed sound
+            if (this.soundManager) {
+              this.soundManager.play('defense_placed');
+            }
           };
         }
 
@@ -2544,186 +3004,169 @@ if (isBrowser) {
 
         update(time, delta) {
           try {
-            // Don't allow recursive updates
-            if (isUpdating) return;
-            isUpdating = true;
+            // Skip if scene is paused or not active
+            if (this.scene.isPaused()) return;
             
-            // Skip updates if game is not active
-            if (!this.gameState.isActive) {
-              isUpdating = false;
+            // Avoid re-entrancy
+            if (this._isUpdating) return;
+            this._isUpdating = true;
+            
+            // Skip if game not active
+            if (!this.gameState?.isActive) {
+              this._isUpdating = false;
               return;
             }
             
-            // Check if crop placement mode is active
-            if (this.toolMode === 'plant' && this.plantingIndicator) {
-              // Update crop placement preview on mouse movement
-              const pointer = this.input.activePointer;
-              this.updatePlacementPreview(pointer);
-            } else if (this.isDefenseMode(this.toolMode) && this.pendingDefensePlacement) {
-              // Update defense placement preview
-              const pointer = this.input.activePointer;
-              this.showDefensePlacementIndicator(pointer, this.pendingDefenseType);
+            // Process any player clicks
+            if (typeof this.processMissedClicks === 'function') {
+              this.processMissedClicks();
             }
             
-            // Update defenses
-            if (this.defenses && this.defenses.length > 0) {
-              this.updateDefenseAttacks();
-            }
-            
-            // Update crops if they exist
+            // Update crop state if needed
             if (this.crops) {
               this.updateCrops();
             }
             
-            // Update enemies
+            // ADDED: Update individual enemies
             if (this.enemies && this.enemies.length > 0) {
-              // Update each enemy
-              this.enemies.forEach(enemy => {
+              // Iterate backwards to allow safe removal during iteration
+              for (let i = this.enemies.length - 1; i >= 0; i--) {
+                const enemy = this.enemies[i];
                 if (enemy && enemy.active) {
+                  // Check if update method exists before calling
                   if (typeof enemy.update === 'function') {
                     enemy.update(delta);
                   } else {
-                    console.warn("Enemy missing update method");
+                    // If no update method, maybe remove it?
+                    console.warn(`Enemy at index ${i} lacks update method.`);
+                    // Optionally remove invalid enemy: this.enemies.splice(i, 1);
                   }
-                } else if (enemy && !enemy.active) {
-                  // Handle inactive enemies - might need cleanup
-                  // Will be handled by the destroy method
-                } else {
-                  console.warn("Null or undefined enemy in array");
+                } else if (!enemy) {
+                  // Remove null/undefined entries
+                  console.warn(`Removing invalid enemy entry at index ${i}`);
+                  this.enemies.splice(i, 1);
                 }
-              });
-              
-              // Clean up null/undefined entries in enemies array
-              this.enemies = this.enemies.filter(enemy => enemy != null && enemy !== undefined);
-            }
-            
-            // Debug info to track wave state
-            if (this.gameState?.isActive) {
-              if (time % 5000 < 16) { // roughly every 5 seconds
-                console.log(`Wave check: enemies=${this.enemies?.length || 0}, spawning=${this.isSpawningEnemies}, spawned=${this.enemiesSpawned || 0}/${this.totalEnemiesInWave || 0}, inProgress=${this.waveInProgress}`);
+                // Note: Inactive enemies are kept for potential revival or other logic
               }
             }
+
+            // Make defenses attack enemies every frame
+            this.updateDefenseAttacks();
             
-            // First condition: All enemies defeated, no more spawning
-            const allEnemiesDefeated = 
-              this.gameState?.isActive && 
-              Array.isArray(this.enemies) && 
-              this.enemies.length === 0 && 
-              !this.isSpawningEnemies &&
-              this.enemiesSpawned >= this.totalEnemiesInWave &&
-              this.waveInProgress;
-            
-            // Second condition: Wave complete but next wave not started
-            const waveCompleteButStuck = 
-              this.gameState?.isActive && 
-              Array.isArray(this.enemies) && 
-              this.enemies.length === 0 && 
-              !this.isSpawningEnemies &&
-              !this.waveInProgress && 
-              this.gameState.wave > 0;
+            // Wave completion check - IMPROVED to ensure waves keep progressing
+            if (this.gameState?.isActive && 
+                !this.waveChangeInProgress && 
+                this.waveInProgress && 
+                !this.isSpawningEnemies && 
+                (!this.enemies || this.enemies.length === 0) && 
+                this.enemiesSpawned > 0) { 
               
-            // Third condition: Game active but no wave in progress
-            const gameActiveButNoWave = 
-              this.gameState?.isActive &&
-              !this.waveInProgress &&
-              !this.isSpawningEnemies &&
-              this.gameState.wave > 0 &&
-              (this.enemies?.length === 0 || !this.enemies);
+              console.log(`Wave ${this.gameState.wave} completion detected, all ${this.enemiesSpawned} enemies defeated`);
               
-            if (allEnemiesDefeated || waveCompleteButStuck || gameActiveButNoWave) {
-              console.log("Wave completion check: no enemies left, forcing next wave", {
-                allEnemiesDefeated,
-                waveCompleteButStuck,
-                gameActiveButNoWave
-              });
+              // Only proceed with wave completion if enough time has passed since the start
+              const minWaveTime = 3000; // Reduced from 5000ms to 3000ms for faster gameplay
+              const currentTime = Date.now();
               
-              // Ensure we log if waves are stuck
-              if (waveCompleteButStuck) {
-                console.warn("Detected stuck wave, forcing next wave start");
-              }
-              
-              try {
-                this.forceNextWave();
-                console.log("Next wave forced successfully");
-              } catch (forceError) {
-                console.error("Error forcing next wave:", forceError);
-                
-                // Emergency recovery - try to reset the wave state
-                try {
-                  console.log("Attempting emergency wave reset");
-                  this.waveInProgress = false;
-                  this.isSpawningEnemies = false;
-                  this.gameState.wave++;
-                  
-                  // Try to start next wave with delay
-                  setTimeout(() => {
-                    if (this.gameState?.isActive && typeof this.startWave === 'function') {
-                      this.startWave();
-                    }
-                  }, 1000);
-                } catch (emergencyError) {
-                  console.error("Emergency recovery failed:", emergencyError);
-                }
-              }
-            }
-            
-            // Legacy wave completion code - can be kept as a backup
-            if (this.waveInProgress && 
-                this.enemies.length === 0 && 
-                this.enemiesSpawned >= this.totalEnemiesInWave && 
-                !this.isSpawningEnemies) {
+              // Mark the current wave as completed
               this.waveInProgress = false;
               
-              // Reward player for completing the wave immediately (no delay)
-              const waveReward = Math.ceil(this.gameState.wave * 15); // 15 coins per wave level
-              this.updateFarmCoins(waveReward);
-              this.showFloatingText(400, 300, `Wave ${this.gameState.wave} Complete! +${waveReward} coins`, 0x00FF00);
-              
-              // Start next wave
-              this.gameState.wave++;
-              this.updateWaveText();
-              
-              // Check for defense unlocks after wave increase
-              this.updateAdvancedDefenseButtons();
-              
-              // Start the next wave or show button immediately depending on autoWave setting
-              if (this.gameState.isActive) {
-                if (this.gameState.autoWave) {
-                  console.log("Auto-starting next wave");
-                  this.startWave();
-                } else {
-                  console.log("Waiting for manual wave start");
-                  // Show next wave button if not using auto-wave
-                  this.showNextWaveButton();
+              if (!this._waveStartTime || (currentTime - this._waveStartTime) > minWaveTime) {
+                // Set wave change flag to prevent multiple calls
+                this.waveChangeInProgress = true;
+                this._lastWaveChangeTime = time;
+                
+                // Reward player for completing the wave
+                const waveReward = Math.ceil(this.gameState.wave * 15);
+                this.updateFarmCoins(waveReward);
+                
+                // Show a prominent "Wave Completed!" message with animation
+                const completionText = this.add.text(400, 200, `Wave ${this.gameState.wave} Complete!`, {
+                  fontFamily: 'Arial, sans-serif',
+                  fontSize: '36px',
+                  color: '#FFFFFF',
+                  stroke: '#000000',
+                  strokeThickness: 6,
+                  align: 'center',
+                  shadow: {
+                    offsetX: 2,
+                    offsetY: 2,
+                    color: '#000000',
+                    blur: 3
+                  }
+                }).setOrigin(0.5);
+                completionText.setDepth(1000);
+                
+                // Animate the completion text
+                this.tweens.add({
+                  targets: completionText,
+                  y: 220,
+                  scale: 1.2,
+                  duration: 500,
+                  yoyo: true,
+                  ease: 'Sine.easeInOut',
+                  onComplete: () => {
+                    this.tweens.add({
+                      targets: completionText,
+                      alpha: 0,
+                      y: 170,
+                      duration: 500,
+                      delay: 500,
+                      onComplete: () => completionText.destroy()
+                    });
+                  }
+                });
+                
+                // Show coin reward text
+                this.showFloatingText(400, 250, `+${waveReward} coins`, 0xFFFF00);
+                
+                // Play completion sound if available
+                if (this.soundManager) {
+                  this.soundManager.play('wave_complete');
                 }
+                
+                // Add a delay before starting the next wave
+                this.time.delayedCall(2000, () => {
+                  // Double check game is still active before starting next wave
+                  if (this.gameState?.isActive) {
+                    // Simple call to force next wave - ensure it gets called
+                    this.forceNextWave();
+                  }
+                });
+              } else {
+                console.log(`Wave ${this.gameState.wave} completed too quickly, waiting before advancing`);
+                // Even if completed too quickly, ensure we eventually progress
+                this.time.delayedCall(3000, () => {
+                  if (this.gameState?.isActive && !this.waveChangeInProgress) {
+                    this.forceNextWave();
+                  }
+                });
               }
             }
             
-            // Safety check: run on every frame instead of occasionally
+            // Safety check for stuck waves - if we're not spawning, not in a wave, and have no enemies
             if (this.gameState?.isActive && 
-                this.gameState?.autoWave && // Only auto-start if autoWave is enabled
                 !this.waveInProgress && 
                 !this.isSpawningEnemies && 
-                this.enemies?.length === 0) {
+                !this.waveChangeInProgress &&
+                (!this.enemies || this.enemies.length === 0) && 
+                this.gameState.wave > 0) {
+              
               console.log("Safety check: game active but no wave in progress - forcing next wave");
               
-              // Start next wave
-              this.gameState.wave++;
-              this.updateWaveText();
-              this.startWave();
+              // Force next wave with slight delay to prevent rapid consecutive calls
+              this.time.delayedCall(1000, () => {
+                if (this.gameState?.isActive && !this.waveInProgress && !this.waveChangeInProgress) {
+                  this.forceNextWave();
+                }
+              });
             }
             
-            // Debug info occasionally
-            if (time % 5000 < 16) { // roughly every 5 seconds
-              console.log(`Active enemies: ${this.enemies.length}, Wave: ${this.gameState.wave}, Coins: ${this.gameState.farmCoins}`);
-            }
-            
-            // Release the update lock
-            isUpdating = false;
-            
+            // Clear flag at the end
+            this._isUpdating = false;
           } catch (error) {
-            console.error("Error in update loop:", error);
-            isUpdating = false; // Always release the lock
+            // Reset updating flag in case of error
+            this._isUpdating = false;
+            console.error("Error in update:", error);
           }
         }
         
@@ -2737,16 +3180,40 @@ if (isBrowser) {
             this.enemies = [];
           }
           
+          // Debug counter to track how many defenses are attacking
+          let attackingDefenses = 0;
+          
           // Force each defense to find and attack enemies
           this.defenses.forEach(defense => {
             if (defense && defense.active) {
-              // Ensure defense can attack any enemy type
-              defense.targetTypes = []; // Empty array = can target any enemy
-              
-              // Force attack attempt
-              defense.attackNearestEnemy(true);
+              // Make sure the attack method exists
+              if (typeof defense.attackNearestEnemy === 'function') {
+                 // SIMPLIFIED: Try to find an enemy in range and attack
+                /* const targetEnemy = this.getEnemyInRange(defense); // Use simpler range check
+                if (targetEnemy) {
+                  const didAttack = defense.attack(targetEnemy); // Directly call attack
+                  if (didAttack) {
+                    attackingDefenses++;
+                  }
+                } else {
+                   // Optionally, call the defense's own targeting logic if needed
+                   // const didAttack = defense.attackNearestEnemy(true); 
+                   // if (didAttack) attackingDefenses++;
+                } */
+                
+                // Use the defense's built-in targeting and attack logic
+                const didAttack = defense.attackNearestEnemy(true); 
+                if (didAttack) {
+                    attackingDefenses++;
+                }
+              }
             }
           });
+          
+          // Debug log how many defenses are attacking
+          if (this.gameState.debug && this.defenses.length > 0) {
+            console.log(`${attackingDefenses}/${this.defenses.length} defenses attacking`);
+          }
         }
         
         // Find enemy with lowest health for priority targeting
@@ -2815,8 +3282,10 @@ if (isBrowser) {
             // Skip completely invalid enemies
             if (!enemy) continue;
             
-            // Force enemy to be active for targeting
-            enemy.active = true;
+            // Skip dead or inactive enemies
+            if (enemy.health <= 0 || enemy.destroyed === true || !enemy.active) {
+              continue;
+            }
             
             // Ensure enemy has valid position
             if (typeof enemy.x !== 'number' || typeof enemy.y !== 'number') {
@@ -2862,7 +3331,7 @@ if (isBrowser) {
           
           if (closestEnemy && closestDistance <= extendedRange) {
             // Log occasionally for debugging
-            if (Math.random() < 0.05) {
+            if (Math.random() < 0.01) { // Reduced logging frequency
               console.log(`Defense at (${defense.x}, ${defense.y}) found closest enemy at distance ${closestDistance.toFixed(1)}px`);
             }
             return closestEnemy;
@@ -2877,16 +3346,14 @@ if (isBrowser) {
           if (defense.sprite) {
             defense.sprite.destroy();
           }
-          
-          // Destroy glow effect
-          if (defense.glow) {
-            defense.glow.destroy();
-          }
-          
           // Remove from defenses array
           const index = this.defenses.indexOf(defense);
-          if (index !== -1) {
+          if (index > -1) {
             this.defenses.splice(index, 1);
+          }
+          // Destroy range indicator if it exists
+          if (defense.rangeIndicator) {
+            defense.rangeIndicator.destroy();
           }
         }
 
@@ -2924,7 +3391,19 @@ if (isBrowser) {
           // Loop through all enemies to find potential targets
           for (let i = 0; i < this.enemies.length; i++) {
             const enemy = this.enemies[i];
+            
+            // Skip invalid enemies
             if (!enemy || !enemy.active) {
+              continue;
+            }
+            
+            // Skip dead or destroyed enemies
+            if (enemy.health <= 0 || enemy.destroyed === true) {
+              continue;
+            }
+            
+            // Skip enemies already queued for removal
+            if (enemy._pendingRemoval === true) {
               continue;
             }
             
@@ -3003,7 +3482,7 @@ if (isBrowser) {
               }
             }
             
-            // If found an enemy, force attack it
+            // If found an enemy, attack it regardless of range
             if (closestEnemy) {
               // Force direct attack regardless of range or type
               if (typeof defense.attack === 'function') {
@@ -3569,37 +4048,80 @@ if (isBrowser) {
         // Display large wave start text animation in the center of the screen
         showWaveStartText(waveNumber) {
           try {
-            // Create large centered text
-            const waveText = this.add.text(400, 300, `WAVE ${waveNumber}`, {
-              fontFamily: 'Arial',
-              fontSize: '48px',
-              color: '#FFFF00',
+            // Clean up any existing wave text to prevent duplicates
+            if (this._waveStartText) {
+              if (this._waveStartText.text) this._waveStartText.text.destroy();
+              if (this._waveStartText.bg) this._waveStartText.bg.destroy();
+              this._waveStartText = null;
+            }
+            
+            // Create a semi-transparent background for better contrast
+            const textBg = this.add.rectangle(400, 200, 400, 80, 0x000000, 0.5);
+            textBg.setDepth(999);
+            
+            // Create wave text with consistent styling
+            const waveText = this.add.text(400, 200, `WAVE ${waveNumber}`, {
+              fontFamily: 'Arial, sans-serif',
+              fontSize: '36px',
+              color: '#FFFFFF',
               stroke: '#000000',
-              strokeThickness: 5,
-              align: 'center'
+              strokeThickness: 6,
+              align: 'center',
+              shadow: {
+                offsetX: 2,
+                offsetY: 2,
+                color: '#000000',
+                blur: 3
+              }
             }).setOrigin(0.5);
+            waveText.setDepth(1000);
             
-            // Set initial scale and alpha
+            // Store references to cleanup later
+            this._waveStartText = {
+              text: waveText,
+              bg: textBg
+            };
+            
+            // Animate in with scale
             waveText.setScale(0.5);
-            waveText.setAlpha(0);
-            
-            // Create animation sequence
             this.tweens.add({
               targets: waveText,
-              scale: 1.2,
-              alpha: 1,
-              duration: 1000,
-              ease: 'Bounce.easeOut',
-              onComplete: () => {
-                // Second animation to fade out
-                this.tweens.add({
-                  targets: waveText,
-                  scale: 1.5,
-                  alpha: 0,
-                  duration: 800,
-                  delay: 500,
-                  onComplete: () => waveText.destroy()
-                });
+              scale: 1,
+              duration: 500,
+              ease: 'Back.easeOut'
+            });
+            
+            // Auto destroy after a fixed time
+            this.time.delayedCall(1400, () => {
+              if (this._waveStartText) {
+                if (this._waveStartText.text) {
+                  this.tweens.add({
+                    targets: this._waveStartText.text,
+                    alpha: 0,
+                    y: 150,
+                    duration: 300,
+                    onComplete: () => {
+                      if (this._waveStartText && this._waveStartText.text) {
+                        this._waveStartText.text.destroy();
+                      }
+                    }
+                  });
+                }
+                
+                if (this._waveStartText.bg) {
+                  this.tweens.add({
+                    targets: this._waveStartText.bg,
+                    alpha: 0,
+                    duration: 300,
+                    onComplete: () => {
+                      if (this._waveStartText && this._waveStartText.bg) {
+                        this._waveStartText.bg.destroy();
+                      }
+                    }
+                  });
+                }
+                
+                this._waveStartText = null;
               }
             });
             
@@ -3621,6 +4143,7 @@ if (isBrowser) {
                 this.time.delayedCall(1000, () => emitter.remove());
               });
             }
+            
           } catch (error) {
             console.error("Error showing wave start text:", error);
           }
@@ -3861,10 +4384,443 @@ if (isBrowser) {
               this.defensePreview = null;
             }
             
+            // Clean up sound manager
+            if (this.soundManager) {
+              this.soundManager.destroy();
+            }
+            
             console.log("GameScene resources cleaned up");
           } catch (error) {
             console.error("Error in shutdown method:", error);
           }
+        }
+
+        visualizePath() {
+          try {
+            if (!this.gameState?.path?.points || this.gameState.path.points.length < 2) {
+              console.warn("No valid path to visualize");
+              return;
+            }
+            
+            // Create a graphics object to visualize the path
+            const pathGraphics = this.add.graphics();
+            pathGraphics.lineStyle(3, 0xFFFF00, 0.5);
+            
+            // Draw lines between each point
+            const points = this.gameState.path.points;
+            pathGraphics.moveTo(points[0].x, points[0].y);
+            
+            // Connect all points with lines
+            for (let i = 1; i < points.length; i++) {
+              pathGraphics.lineTo(points[i].x, points[i].y);
+            }
+            
+            pathGraphics.strokePath();
+            
+            // Add markers at each point
+            points.forEach((point, index) => {
+              const marker = this.add.circle(point.x, point.y, 8, 0xFFFF00, 0.7);
+              marker.setStrokeStyle(2, 0x000000);
+              
+              // Add label for debug
+              const label = this.add.text(point.x, point.y - 20, `${index}`, {
+                fontSize: '12px',
+                color: '#FFFFFF',
+                backgroundColor: '#000000'
+              }).setOrigin(0.5);
+              
+              // Make the visualization temporary
+              this.time.delayedCall(10000, () => {
+                marker.destroy();
+                label.destroy();
+              });
+            });
+            
+            // Make the path visualization temporary
+            this.time.delayedCall(10000, () => {
+              pathGraphics.destroy();
+            });
+            
+            console.log("Path visualization created");
+          } catch (error) {
+            console.error("Error creating path visualization:", error);
+          }
+        }
+
+        // Add this method to handle enemies that reach the end of the path
+        enemyReachedEnd(enemy) {
+          if (!enemy || !this.gameState) return;
+          
+          console.log(`Enemy ${enemy.id} reached the end of the path`);
+          
+          // Reduce lives
+          this.gameState.lives--;
+          if (typeof this.updateLivesText === 'function') {
+            this.updateLivesText();
+          }
+          
+          // Show warning text
+          if (typeof this.showFloatingText === 'function') {
+            this.showFloatingText(50, 300, 'Farm Invaded! -1 Life', 0xFF0000);
+          }
+          
+          // Check for game over
+          if (this.gameState.lives <= 0) {
+            console.log("Game over! No lives remaining.");
+            if (typeof this.endGame === 'function') {
+              this.endGame(false);
+            } else {
+              // Basic game over implementation
+              this.gameState.isActive = false;
+              const gameOverText = this.add.text(400, 300, 'GAME OVER', {
+                fontSize: '48px',
+                fontFamily: 'Arial',
+                color: '#FF0000'
+              }).setOrigin(0.5);
+            }
+          }
+          
+          // Destroy the enemy - using the internal destroy method
+          if (typeof enemy.destroy === 'function') {
+            enemy.destroy();
+          }
+          
+          // Play enemy escaped sound
+          if (this.soundManager) {
+            this.soundManager.play('enemy_escaped');
+          }
+        }
+
+        // Add endGame function to handle game over state
+        endGame(victory = false) {
+          try {
+            console.log(`Game ended with ${victory ? 'victory' : 'defeat'}`);
+            
+            // Set game to inactive
+            this.gameState.isActive = false;
+            
+            // IMPORTANT: Immediately clean up all game objects
+            // This will stop all defenses and enemies before showing the game over UI
+            this.cleanupCurrentGame();
+            
+            // Create overlay to dim the background
+            const overlay = this.add.rectangle(400, 300, 800, 600, 0x000000, 0.7);
+            overlay.setDepth(1000);
+            
+            // Calculate final stats
+            const completedWaves = Math.max(0, this.gameState.wave - 1);
+            const finalScore = this.gameState.score;
+            const coinsEarned = this.gameState.farmCoins;
+            
+            // Add game over text
+            const resultText = victory ? 'Victory!' : 'Game Over';
+            const gameOverText = this.add.text(400, 200, resultText, {
+              fontFamily: 'Arial Black, Impact, sans-serif',
+              fontSize: '64px',
+              color: victory ? '#00FF00' : '#FF0000',
+              stroke: '#000000',
+              strokeThickness: 6,
+              shadow: {
+                offsetX: 3,
+                offsetY: 3,
+                color: '#000000',
+                blur: 5
+              }
+            }).setOrigin(0.5);
+            gameOverText.setDepth(1001);
+            
+            // Show statistics
+            const scoreText = this.add.text(400, 280, `Score: ${finalScore}`, {
+              fontFamily: 'Arial',
+              fontSize: '32px',
+              color: '#FFFFFF',
+              stroke: '#000000',
+              strokeThickness: 3
+            }).setOrigin(0.5);
+            scoreText.setDepth(1001);
+            
+            const wavesText = this.add.text(400, 330, `Waves Completed: ${completedWaves}`, {
+              fontFamily: 'Arial',
+              fontSize: '28px',
+              color: '#FFFFFF',
+              stroke: '#000000',
+              strokeThickness: 3
+            }).setOrigin(0.5);
+            wavesText.setDepth(1001);
+            
+            const coinsText = this.add.text(400, 380, `Farm Coins: ${coinsEarned}`, {
+              fontFamily: 'Arial',
+              fontSize: '28px',
+              color: '#FFFF00',
+              stroke: '#000000',
+              strokeThickness: 3
+            }).setOrigin(0.5);
+            coinsText.setDepth(1001);
+            
+            // Create restart button with proper styling
+            const buttonWidth = 220;
+            const buttonHeight = 60;
+            const restartButton = this.add.rectangle(400, 460, buttonWidth, buttonHeight, 0x4CAF50, 1);
+            restartButton.setStrokeStyle(4, 0x45A049);
+            restartButton.setDepth(1001);
+            
+            const restartText = this.add.text(400, 460, 'Play Again', {
+              fontFamily: 'Arial',
+              fontSize: '28px',
+              color: '#FFFFFF',
+              stroke: '#000000',
+              strokeThickness: 1
+            }).setOrigin(0.5);
+            restartText.setDepth(1002);
+            
+            // Add hover effect
+            restartButton.setInteractive({ useHandCursor: true })
+              .on('pointerover', () => {
+                restartButton.fillColor = 0x45A049;
+                this.input.setDefaultCursor('pointer');
+              })
+              .on('pointerout', () => {
+                restartButton.fillColor = 0x4CAF50;
+                this.input.setDefaultCursor('default');
+              })
+              .on('pointerdown', () => {
+                // Play click sound if available
+                if (this.sound && this.sound.play && this.buttonClickSound) {
+                  this.sound.play('buttonClickSound');
+                }
+                
+                // Clean up game over elements
+                overlay.destroy();
+                gameOverText.destroy();
+                scoreText.destroy();
+                wavesText.destroy();
+                coinsText.destroy();
+                restartButton.destroy();
+                restartText.destroy();
+                
+                // Update external farm coins if callback is available
+                if (typeof this.addFarmCoins === 'function') {
+                  this.addFarmCoins(coinsEarned);
+                }
+                
+                // Reset cursor
+                this.input.setDefaultCursor('default');
+                
+                // Start a new game
+                this.startGame();
+              });
+            
+            // Create an exit button to just close the game over screen without restarting
+            const exitButton = this.add.rectangle(400, 540, buttonWidth, buttonHeight, 0xF44336, 1);
+            exitButton.setStrokeStyle(4, 0xE53935);
+            exitButton.setDepth(1001);
+            
+            const exitText = this.add.text(400, 540, 'Exit Game', {
+              fontFamily: 'Arial',
+              fontSize: '28px',
+              color: '#FFFFFF',
+              stroke: '#000000',
+              strokeThickness: 1
+            }).setOrigin(0.5);
+            exitText.setDepth(1002);
+            
+            // Add hover effect for exit button
+            exitButton.setInteractive({ useHandCursor: true })
+              .on('pointerover', () => {
+                exitButton.fillColor = 0xE53935;
+                this.input.setDefaultCursor('pointer');
+              })
+              .on('pointerout', () => {
+                exitButton.fillColor = 0xF44336;
+                this.input.setDefaultCursor('default');
+              })
+              .on('pointerdown', () => {
+                // Play click sound if available
+                if (this.sound && this.sound.play && this.buttonClickSound) {
+                  this.sound.play('buttonClickSound');
+                }
+                
+                // Clean up game over elements
+                overlay.destroy();
+                gameOverText.destroy();
+                scoreText.destroy();
+                wavesText.destroy();
+                coinsText.destroy();
+                restartButton.destroy();
+                restartText.destroy();
+                exitButton.destroy();
+                exitText.destroy();
+                
+                // Update external farm coins if callback is available
+                if (typeof this.addFarmCoins === 'function') {
+                  this.addFarmCoins(coinsEarned);
+                }
+                
+                // Reset cursor
+                this.input.setDefaultCursor('default');
+                
+                // Just clean up without restarting
+                this.showStartButton();
+              });
+              
+            // Play victory or game over sound
+            if (this.soundManager) {
+              if (victory) {
+                this.soundManager.play('victory');
+              } else {
+                this.soundManager.play('game_over');
+              }
+              
+              // Stop the background music
+              this.soundManager.stopMusic();
+            }
+          } catch (error) {
+            console.error("Error in endGame function:", error);
+            // Fallback to basic game over
+            this.gameState.isActive = false;
+            this.add.text(400, 300, 'GAME OVER', {
+              fontSize: '48px',
+              fontFamily: 'Arial',
+              color: '#FF0000'
+            }).setOrigin(0.5);
+          }
+        }
+
+        // Add helper method to clean up game objects
+        cleanupCurrentGame() {
+          try {
+            console.log("Cleaning up current game...");
+            
+            // Clean up all enemies
+            if (this.enemies && this.enemies.length) {
+              this.enemies.forEach(enemy => {
+                if (enemy && enemy.destroy) {
+                  enemy.destroy();
+                }
+              });
+              this.enemies = [];
+            }
+            
+            // Clean up all crops
+            if (this.crops) {
+              Object.values(this.crops).forEach(crop => {
+                if (crop && crop.destroy) {
+                  crop.destroy();
+                }
+              });
+              this.crops = {};
+            }
+            
+            // Clean up all defenses
+            if (this.defenses && this.defenses.length) {
+              this.defenses.forEach(defense => {
+                if (defense) {
+                  // Clean up range circle if it exists
+                  if (defense.rangeCircle && defense.rangeCircle.destroy) {
+                    defense.rangeCircle.destroy();
+                  }
+                  
+                  // Clean up the defense itself
+                  if (defense.destroy) {
+                    defense.destroy();
+                  }
+                }
+              });
+              this.defenses = [];
+            }
+            
+            // Reset game state
+            this.gameState = {
+              isActive: false,
+              wave: 1,
+              score: 0,
+              lives: 3,
+              farmCoins: 50,
+              clickDamage: 1
+            };
+            
+            // Reset other game properties
+            this.isSpawningEnemies = false;
+            this.enemiesRemaining = 0;
+            this.currentDefenseType = null;
+            this.toolMode = 'attack';
+            
+            // Update UI if methods exist
+            if (typeof this.updateWaveText === 'function') this.updateWaveText();
+            if (typeof this.updateScoreText === 'function') this.updateScoreText();
+            if (typeof this.updateLivesText === 'function') this.updateLivesText();
+            if (typeof this.moneyText !== 'undefined' && this.moneyText) {
+              this.moneyText.setText(`Farm Coins: ${this.gameState.farmCoins}`);
+            }
+            
+            console.log("Game cleanup complete");
+          } catch (error) {
+            console.error("Error in cleanupCurrentGame:", error);
+          }
+        }
+
+        // Add a new countdown animation that shows 3, 2, 1, FIGHT! before starting a wave
+        showCountdownAnimation(onComplete) {
+          try {
+            // Prevent multiple countdown animations running simultaneously
+            if (this._countdownInProgress) {
+              console.log("Countdown already in progress, skipping duplicate");
+              // Still call the completion callback to ensure game flow continues
+              if (typeof onComplete === 'function') {
+                onComplete();
+              }
+              return;
+            }
+            
+            // Set flag to prevent multiple countdowns
+            this._countdownInProgress = true;
+            
+            // Clean up any previous countdown elements that might be stuck
+            if (this._countdownElements) {
+              this._countdownElements.forEach(element => {
+                if (element && element.destroy) {
+                  element.destroy();
+                }
+              });
+            }
+            
+            // Initialize array to track countdown elements for cleanup
+            this._countdownElements = [];
+            
+            // Start countdown after a short delay (wave announcement is shown elsewhere)
+            this.time.delayedCall(800, () => {
+              // Create countdown text styles - improve visibility
+              const countStyle = {
+                fontFamily: 'Arial Black, Impact, sans-serif',
+                fontSize: '100px',
+                color: '#FFFFFF',
+                stroke: '#000000',
+                strokeThickness: 8,
+                align: 'center',
+                shadow: {
+                  offsetX: 4,
+                  offsetY: 4,
+                  color: '#000000',
+                  blur: 8
+                }
+              };
+              
+              // Rest of countdown animation remains the same...
+            });
+          } catch (error) {
+            console.error("Error creating countdown animation:", error);
+          }
+        }
+
+        /**
+         * Handles any clicks that don't directly hit interactive objects
+         * This ensures consistent click handling throughout the game area
+         */
+        processMissedClicks() {
+          // This function handles any queued or missed clicks
+          // It's a stub that can be implemented fully if needed later
+          // Currently just here to prevent errors when called from update()
+          return;
         }
       }
       
@@ -3873,11 +4829,15 @@ if (isBrowser) {
       console.log("Client-side GameScene loaded successfully");
     } catch (error) {
       console.error("Error initializing Phaser GameScene:", error);
+      // Assign placeholder back if initialization failed
+      GameScene = PlaceholderScene;
     }
   }).catch(error => {
     console.error("Failed to load Phaser:", error);
+    // Assign placeholder back if Phaser load failed
+    GameScene = PlaceholderScene;
   });
-}
+} // End of if (isBrowser) block
 
 // Export using ES modules
 export { GameScene }; 

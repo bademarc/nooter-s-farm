@@ -1,0 +1,2900 @@
+"use client";
+
+import React, { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
+import { ArrowLeft, Package, CircleDollarSign, Trophy, Wallet, CreditCard } from 'lucide-react';
+import Image from 'next/image';
+import { toast } from 'react-hot-toast';
+import confetti from 'canvas-confetti';
+import { ethers, Contract, BrowserProvider } from 'ethers';
+import { v4 as uuidv4 } from 'uuid';
+
+// NOOT token constants
+const NOOT_TOKEN_ADDRESS = "0xBe4A56850cb822dD322190C15Bd2c66781007CBc";
+const NOOT_SWAP_ADDRESS = "0x324B6DA594145093b003Ec9b305e2A478A76Ba88"; // Updated to multiFarmSwapAddress from deployment info
+const TOKEN_ABI = [
+  "function balanceOf(address owner) view returns (uint256)",
+  "function transfer(address to, uint256 amount) returns (bool)",
+  "function approve(address spender, uint256 amount) returns (bool)",
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "event Transfer(address indexed from, address indexed to, uint256 value)",
+  "function name() view returns (string)",
+  "function symbol() view returns (string)",
+  "function decimals() view returns (uint8)"
+];
+
+// NFT ABI for ERC721 standard NFTs
+const NFT_ABI = [
+  "function balanceOf(address owner) view returns (uint256)",
+  "function ownerOf(uint256 tokenId) view returns (address)",
+  "function safeTransferFrom(address from, address to, uint256 tokenId) external",
+  "function transferFrom(address from, address to, uint256 tokenId) external",
+  "function tokenOfOwnerByIndex(address owner, uint256 index) view returns (uint256)",
+  "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)"
+];
+
+// ABI for the swap contract that handles token claiming
+const SWAP_CONTRACT_ABI = [
+  // Token swap functions
+  "function swapTokenForFarmCoins(address tokenAddress, uint256 tokenAmount) external returns (uint256)",
+  "function swapFarmCoinsForToken(address tokenAddress, uint256 farmCoinAmount) external returns (uint256)",
+  "function getTokenPrice(address tokenAddress) external view returns (uint256)",
+  "function getFarmCoinPrice(address tokenAddress) external view returns (uint256)",
+  // Token reward/claiming functions
+  "function claimTestTokens(address tokenAddress, uint256 tokenAmount) external",
+  "function claimTestNOOT(uint256 amount) external",
+  "function transferNFT(address nftAddress, uint256 tokenId, address to) external",
+  // Admin functions
+  "function setTokenPrice(address tokenAddress, uint256 price) external",
+  "function setFarmCoinPrice(address tokenAddress, uint256 price) external",
+  "function withdrawToken(address tokenAddress, uint256 amount) external",
+  // Events
+  "event TokenSwapped(address indexed user, address indexed tokenAddress, uint256 tokenAmount, uint256 farmCoinAmount)",
+  "event FarmCoinSwapped(address indexed user, address indexed tokenAddress, uint256 farmCoinAmount, uint256 tokenAmount)",
+  "event TokenClaimed(address indexed tokenAddress, address indexed player, uint256 amount)",
+  "event NFTClaimed(address indexed nftAddress, uint256 indexed tokenId, address indexed player)"
+];
+
+// Add all token addresses from token-swap.tsx
+const TOKEN_ADDRESSES = {
+  NOOT: "0xBe4A56850cb822dD322190C15Bd2c66781007CBc",
+  ABSTER: "0x46eBB071ecC6f1c836F8a63f9C1b8F0e9Ea64250",
+  ABBY: "0xEF96F05054B72172749a4D474641b6EdC4730147",
+  BIT77: "0x4A8AcEEe2D8767B6c3037FA9c130b11C1f2fF1e3", // Using the address from NFT_ADDRESSES.BIT77
+  BEARISH: "0x7a29062CC05ce0D0f2D9D6b028cAa1FA1F08b631", // Using the address from NFT_ADDRESSES.BEARISH
+  CHESTER: "0xD611EAb789f4D9640dFC11EC7472a1d92Fe0cCc5",
+  DOJO3: "0x63915576f992f5b106CA79D976921A808cC05e30",
+  FEATHERS: "0xDDf45775E88776F0B8b9B3D28348F10edE84De64",
+  MOP: "0xB28Ee25d59E642A9a072e8EDc97C0759d4dD3Ee2",
+  NUTZ: "0x259054F8A89e531d453219d8244b03d4B3FE6586",
+  PAINGU: "0x133a7f84eDB02798e7C2244f34c215e0C1410279",
+  PENGUIN: "0x5AeCA78594Eb5b7e02fb8E79FE97C200EC345Bfd",
+  PUDGY: "0xE4997F23017a7A082023786B2399cA5Fe479233A",
+  RETSBA: "0xdaa1628e23658B88E527FdeB0A7BDBbcC40CfB96",
+  WOJACT: "0x1f0FD9E9021c09539c03A09316f53633E32C85d1",
+  YUP: "0xe584b3c2f051BAe6827612907221a9041828F59C"
+};
+
+// NFT Addresses
+const NFT_ADDRESSES = {
+  BEARISH: "0x58C51e74881eE2abD5CC0d85345d26d55F386c61", // Updated address
+  BIT77: "0x5cC1D55B2450d11417e0Bc82612c034aAEBeb3AE"    // Updated address
+};
+
+// Token information with symbols and names
+const TOKEN_INFO = {
+  NOOT: { symbol: "NOOT", name: "Noot Noot" },
+  ABSTER: { symbol: "$ABSTER", name: "ABSTER" },
+  ABBY: { symbol: "ABBY", name: "Abby Token" },
+  BIT77: { symbol: "77BIT", name: "77-Bit Token" },
+  BEARISH: { symbol: "BEARISH", name: "Bearish Token" },
+  CHESTER: { symbol: "CHESTER", name: "Chester Token" },
+  DOJO3: { symbol: "DOJO3", name: "Dojo3 Token" },
+  FEATHERS: { symbol: "FEATHERS", name: "Feathers Token" },
+  MOP: { symbol: "MOP", name: "MOP Token" },
+  NUTZ: { symbol: "NUTZ", name: "NUTZ Token" },
+  PAINGU: { symbol: "PAINGU", name: "Paingu Token" },
+  PENGUIN: { symbol: "PENGUIN", name: "Penguin Token" },
+  PUDGY: { symbol: "PUDGY", name: "Pudgy Penguins Token" },
+  RETSBA: { symbol: "RETSBA", name: "RETSBA Token" },
+  WOJACT: { symbol: "WOJACT", name: "Wojact Token" },
+  YUP: { symbol: "YUP", name: "YUP Token" }
+};
+
+// Fee to claim tokens
+const CLAIM_FEE = 0.5; // NOOT tokens required to claim
+const ABSTRACT_TESTNET_CHAIN_ID = "0x2b74";
+const ABSTRACT_BLOCK_EXPLORER = "https://explorer.testnet.abs.xyz";
+
+// Prices for items based on rarity
+const prices = {
+  legendary: 15000,
+  yellow: 10000,
+  red: 1200,
+  pink: 500,
+  purple: 250,
+  blue: 100
+};
+
+// Cost to open a case with Farm Coins
+const CASE_COST = 10; // Farm coins
+
+// Cost to open a case with NOOT tokens
+const NOOT_CASE_COST = 1; // 1 NOOT token per case
+
+// Item rarities - expanded to include more items
+const imageRarities = [
+  // Common (Blue) - 40%
+  'blue1', 'blue2',
+  // Uncommon (Purple) - 30%
+  'purple1', 'purple2', 'purple3',
+  // Rare (Pink) - 15%
+  'pink1', 'pink2',
+  // Very Rare (Red) - 8%
+  'red1', 'red2',
+  // Ultra Rare (Yellow) - 5%
+  'yellow1', 'yellow3',
+  // Legendary (Gold) - 2%
+  'legendary1', 'legendary2', 'legendary3', 'legendary4', 'legendary5', 'legendary6'
+];
+
+// Update itemDetails type to include NFT properties
+interface ItemDetailType {
+  name: string;
+  price: number;
+  image: string;
+  isNFT?: boolean;
+  nftAddress?: string;
+  tokenId?: number;
+}
+
+// Mapping for the items with rarities and prices - expanded with all available images
+const itemDetails: Record<string, ItemDetailType> = {
+  // COMMON ITEMS (BLUE) - BRONZE TIER
+  blue1: { 
+    name: 'Chester Token', 
+    price: prices.blue, 
+    image: '/case%20items/bronze/Chester.jpg' 
+  },
+  blue2: { 
+    name: 'Dojo3 Token', 
+    price: prices.blue, 
+    image: '/case%20items/bronze/Dojo3.jpg' 
+  },
+  
+  // UNCOMMON ITEMS (PURPLE) - MIXED TIER
+  purple1: { 
+    name: 'Wojact Token', 
+    price: prices.purple, 
+    image: '/case%20items/golden/Wojact.jpg' 
+  },
+  purple2: { 
+    name: 'Yup Token', 
+    price: prices.purple, 
+    image: '/case%20items/golden/yup.jpg' 
+  },
+  purple3: { 
+    name: 'NUTZ Token', 
+    price: prices.purple, 
+    image: '/case%20items/golden/nutz.jpg' 
+  },
+  
+  // RARE ITEMS (PINK) - SILVER TIER
+  pink1: { 
+    name: 'Paingu Token', 
+    price: prices.pink, 
+    image: '/case%20items/silver/PAINGU.jpg' 
+  },
+  pink2: { 
+    name: 'Penguin Token', 
+    price: prices.pink, 
+    image: '/case%20items/silver/PENGUIN.jpg' 
+  },
+  
+  // VERY RARE ITEMS (RED) - GOLDEN TIER
+  red1: { 
+    name: 'Feathers Token', 
+    price: prices.red, 
+    image: '/case%20items/golden/Feathersabstract.jpg' 
+  },
+  red2: { 
+    name: 'RETSBA Token', 
+    price: prices.red, 
+    image: '/case%20items/golden/RETSBA.jpg' 
+  },
+  
+  // ULTRA RARE ITEMS (YELLOW) - TOP TIER
+  yellow1: { 
+    name: 'Abby Token', 
+    price: prices.yellow, 
+    image: '/case%20items/golden/Abby.jpg' 
+  },
+  yellow3: { 
+    name: 'ABSTER Token', 
+    price: prices.yellow, 
+    image: '/case%20items/golden/Abster.webp' 
+  },
+  
+  // LEGENDARY ITEMS (LEGENDARY) - ULTIMATE TIER
+  legendary1: { 
+    name: 'MOP Token', 
+    price: prices.legendary, 
+    image: '/case%20items/golden/MOP.png' 
+  },
+  legendary2: { 
+    name: 'Bearish NFT', 
+    price: prices.legendary * 2, // Value is higher because it's NFT
+    image: '/case%20items/golden/bearish.jpg',
+    isNFT: true,
+    nftAddress: NFT_ADDRESSES.BEARISH,
+    tokenId: 1 // Token ID to transfer
+  },
+  legendary3: { 
+    name: '77-Bit NFT', 
+    price: prices.legendary * 2, // Value is higher because it's NFT
+    image: '/case%20items/bronze/77-Bit.jpg',
+    isNFT: true,
+    nftAddress: NFT_ADDRESSES.BIT77,
+    tokenId: 1 // Token ID to transfer
+  },
+  legendary4: { 
+    name: 'Wojact Token', 
+    price: prices.legendary * 1.3, // More valuable
+    image: '/case%20items/golden/Wojact.jpg' 
+  },
+  legendary5: { 
+    name: 'RETSBA Token', 
+    price: prices.legendary * 1.7, // Most valuable
+    image: '/case%20items/golden/RETSBA.jpg' 
+  },
+  legendary6: { 
+    name: 'Bearish NFT Premium', 
+    price: prices.legendary * 2.5, // Most valuable NFT
+    image: '/case%20items/golden/bearish.jpg',
+    isNFT: true,
+    nftAddress: NFT_ADDRESSES.BEARISH,
+    tokenId: 2 // A different token ID
+  }
+};
+
+// Slot machine constants - improved for better responsiveness
+const IMAGE_WIDTH = 160; // Adjusted for better display
+const IMAGE_HEIGHT = 160;
+const IMAGE_COUNT = 5;
+const OFFSET = 1;
+const BASE_SPEED = 2;
+const ACCELERATION_DURATION_MIN = 2000;
+const ACCELERATION_DURATION_MAX = 3000;
+const ACCELERATION_STEP = 0.5;
+const DECELERATION_MULTIPLIER = 0.98;
+const RETURN_MULTIPLIER = 0.05;
+
+// Add sound effect variables - same as solcasenft
+const STATE = {
+  ACCELERATION: 'acceleration',
+  DECELERATION: 'deceleration',
+  RETURN: 'return',
+  STOPPED: 'stopped'
+};
+
+// Add scroll animation styles near the top of the file
+const SCROLL_ANIMATION = `
+  @keyframes bounce {
+    0%, 20%, 50%, 80%, 100% {
+      transform: translateY(0);
+    }
+    40% {
+      transform: translateY(-20px);
+    }
+    60% {
+      transform: translateY(-10px);
+    }
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  
+  @keyframes progressAnimation {
+    0% { transform: scaleX(0); }
+    100% { transform: scaleX(1); }
+  }
+  
+  @keyframes popIn {
+    0% { transform: scale(0.5); opacity: 0; }
+    70% { transform: scale(1.1); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  
+  @keyframes glowPulse {
+    0% { box-shadow: 0 0 5px gold; }
+    50% { box-shadow: 0 0 20px gold, 0 0 30px yellow; }
+    100% { box-shadow: 0 0 5px gold; }
+  }
+
+  /* Confetti animation from solcasenft */
+  @keyframes confetti-fall {
+    0% { transform: translateY(-100vh) rotate(0deg); }
+    100% { transform: translateY(100vh) rotate(720deg); }
+  }
+  
+  @keyframes confetti-sway {
+    0% { transform: translateX(0); }
+    33% { transform: translateX(5vw); }
+    66% { transform: translateX(-5vw); }
+    100% { transform: translateX(0); }
+  }
+  
+  .confetti-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    pointer-events: none;
+    z-index: 1000;
+    overflow: hidden;
+  }
+  
+  .confetti {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    background-color: gold;
+    opacity: 0.8;
+    animation: confetti-fall 3s linear infinite, confetti-sway 2s ease-in-out infinite;
+  }
+  
+  .confetti:nth-child(odd) {
+    background-color: rgba(255, 215, 0, 0.7);
+    width: 12px;
+    height: 12px;
+    animation-delay: 0.2s;
+    animation-duration: 2.5s;
+  }
+
+  .bounce {
+    animation: bounce 2s infinite;
+  }
+
+  .fade-in {
+    animation: fadeIn 1s ease-in;
+  }
+  
+  .pop-in {
+    animation: popIn 0.5s ease-out forwards;
+  }
+  
+  .glow-pulse {
+    animation: glowPulse 2s infinite;
+  }
+
+  .arrow-down {
+    width: 0;
+    height: 0;
+    border-left: 20px solid transparent;
+    border-right: 20px solid transparent;
+    border-top: 20px solid #ffd700;
+    margin: 0 auto 10px auto;
+  }
+  
+  .slot-machine-container {
+    position: relative;
+    margin: 0 auto 20px;
+    overflow: hidden;
+    border: 3px solid #333;
+    border-image: linear-gradient(45deg, #333, #FFD700, #333) 1;
+    border-radius: 4px;
+    background: #111;
+    box-shadow: 0 0 20px rgba(255, 215, 0, 0.2);
+    max-width: 100%;
+    padding: 10px 0;
+  }
+  
+  /* Add glass-like sheen effect over slot machine */
+  .slot-machine-shine {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 40%;
+    background: linear-gradient(to bottom, 
+      rgba(255, 255, 255, 0.08) 0%, 
+      rgba(255, 255, 255, 0.03) 40%, 
+      rgba(255, 255, 255, 0) 100%
+    );
+    pointer-events: none;
+  }
+  
+  /* Enhanced case background */
+  .case-background {
+    background: linear-gradient(135deg, #222, #111);
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 1.5rem;
+    transition: all 0.3s ease;
+  }
+  
+  .case-background:hover {
+    box-shadow: 0 0 25px rgba(255, 215, 0, 0.1);
+  }
+`;
+
+// Add CSS styles for the noot theme that match token-swap.tsx
+const NOOT_THEME_STYLES = `
+  .noot-theme {
+    background-color: #0f0f10;
+    color: #ffffff;
+  }
+  
+  .noot-card {
+    background: #171717;
+    border: 1px solid #333;
+    border-radius: 8px;
+  }
+  
+  .noot-title {
+    font-weight: bold;
+    letter-spacing: -0.025em;
+  }
+  
+  .noot-button {
+    transition: all 0.2s ease;
+  }
+  
+  .noot-swap-section {
+    margin-bottom: 1.5rem;
+  }
+  
+  .noot-swap-title {
+    font-size: 1.25rem;
+    font-weight: bold;
+    margin-bottom: 0.75rem;
+    color: white;
+  }
+  
+  .slot-machine-container {
+    background-color: #171717;
+    border: 1px solid #333;
+  }
+  
+  /* Enhance the existing animations */
+  @keyframes glowPulse {
+    0% { box-shadow: 0 0 5px #8b5cf6; }
+    50% { box-shadow: 0 0 20px #8b5cf6, 0 0 30px #6366f1; }
+    100% { box-shadow: 0 0 5px #8b5cf6; }
+  }
+  
+  .gradient-border {
+    border: 1px solid transparent;
+    background-clip: padding-box;
+    position: relative;
+  }
+  
+  .gradient-border::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    margin: -1px;
+    border-radius: inherit;
+    background: linear-gradient(to right, #8b5cf6, #6366f1);
+    z-index: -1;
+  }
+  
+  /* Purple theme buttons and elements */
+  .purple-gradient {
+    background: linear-gradient(to right, #8b5cf6, #6366f1);
+  }
+  
+  .purple-border {
+    border: 1px solid #8b5cf6;
+  }
+  
+  .blue-gradient {
+    background: linear-gradient(to right, #3b82f6, #2563eb);
+  }
+  
+  .blue-border {
+    border: 1px solid #3b82f6;
+  }
+`;
+
+// Functions for rarity-based styling
+const getRarityBg = (rarity: string) => {
+  // Remove any numbers from the rarity to get just the color category
+  const rarityType = rarity.replace(/[0-9]/g, '');
+  
+  switch (rarityType.toLowerCase()) {
+    case 'legendary':
+      return 'border-amber-500 bg-amber-950/30';
+    case 'yellow':
+      return 'border-yellow-500 bg-yellow-950/30';
+    case 'red':
+      return 'border-red-500 bg-red-950/30';
+    case 'pink':
+      return 'border-pink-500 bg-pink-950/30';
+    case 'purple':
+      return 'border-purple-500 bg-purple-950/30';
+    case 'blue':
+      return 'border-blue-500 bg-blue-950/30';
+    default:
+      return 'border-gray-500 bg-gray-800/30';
+  }
+};
+
+const getRarityColor = (rarity: string) => {
+  // Remove any numbers from the rarity to get just the color category
+  const rarityType = rarity.replace(/[0-9]/g, '');
+  
+  switch (rarityType.toLowerCase()) {
+    case 'legendary':
+      return 'text-amber-400';
+    case 'yellow':
+      return 'text-yellow-400';
+    case 'red':
+      return 'text-red-400';
+    case 'pink':
+      return 'text-pink-400';
+    case 'purple':
+      return 'text-purple-400';
+    case 'blue':
+      return 'text-blue-400';
+    default:
+      return 'text-gray-400';
+  }
+};
+
+// Add a function to ensure image URLs are consistently formatted
+const normalizeImagePath = (path: string): string => {
+  // Remove any double slashes (except http:// or https://)
+  let normalizedPath = path.replace(/([^:])\/+/g, '$1/');
+  
+  // Ensure the path starts with a slash if it's a relative path
+  if (!normalizedPath.startsWith('http') && !normalizedPath.startsWith('/')) {
+    normalizedPath = '/' + normalizedPath;
+  }
+  
+  // Make the path absolute (for consistent comparison)
+  if (normalizedPath.startsWith('/')) {
+    // Replace encoded characters if any
+    normalizedPath = normalizedPath.replace(/%20/g, ' ');
+  }
+  
+  console.log(`Normalized image path: ${path} → ${normalizedPath}`);
+  return normalizedPath;
+};
+
+// Add a helper function to properly format addresses
+const getChecksumAddress = (address: string): string => {
+  try {
+    return ethers.getAddress(address.toLowerCase());
+  } catch (error) {
+    console.error("Error formatting address:", error);
+    return address.toLowerCase();
+  }
+};
+
+// Create utility functions for ethers
+const etherUtils = {
+  formatUnits: (value: string | bigint | number, decimals: number): string => {
+    try {
+      return ethers.formatUnits(value, decimals);
+    } catch (err) {
+      return String(Number(value) / Math.pow(10, Number(decimals)));
+    }
+  },
+  parseUnits: (value: string, decimals: number): bigint => {
+    try {
+      return ethers.parseUnits(value, decimals);
+    } catch (err) {
+      return BigInt(Math.floor(Number(value) * Math.pow(10, Number(decimals))));
+    }
+  }
+};
+
+// After the normalizeImagePath function, add these functions to map rarities to tokens and determine token amounts
+
+// Function to determine token amount based on rarity
+const getTokenAmountForRarity = (rarity: string): number => {
+  if (rarity === 'blue1') return 100; // Chester token
+  if (rarity === 'blue2') return 100; // Dojo token
+  if (rarity === 'purple1') return 250; // Wojak token
+  if (rarity === 'purple2') return 250; // Yup token
+  if (rarity === 'purple3') return 250; // Nutz token
+  if (rarity === 'pink1') return 500; // Paingu token
+  if (rarity === 'pink2') return 500; // Penguin token
+  if (rarity === 'red1') return 1200; // Feathers token
+  if (rarity === 'red2') return 1200; // Retsba token
+  if (rarity === 'yellow1') return 10000; // Abby token
+  if (rarity === 'yellow3') return 10000; // ABSTER token
+  if (rarity === 'legendary1') return 15000; // MOP token
+  if (rarity === 'legendary2') return 1; // Bearish NFT
+  if (rarity === 'legendary3') return 1; // 77-Bit NFT
+  if (rarity === 'legendary4') return 19500; // Wojak token
+  if (rarity === 'legendary5') return 20000; // RETSBA token
+  if (rarity === 'legendary6') return 1; // Bearish NFT Premium
+  
+  // Default fallback
+  return 100;
+};
+
+// Map rarities to corresponding tokens
+const getRarityTokenMapping = (rarity: string): string => {
+  if (rarity === 'blue1') return 'CHESTER';
+  if (rarity === 'blue2') return 'DOJO3';
+  if (rarity === 'purple1') return 'WOJACT';
+  if (rarity === 'purple2') return 'YUP';
+  if (rarity === 'purple3') return 'NUTZ';
+  if (rarity === 'pink1') return 'PAINGU';
+  if (rarity === 'pink2') return 'PENGUIN';
+  if (rarity === 'red1') return 'FEATHERS';
+  if (rarity === 'red2') return 'RETSBA';
+  if (rarity === 'yellow1') return 'ABBY';
+  if (rarity === 'yellow3') return 'ABSTER';
+  if (rarity === 'legendary1') return 'MOP';
+  if (rarity === 'legendary2') return 'BEARISH'; // NFT
+  if (rarity === 'legendary3') return 'BIT77'; // NFT
+  if (rarity === 'legendary4') return 'WOJACT';
+  if (rarity === 'legendary5') return 'RETSBA';
+  if (rarity === 'legendary6') return 'BEARISH'; // NFT Premium
+
+  // Default fallback
+  return "CHESTER";
+};
+
+export default function NootCasePage() {
+  // Update to include token properties in inventory items
+  interface InventoryItem {
+    id: string;
+    name: string;
+    rarity: string;
+    imageUrl: string;
+    image?: string;  // Added to fix linter error
+    price?: number;  // Added to fix linter error
+    claimed?: boolean;
+    tokenKey?: string;
+    tokenAddress?: string;
+    tokenAmount?: number;
+    isNFT?: boolean;
+    nftAddress?: string;
+    tokenId?: number;
+  }
+
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [spinning, setSpinning] = useState(false);
+  const [showDialog, setShowDialog] = useState(false);
+  const [rewardItem, setRewardItem] = useState<InventoryItem | null>(null);
+  const [farmCoins, setFarmCoins] = useState(100); // Start with 100 farm coins
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [livePreview, setLivePreview] = useState<any[]>([]);
+  
+  // NOOT token integration
+  const [walletAddress, setWalletAddress] = useState("");
+  const [nootBalance, setNootBalance] = useState("0");
+  const [isWalletConnected, setIsWalletConnected] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState("farm-coins"); // "farm-coins" or "noot-token"
+  const [isSellingToken, setIsSellingToken] = useState(false); // Added missing state
+  
+  // Transaction state
+  const [txHash, setTxHash] = useState<string>("");
+  const [txStatus, setTxStatus] = useState<string>("");
+  const [showTxDialog, setShowTxDialog] = useState<boolean>(false);
+  const [isClaimingToken, setIsClaimingToken] = useState<boolean>(false);
+  
+  // Important: Use refs instead of state for animation variables
+  // This is critical to match solcasenft's direct variable manipulation
+  const imagesRef = useRef<HTMLImageElement[]>([]);
+  const speedRef = useRef(0);
+  const stateRef = useRef(STATE.RETURN);
+  const startIndexRef = useRef(0);
+  const startTimeRef = useRef(0);
+  const accelerationDurationRef = useRef(0);
+  const offsetRef = useRef(0);
+  const animationFrameIdRef = useRef<number | null>(null);
+  const winnerIndexRef = useRef<number | null>(null);
+  
+  // Sound references
+  const openCaseSoundRef = useRef<HTMLAudioElement | null>(null);
+  const receiveItemSoundRef = useRef<HTMLAudioElement | null>(null);
+  
+  // Additional refs for precise control
+  const scrollCountRef = useRef<number>(0);
+  const totalScrollItemsRef = useRef<number>(0);
+  
+  // CRITICAL FIX: Completely redesign the animation to be deterministic with no jumps
+  const scrollPositionRef = useRef<number>(0);
+  const totalScrollStepsRef = useRef<number>(0);
+  
+  useEffect(() => {
+    // Initialize audio if browser supports it
+    if (typeof Audio !== 'undefined') {
+      try {
+        // Create audio elements with inline base64 data instead of loading files
+        // This is a simple click/beep sound for opening cases
+        const openCaseBase64 = 'data:audio/mpeg;base64,SUQzBAAAAAABEVRYWFgAAAAtAAADY29tbWVudABCaWdTb3VuZEJhbmsuY29tIC8gTGFTb25vdGhlcXVlLm9yZwBURU5DAAAAHQAAA1N3aXRjaCBQbHVzIMKpIE5DSCBTb2Z0d2FyZQBUSVQyAAAABgAAAzIyMzUAVFNTRQAAAA8AAANMYXZmNTcuODMuMTAwAAAAAAAAAAAAAAD/80DEAAAAA0gAAAAATEFNRTMuMTAwVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/zQsRbAAADSAAAAABVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/zQMSkAAADSAAAAABVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV';
+        
+        // This is a simple success sound effect for receiving items
+        const receiveItemBase64 = 'data:audio/mpeg;base64,SUQzBAAAAAABEVRYWFgAAAAtAAADY29tbWVudABCaWdTb3VuZEJhbmsuY29tIC8gTGFTb25vdGhlcXVlLm9yZwBURU5DAAAAHQAAA1N3aXRjaCBQbHVzIMKpIE5DSCBTb2Z0d2FyZQBUSVQyAAAABgAAAzIyMzUAVFNTRQAAAA8AAANMYXZmNTcuODMuMTAwAAAAAAAAAAAAAAD/80DEAAAAA0gAAAAATEFNRTMuMTAwVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/zQsRaAAADSAAAAABVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/zQMSkAAADSAAAAABVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV';
+        
+        // Create audio elements with the base64 data
+        openCaseSoundRef.current = new Audio(openCaseBase64);
+        receiveItemSoundRef.current = new Audio(receiveItemBase64);
+        
+        // Set volume
+        if (openCaseSoundRef.current) {
+          openCaseSoundRef.current.volume = 0.5;
+        }
+        
+        if (receiveItemSoundRef.current) {
+          receiveItemSoundRef.current.volume = 0.5;
+        }
+        
+        console.log('Audio initialized with inline base64 sounds');
+      } catch (err) {
+        console.log('Audio initialization failed:', err);
+      }
+    }
+    
+    // Initialize canvas with correct dimensions
+    if (canvasRef.current) {
+      // Set canvas width to be exactly IMAGE_COUNT * IMAGE_WIDTH
+      canvasRef.current.width = IMAGE_COUNT * IMAGE_WIDTH;
+      canvasRef.current.height = IMAGE_HEIGHT;
+      
+      // Ensure the style width matches the canvas width for proper rendering
+      canvasRef.current.style.width = `${IMAGE_COUNT * IMAGE_WIDTH}px`;
+      canvasRef.current.style.height = `${IMAGE_HEIGHT}px`;
+    }
+    
+    // Initialize the slot machine images
+    const loadImages = async () => {
+      try {
+        console.log('Starting to load item images...');
+        
+        // Log each image that we're trying to load for debugging
+        Object.entries(itemDetails).forEach(([rarity, item]) => {
+          console.log(`Attempting to load ${rarity} image from: ${item.image}`);
+        });
+        
+        // Create a fallback image that we'll use if others fail to load
+        const fallbackImage = document.createElement('img');
+        fallbackImage.src = '/case%20items/bronze/Chester.jpg'; // Use a simple image path
+        fallbackImage.width = IMAGE_WIDTH;
+        fallbackImage.height = IMAGE_HEIGHT;
+        
+        // Wait for the fallback to load first (or timeout after 5 seconds)
+        const fallbackPromise = new Promise<HTMLImageElement>((resolve) => {
+          fallbackImage.onload = () => {
+            console.log('Fallback image loaded successfully');
+            resolve(fallbackImage);
+          };
+          fallbackImage.onerror = () => {
+            console.error('Failed to load even the fallback image');
+            // Create a basic canvas element as fallback for the fallback
+            const canvas = document.createElement('canvas');
+            canvas.width = IMAGE_WIDTH;
+            canvas.height = IMAGE_HEIGHT;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.fillStyle = '#333';
+              ctx.fillRect(0, 0, IMAGE_WIDTH, IMAGE_HEIGHT);
+              ctx.font = '14px Arial';
+              ctx.fillStyle = '#FFF';
+              ctx.textAlign = 'center';
+              ctx.fillText('Image Error', IMAGE_WIDTH/2, IMAGE_HEIGHT/2);
+            }
+            // Convert canvas to image
+            const img = document.createElement('img');
+            img.src = canvas.toDataURL();
+            img.width = IMAGE_WIDTH;
+            img.height = IMAGE_HEIGHT;
+            resolve(img);
+          };
+          // Set a timeout as fallback for the fallback
+          setTimeout(() => {
+            if (!fallbackImage.complete) {
+              fallbackImage.src = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
+            }
+          }, 5000);
+        });
+        
+        // Wait for fallback to be ready
+        const fallback = await fallbackPromise;
+        
+        // Create an array to store loaded images with their rarity reference
+        const rawImages: {image: HTMLImageElement, rarity: string}[] = [];
+        
+        // Try loading all images
+        for (const [rarity, item] of Object.entries(itemDetails)) {
+          try {
+            console.log(`Loading image for ${rarity}: ${item.image}`);
+            const image = await createImageFromSrc(item.image);
+            // @ts-ignore - Store rarity info directly on the image
+            image.rarityInfo = { rarity, name: item.name, image: item.image };
+            console.log(`Successfully loaded image for ${item.name} (${rarity})`);
+            
+            rawImages.push({ image, rarity });
+          } catch (error) {
+            console.error(`Failed to load image for ${rarity} from ${item.image}`, error);
+            
+            // Use a cloned fallback image
+            const fallbackClone = fallback.cloneNode() as HTMLImageElement;
+            // @ts-ignore - Store rarity info directly on the fallback image
+            fallbackClone.rarityInfo = { rarity, name: item.name, image: item.image };
+            console.log(`Using fallback image for ${item.name} (${rarity})`);
+            
+            rawImages.push({ image: fallbackClone, rarity });
+          }
+        }
+        
+        // Ensure images are in the correct order per the imageRarities array
+        const sortedImages = imageRarities.map(rarity => {
+          const match = rawImages.find(item => item.rarity === rarity);
+          if (!match) {
+            console.error(`No image found for rarity: ${rarity}`);
+            // If somehow this rarity is missing, use the first available image
+            return rawImages[0]?.image || fallback.cloneNode() as HTMLImageElement;
+          }
+          return match.image;
+        });
+        
+        console.log(`Loaded ${sortedImages.length} images for slot machine`);
+        // Verify the order
+        sortedImages.forEach((img, idx) => {
+          // @ts-ignore
+          console.log(`Image ${idx}: ${img.rarityInfo?.rarity || 'unknown'} - ${img.rarityInfo?.name || 'Unknown Item'}`);
+        });
+        
+        imagesRef.current = sortedImages;
+        
+        // Force an immediate first draw
+        setTimeout(() => {
+          console.log('Drawing initial slot machine state');
+          drawSlotMachine();
+        }, 100);
+      } catch (error) {
+        console.error('Critical error loading images:', error);
+        toast.error('Failed to load item images. Please refresh and try again.');
+      }
+    };
+    
+    loadImages();
+    
+    // Simulate live preview with random items
+    const interval = setInterval(() => {
+      if (imageRarities.length > 0 && itemDetails) {
+        // Select random rarity
+        const randomIndex = Math.floor(Math.random() * imageRarities.length);
+        const rarity = imageRarities[randomIndex];
+        if (rarity) {
+          const itemData = itemDetails[rarity as keyof typeof itemDetails];
+          if (itemData) {
+            addToLivePreview(itemData);
+          }
+        }
+      }
+    }, 5000);
+    
+    // Check if user has a connected wallet
+    checkWalletConnection();
+    
+    // Cleanup function
+    return () => {
+      clearInterval(interval);
+      if (animationFrameIdRef.current !== null) {
+        cancelAnimationFrame(animationFrameIdRef.current);
+      }
+    };
+  }, []);
+  
+  // Connect wallet and fetch NOOT balance
+  const connectWallet = async () => {
+    try {
+      // Check if MetaMask is installed
+      if (typeof window.ethereum === "undefined") {
+        toast.error("MetaMask is not installed. Please install it to use NOOT tokens.");
+        return;
+      }
+      
+      // Request account access
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      const account = accounts[0];
+      setWalletAddress(account);
+      setIsWalletConnected(true);
+      
+      // Fetch NOOT balance
+      fetchNootBalance(account);
+      
+      toast.success("Wallet connected successfully!");
+    } catch (error) {
+      console.error("Error connecting wallet:", error);
+      toast.error("Failed to connect wallet. Please try again.");
+    }
+  };
+  
+  const checkWalletConnection = async () => {
+    try {
+      // Check if MetaMask is installed
+      if (typeof window.ethereum === "undefined") {
+        return;
+      }
+      
+      // Check if already connected
+      const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+      if (accounts.length > 0) {
+        setWalletAddress(accounts[0]);
+        setIsWalletConnected(true);
+        
+        // Fetch NOOT balance
+        fetchNootBalance(accounts[0]);
+      }
+    } catch (error) {
+      console.error("Error checking wallet connection:", error);
+    }
+  };
+  
+  const fetchNootBalance = async (address: string): Promise<void> => {
+    try {
+      if (!address) return;
+      
+      // Get the network ID
+      const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+      
+      // If we're not on Abstract Testnet, show placeholder balance
+      if (chainId !== ABSTRACT_TESTNET_CHAIN_ID) { 
+        setNootBalance("0");
+        return;
+      }
+      
+      // Create provider and contract instance
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const nootContract = new ethers.Contract(
+        getChecksumAddress(NOOT_TOKEN_ADDRESS), 
+        TOKEN_ABI, 
+        provider
+      );
+      
+      // Get NOOT balance
+      const balance = await nootContract.balanceOf(getChecksumAddress(address));
+      const formattedBalance = etherUtils.formatUnits(balance, 18);
+      setNootBalance(formattedBalance);
+      
+    } catch (error) {
+      console.error("Error fetching NOOT balance:", error);
+      setNootBalance("0");
+    }
+  };
+  
+  // Add function to monitor transaction status
+  const monitorTransaction = async (hash: string): Promise<boolean> => {
+    try {
+      setTxStatus("pending");
+      setTxHash(hash);
+      setShowTxDialog(true);
+      
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      
+      // Wait for transaction to be mined
+      const tx = await provider.getTransaction(hash);
+      if (!tx) {
+        setTxStatus("failed");
+        toast.error("Transaction not found. Please try again.");
+        return false;
+      }
+      
+      setTxStatus("confirming");
+      const receipt = await tx.wait();
+      
+      // Check if transaction was successful
+      if (receipt && receipt.status === 1) {
+        setTxStatus("confirmed");
+        toast.success("Transaction confirmed!");
+        
+        // Update NOOT balance after successful transaction
+        if (walletAddress) {
+          await fetchNootBalance(walletAddress);
+        }
+        
+        return true;
+      } else {
+        setTxStatus("failed");
+        toast.error("Transaction failed. Please try again.");
+        return false;
+      }
+    } catch (error) {
+      console.error("Error monitoring transaction:", error);
+      setTxStatus("failed");
+      toast.error("Error tracking transaction. Please check your wallet.");
+      return false;
+    }
+  };
+  
+  // Function to transfer NOOT tokens to contract
+  const transferNootToContract = async (): Promise<boolean> => {
+    try {
+      if (!isWalletConnected || !walletAddress) {
+        toast.error("Please connect your wallet first");
+        return false;
+      }
+      
+      // Check if user has enough NOOT tokens
+      if (parseFloat(nootBalance) < NOOT_CASE_COST) {
+        toast.error(`Not enough NOOT tokens. You have ${nootBalance} NOOT.`);
+        return false;
+      }
+      
+      // Get the network ID
+      const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+      
+      // If we're not on Abstract Testnet, show error
+      if (chainId !== ABSTRACT_TESTNET_CHAIN_ID) { 
+        toast.error("Please switch to Abstract Testnet network");
+        return false;
+      }
+      
+      // Create provider and get signer
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      
+      // Create contract instances
+      const nootContract = new ethers.Contract(
+        getChecksumAddress(NOOT_TOKEN_ADDRESS), 
+        TOKEN_ABI, 
+        signer
+      );
+      
+      // Calculate amount with proper decimals
+      const nootAmount = etherUtils.parseUnits(NOOT_CASE_COST.toString(), 18);
+      
+      // STEP 1: Check approval
+      const currentAllowance = await nootContract.allowance(
+        getChecksumAddress(walletAddress),
+        getChecksumAddress(NOOT_SWAP_ADDRESS)
+      );
+      
+      // STEP 2: Approve tokens if needed
+      if (currentAllowance < nootAmount) {
+        toast.loading("Approving NOOT tokens...", { id: "approve-toast" });
+        
+        // Use a larger allowance to prevent frequent approvals
+        const largerAllowance = etherUtils.parseUnits("1000", 18); // 1000 NOOT
+        
+        // Send approval transaction
+        const approveTx = await nootContract.approve(
+          getChecksumAddress(NOOT_SWAP_ADDRESS),
+          largerAllowance
+        );
+        
+        toast.loading("Waiting for approval confirmation...", { id: "approve-toast" });
+        
+        // Wait for approval confirmation
+        const approveReceipt = await approveTx.wait();
+        if (!approveReceipt || approveReceipt.status !== 1) {
+          toast.error("Approval failed. Please try again.", { id: "approve-toast" });
+          return false;
+        }
+        
+        toast.success("NOOT tokens approved!", { id: "approve-toast" });
+      }
+      
+      // STEP 3: Transfer NOOT tokens to contract
+      toast.loading("Sending NOOT tokens...", { id: "transfer-toast" });
+      
+      // Direct transfer to contract
+      const transferTx = await nootContract.transfer(
+        getChecksumAddress(NOOT_SWAP_ADDRESS),
+        nootAmount
+      );
+      
+      toast.loading("Processing transaction...", { id: "transfer-toast" });
+      
+      // Monitor transaction
+      const success = await monitorTransaction(transferTx.hash);
+      
+      if (success) {
+        toast.success("Payment successful!", { id: "transfer-toast" });
+        return true;
+      } else {
+        toast.error("Payment failed. Please try again.", { id: "transfer-toast" });
+        return false;
+      }
+    } catch (error) {
+      console.error("Error transferring NOOT:", error);
+      toast.error("Transaction failed. Please try again.");
+      return false;
+    }
+  };
+  
+  // Update the openCase function to handle blockchain transactions
+  const openCase = async () => {
+    if (spinning) return;
+    
+    if (paymentMethod === "farm-coins") {
+      if (farmCoins < CASE_COST) {
+        toast.error("Not enough farm coins!");
+        return;
+      }
+      
+      // Deduct farm coins
+      setFarmCoins(prev => prev - CASE_COST);
+      
+      // Continue with case opening
+      startCaseOpening();
+    } else {
+      // NOOT token payment with real blockchain transaction
+      const success = await transferNootToContract();
+      
+      if (!success) {
+        return;
+      }
+      
+      // Continue with case opening
+      startCaseOpening();
+    }
+  };
+  
+  // CRITICAL FIX: Completely redesign the animation to be deterministic with no jumps
+  const startCaseOpening = (): void => {
+    // Play sound when case is opened
+    if (openCaseSoundRef.current) {
+      try {
+        openCaseSoundRef.current.currentTime = 0;
+        openCaseSoundRef.current.play().catch(err => console.log("Error playing sound"));
+      } catch (err) {
+        console.error("Failed to play sound:", err);
+      }
+    }
+    
+    setSpinning(true);
+    
+    // Determine the winner before animation starts
+    // This is the definitive winner and must be respected throughout the animation
+    const winnerIndex = shuffleItems();
+    winnerIndexRef.current = winnerIndex;
+    
+    const imagesLength = imagesRef.current.length;
+    
+    // FIX: Instead of trying to manipulate the animation during runtime,
+    // we'll set up the exact path from start to finish ahead of time
+    
+    // 1. Calculate exactly how many full rotations we want
+    const rotationsCount = 2; // 2 full rotations feels good
+    const centerPosition = Math.floor(IMAGE_COUNT / 2);
+    
+    // 2. Calculate where to start so we'll land perfectly on the winning index
+    // This is the key to ensuring no jumps - we're setting up a path that naturally
+    // leads to the winner being in the center when the animation stops
+    const extraSteps = Math.floor(Math.random() * 5) + 5; // Add some randomness
+    const totalSteps = (rotationsCount * imagesLength) + extraSteps;
+    
+    // Working backwards from where we want to end (the winner in center position)
+    // we need to start at an index that, after traveling totalSteps, will place
+    // the winner at the center position
+    const startIndex = (winnerIndex - totalSteps - centerPosition + imagesLength * 100) % imagesLength;
+    
+    // Store this starting point
+    startIndexRef.current = startIndex;
+    offsetRef.current = 0;
+    
+    console.log('ANIMATION SETUP:');
+    console.log('Winner item:', winnerIndex, imageRarities[winnerIndex]);
+    console.log('Starting at index:', startIndex);
+    console.log('Will travel exactly', totalSteps, 'steps');
+    console.log('Expected end center item index:', (startIndex + totalSteps + centerPosition) % imagesLength);
+    
+    // Store the total number of steps to monitor progress
+    scrollPositionRef.current = 0;
+    totalScrollStepsRef.current = totalSteps;
+    
+    // Reset animation state
+    stateRef.current = STATE.ACCELERATION;
+    startTimeRef.current = performance.now();
+    speedRef.current = BASE_SPEED;
+    
+    // Use a random acceleration duration for more natural feel
+    accelerationDurationRef.current = 
+      Math.random() * (ACCELERATION_DURATION_MAX - ACCELERATION_DURATION_MIN) + ACCELERATION_DURATION_MIN;
+    
+    // Start animation
+    setTimeout(() => {
+      drawSlotMachine();
+      animationFrameIdRef.current = requestAnimationFrame(deterministic_updateSlotMachine);
+    }, 50);
+  };
+  
+  // New animation update function that guarantees the path
+  const deterministic_updateSlotMachine = () => {
+    if (!canvasRef.current) return;
+    
+    const imagesLength = imagesRef.current.length;
+    const deltaTime = performance.now() - startTimeRef.current;
+    
+    // Change state based on animation progress
+    if (deltaTime > accelerationDurationRef.current && stateRef.current === STATE.ACCELERATION) {
+      console.log('Transitioning to DECELERATION phase');
+      stateRef.current = STATE.DECELERATION;
+    }
+    
+    // Update offset based on current speed
+    offsetRef.current += speedRef.current;
+    
+    // Handle crossing item boundaries
+    if (offsetRef.current > IMAGE_WIDTH) {
+      // We've moved past one full item
+      scrollPositionRef.current++;
+      
+      startIndexRef.current = (startIndexRef.current + 1) % imagesLength;
+      offsetRef.current %= IMAGE_WIDTH;
+      
+      // Log progress periodically
+      if (scrollPositionRef.current % 10 === 0 || 
+          scrollPositionRef.current >= totalScrollStepsRef.current - 10) {
+        const progress = Math.floor((scrollPositionRef.current / totalScrollStepsRef.current) * 100);
+        console.log(`Animation progress: ${progress}% (${scrollPositionRef.current}/${totalScrollStepsRef.current})`);
+      }
+    }
+    
+    // Draw current state
+    drawSlotMachine();
+    
+    // Update speed based on state and progress
+    if (stateRef.current === STATE.ACCELERATION) {
+      // Accelerate at a reasonable rate
+      speedRef.current = Math.min(speedRef.current + ACCELERATION_STEP, 15);
+    } else if (stateRef.current === STATE.DECELERATION) {
+      // Decelerate based on remaining distance
+      const progress = scrollPositionRef.current / totalScrollStepsRef.current;
+      
+      // Create a smooth, natural deceleration curve
+      if (progress > 0.95) {
+        // Almost at the end, slow way down
+        speedRef.current *= 0.8;
+      } else if (progress > 0.85) {
+        // Getting close to the end
+        speedRef.current *= 0.9;
+      } else if (progress > 0.70) {
+        // Starting to decelerate more noticeably
+        speedRef.current *= 0.95;
+      } else {
+        // Initial deceleration phase
+        speedRef.current *= 0.97;
+      }
+      
+      // Ensure we don't go too slow too early
+      speedRef.current = Math.max(speedRef.current, 0.5);
+      
+      // Check if we've reached the final position
+      if (scrollPositionRef.current >= totalScrollStepsRef.current && offsetRef.current < 0.5) {
+        // We've reached the exact end point
+        offsetRef.current = 0;
+        speedRef.current = 0;
+        
+        // Verify we're at the expected position
+        const centerPosition = Math.floor(IMAGE_COUNT / 2);
+        const finalCenterIndex = (startIndexRef.current + centerPosition) % imagesLength;
+        
+        console.log('ANIMATION COMPLETE:');
+        console.log('Final center item:', finalCenterIndex, imageRarities[finalCenterIndex]);
+        
+        if (winnerIndexRef.current !== null) {
+          console.log('Expected winner:', winnerIndexRef.current, 
+                      typeof winnerIndexRef.current === 'number' ? 
+                      imageRarities[winnerIndexRef.current] : 'unknown');
+          
+          // Verify we landed on the winner
+          if (finalCenterIndex !== winnerIndexRef.current && 
+              typeof winnerIndexRef.current === 'number') {
+            console.error('CRITICAL ERROR: Animation did not end on winner!');
+          } else {
+            console.log('SUCCESS: Animation ended with winner in center position');
+          }
+        }
+      }
+    }
+    
+    // Continue animation if needed
+    if (speedRef.current > 0.01) {
+      animationFrameIdRef.current = requestAnimationFrame(deterministic_updateSlotMachine);
+    } else {
+      // Animation has stopped
+      if (receiveItemSoundRef.current && receiveItemSoundRef.current.readyState > 0) {
+        receiveItemSoundRef.current.play().catch(err => console.log("Error playing sound"));
+      }
+      
+      animationFrameIdRef.current = null;
+      
+      // Get what's actually visible in the center
+      const centerItem = getCenterItem();
+      if (!centerItem) {
+        console.error("ERROR: No center item found at end of animation!");
+        finishOpening();
+        return;
+      }
+      
+      console.log("FINAL ITEM DISPLAYED:", centerItem.index, centerItem.rarity, centerItem.name);
+      
+      // This is the critical principle: user gets what they see
+      if (centerItem.index !== undefined && winnerIndexRef.current !== null &&
+          typeof winnerIndexRef.current === 'number' && centerItem.index !== winnerIndexRef.current) {
+        console.error("ERROR: Final displayed item does not match winner");
+        winnerIndexRef.current = centerItem.index;
+      }
+      
+      // Finish opening the case
+      finishOpening();
+    }
+  };
+  
+  // Update the createImageFromSrc function to log the image creation process
+  const createImageFromSrc = (src: string): Promise<HTMLImageElement> => {
+    console.log(`Creating image from src: ${src}`);
+    return new Promise((resolve, reject) => {
+      const img = document.createElement('img');
+      img.crossOrigin = "anonymous"; // Prevent CORS issues
+      
+      img.onload = () => {
+        console.log(`Successfully loaded original image: ${src} (${img.width}x${img.height})`);
+        
+        // Create an offscreen canvas to handle image scaling and quality
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Set canvas to desired item dimensions
+        canvas.width = IMAGE_WIDTH;
+        canvas.height = IMAGE_HEIGHT;
+        
+        if (ctx) {
+          // Apply higher quality bicubic interpolation
+          // @ts-ignore
+          ctx.imageSmoothingQuality = 'high';
+          ctx.imageSmoothingEnabled = true;
+          
+          // Center and scale the image to fit nicely in the frame
+          // Calculate scaling to maintain aspect ratio
+          const widthRatio = IMAGE_WIDTH / img.width;
+          const heightRatio = IMAGE_HEIGHT / img.height;
+          const scale = Math.min(widthRatio, heightRatio) * 0.9; // 0.9 adds a bit of padding
+          
+          const scaledWidth = img.width * scale;
+          const scaledHeight = img.height * scale;
+          const x = (IMAGE_WIDTH - scaledWidth) / 2;
+          const y = (IMAGE_HEIGHT - scaledHeight) / 2;
+          
+          // Fill with background
+          ctx.fillStyle = '#111';
+          ctx.fillRect(0, 0, IMAGE_WIDTH, IMAGE_HEIGHT);
+          
+          // Draw the image centered and scaled
+          ctx.drawImage(img, x, y, scaledWidth, scaledHeight);
+          
+          // Create a new image from the processed canvas
+          const processedImg = document.createElement('img');
+          processedImg.src = canvas.toDataURL('image/png');
+          
+          // Store the original source path on the image for reference
+          // @ts-ignore
+          processedImg.originalSrc = src;
+          
+          processedImg.onload = () => {
+            console.log(`Created processed image from: ${src}`);
+            resolve(processedImg);
+          };
+          processedImg.onerror = (e) => {
+            console.error(`Failed to create processed image from: ${src}`, e);
+            reject(e);
+          };
+        } else {
+          // Fallback to original image if canvas context fails
+          console.log(`Using original image: ${src} (no canvas context)`);
+          resolve(img);
+        }
+      };
+      
+      img.onerror = (e) => {
+        console.error(`Failed to load image: ${src}`);
+        // Create a placeholder for failed images
+        const placeholder = document.createElement('img');
+        placeholder.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAACgCAMAAAC8EZcfAAAAQlBMVEUAAAD////////////////////////////////////////////////////////////////////////////////////BBxTBAAAAFXRSTlMABAgMEBQYHCAkKCwwNDg8QERISEQE7MwsAAABLklEQVR4nO3Z7Y6DIBCGYdQPEFhFbvX+L3XXrK27SWOmTUPH5X3+E+aJggzDAAAAAAAAAAAAAAAAADtSXuxQe7FDdzbPZXudoYtJ0XVn805JVZqIXMmf9dbPR1o9V6Y0GSu1kZoKs5EjNZHe+Sm5LK3Ml7+n1vCz/uuWVYudbzlZr5O2Uv1c1Hs/+XCvNvKUGi82Ut9cUdRr1YmqWZJo3WLVfXpTqTy5MBT2gLZSt2CeQmW3R9BRatK5SJWdHsEnNZz7SZu42+cYfFIz52DUWUbdwqSjDsLh0+zzcFz8NQ9e/MdE1PU57udWHXXtNnbGbrMKO6M2zz327LCRzXzAyHZOG3V05/zMZ3dj1zDc0dn5YtX7/I7gkzr/wNb2v0YAAAAAAAAAAAAAAADgz7wB+s8XgZ3QQcAAAAAASUVORK5CYII=';
+        // @ts-ignore
+        placeholder.originalSrc = src; // Keep track of the original source
+        placeholder.onload = () => {
+          console.log(`Using placeholder image for: ${src}`);
+          resolve(placeholder);
+        };
+      };
+      
+      img.src = src;
+    });
+  };
+  
+  // Random number generator helper function (from solcasenft)
+  const random = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1) + min);
+  
+  // Show visual effects for high-value wins (copied from solcasenft)
+  const showWinEffects = () => {
+    // Create confetti container if it doesn't exist
+    let confettiContainer = document.querySelector('.confetti-container');
+    if (!confettiContainer) {
+      confettiContainer = document.createElement('div');
+      confettiContainer.className = 'confetti-container';
+      document.body.appendChild(confettiContainer);
+    } else {
+      // Clear existing confetti
+      confettiContainer.innerHTML = '';
+    }
+    
+    // Add confetti pieces
+    for (let i = 0; i < 100; i++) {
+      const confettiElem = document.createElement('div');
+      confettiElem.className = 'confetti';
+      confettiElem.style.left = `${Math.random() * 100}vw`;
+      confettiElem.style.animationDelay = `${Math.random() * 3}s`;
+      confettiElem.style.animationDuration = `${Math.random() * 2 + 2}s`;
+      
+      // Random colors for confetti
+      const colors = ['#FFD700', '#FFC107', '#FFEB3B', '#FFEE58', '#FFF59D'];
+      const randomColor = colors[Math.floor(Math.random() * colors.length)];
+      confettiElem.style.backgroundColor = randomColor;
+      
+      confettiContainer.appendChild(confettiElem);
+    }
+    
+    // Remove confetti after animation
+    setTimeout(() => {
+      if (confettiContainer && confettiContainer.parentNode) {
+        confettiContainer.parentNode.removeChild(confettiContainer);
+      }
+    }, 5000);
+  };
+  
+  // Update the drawSlotMachine function to be more responsive
+  const drawSlotMachine = () => {
+    if (!canvasRef.current) {
+      console.error('Canvas ref is null in drawSlotMachine');
+      return;
+    }
+    
+    const context = canvasRef.current.getContext('2d');
+    if (!context) {
+      console.error('Failed to get 2d context from canvas');
+      return;
+    }
+    
+    const imagesLength = imagesRef.current.length;
+    if (imagesLength === 0) {
+      console.error('No images loaded for slot machine');
+      return;
+    }
+    
+    // Make the canvas width responsive to the container
+    const containerWidth = canvasRef.current.parentElement?.clientWidth || IMAGE_WIDTH * IMAGE_COUNT;
+    const scale = Math.min(1, containerWidth / (IMAGE_WIDTH * IMAGE_COUNT));
+    const scaledWidth = Math.floor(IMAGE_WIDTH * IMAGE_COUNT * scale);
+    const scaledHeight = Math.floor(IMAGE_HEIGHT * scale);
+    
+    if (canvasRef.current.width !== scaledWidth || canvasRef.current.height !== scaledHeight) {
+      canvasRef.current.width = scaledWidth;
+      canvasRef.current.height = scaledHeight;
+      canvasRef.current.style.width = `${scaledWidth}px`;
+      canvasRef.current.style.height = `${scaledHeight}px`;
+    }
+    
+    // Calculate center of canvas for indicator line
+    const center = Math.floor(canvasRef.current.width / 2);
+    
+    // Set the background - dark instead of white
+    context.fillStyle = '#111111';
+    context.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+    
+    const centralPosition = Math.floor(IMAGE_COUNT / 2);
+    const scaledImageWidth = Math.floor(IMAGE_WIDTH * scale);
+    const scaledImageHeight = Math.floor(IMAGE_HEIGHT * scale);
+    
+    for (let index = -OFFSET; index < IMAGE_COUNT + OFFSET; index++) {
+      const imageIndex = index < 0 ? index + imagesLength : index;
+      const image = imagesRef.current[(imageIndex + startIndexRef.current) % imagesLength];
+      if (image) {
+        try {
+          const x = scaledImageWidth * index - Math.floor(offsetRef.current * scale);
+          const y = 0;
+          
+          // Draw the image with proper scaling
+          context.drawImage(
+            image,
+            x,
+            y,
+            scaledImageWidth,
+            scaledImageHeight
+          );
+          
+          // Add a nice frame around each item
+          context.strokeStyle = 'rgba(255, 215, 0, 0.3)';
+          context.lineWidth = 2;
+          context.strokeRect(x + 2, y + 2, scaledImageWidth - 4, scaledImageHeight - 4);
+          
+          // Highlight the center position
+          if (index === centralPosition) {
+            context.strokeStyle = 'rgba(255, 215, 0, 0.8)';
+            context.lineWidth = 3;
+            context.strokeRect(x + 5, y + 5, scaledImageWidth - 10, scaledImageHeight - 10);
+          }
+        } catch (error) {
+          console.error('Error drawing image:', error, image);
+        }
+      } else {
+        console.warn(`No image found at index ${(imageIndex + startIndexRef.current) % imagesLength}`);
+      }
+    }
+    
+    // Draw the center indicator line
+    const exactCenter = canvasRef.current.width / 2;
+    
+    // Draw a more visible and attractive indicator
+    const gradient = context.createLinearGradient(exactCenter - 10, 0, exactCenter + 10, 0);
+    gradient.addColorStop(0, 'rgba(255, 215, 0, 0)');
+    gradient.addColorStop(0.5, 'rgba(255, 215, 0, 0.2)');
+    gradient.addColorStop(1, 'rgba(255, 215, 0, 0)');
+    
+    context.fillStyle = gradient;
+    context.fillRect(exactCenter - 10, 0, 20, canvasRef.current.height);
+    
+    // Then the main line
+    context.beginPath();
+    context.moveTo(exactCenter, 0);
+    context.lineTo(exactCenter, canvasRef.current.height);
+    context.closePath();
+    context.strokeStyle = 'rgba(255, 215, 0, 0.9)';
+    context.lineWidth = 2;
+    context.stroke();
+    
+    // Add small arrow indicators at top and bottom
+    context.beginPath();
+    context.moveTo(exactCenter - 8, 15);
+    context.lineTo(exactCenter, 5);
+    context.lineTo(exactCenter + 8, 15);
+    context.fillStyle = 'rgba(255, 215, 0, 0.9)';
+    context.fill();
+    
+    context.beginPath();
+    context.moveTo(exactCenter - 8, canvasRef.current.height - 15);
+    context.lineTo(exactCenter, canvasRef.current.height - 5);
+    context.lineTo(exactCenter + 8, canvasRef.current.height - 15);
+    context.fillStyle = 'rgba(255, 215, 0, 0.9)';
+    context.fill();
+  };
+  
+  // Add a function to determine the exact center item
+  const getCenterItem = () => {
+    // Calculate center position
+    const centerPosition = Math.floor(IMAGE_COUNT / 2); 
+    
+    // Calculate the item that should be in the center
+    const imagesLength = imagesRef.current.length;
+    if (imagesLength === 0) return null;
+    
+    // The item at the center position depends on the current startIndex
+    const centerItemIndex = (startIndexRef.current + centerPosition) % imagesLength;
+    
+    // Return null if index is invalid
+    if (centerItemIndex < 0 || centerItemIndex >= imageRarities.length) {
+      console.error(`Invalid centerItemIndex: ${centerItemIndex}`);
+      return null;
+    }
+    
+    // Get the rarity of the center item
+    const centerItemRarity = imageRarities[centerItemIndex];
+    if (!centerItemRarity) return null;
+    
+    // Get the item details
+    return {
+      index: centerItemIndex,
+      rarity: centerItemRarity,
+      ...itemDetails[centerItemRarity as keyof typeof itemDetails]
+    };
+  };
+  
+  // Finish the case opening logic
+  const finishOpening = () => {
+    // Stop animation if still running
+    if (animationFrameIdRef.current !== null) {
+      cancelAnimationFrame(animationFrameIdRef.current);
+      animationFrameIdRef.current = null;
+    }
+    
+    // Get what the user is actually seeing
+    const centerItem = getCenterItem();
+    if (!centerItem) {
+      console.error('No center item found when finishing opening');
+      return;
+    }
+    
+    // Always use exactly what's displayed as the winner - no exceptions
+    // This is the key to ensuring consistency between what users see and what they get
+    const winnerIndex = centerItem.index;
+    winnerIndexRef.current = winnerIndex;
+    
+    const rarityType = imageRarities[winnerIndex]?.replace(/[0-9]/g, '') || 'blue';
+    const rarityName = imageRarities[winnerIndex] || 'blue1';
+    
+    console.log(`FINAL OUTCOME - Winner index: ${winnerIndex}`);
+    console.log(`Winner rarity: ${rarityName} (${rarityType})`);
+    
+    // Get item details - use the actual item displayed in the center
+    const itemData = itemDetails[rarityName as keyof typeof itemDetails];
+    console.log('Winner item details:', itemData);
+    
+    // Determine token key from rarity
+    const tokenKey = getRarityTokenMapping(rarityName);
+    console.log('Token key:', tokenKey);
+    
+    // Get token address for this reward
+    const tokenAddress = TOKEN_ADDRESSES[tokenKey as keyof typeof TOKEN_ADDRESSES];
+    console.log('Token address:', tokenAddress);
+    
+    // Create new inventory item with token information
+    const newItem: InventoryItem = {
+      id: uuidv4(), // Generate a unique ID
+      name: itemData.name,
+      rarity: rarityName,
+      imageUrl: itemData.image,
+      price: itemData.price,
+      claimed: false,
+      tokenKey: tokenKey,
+      tokenAddress: (itemData.isNFT && itemData.nftAddress) ? itemData.nftAddress : tokenAddress,
+      tokenAmount: (itemData.isNFT) ? 1 : getTokenAmountForRarity(rarityName),
+      isNFT: itemData.isNFT || false,
+      nftAddress: itemData.nftAddress,
+      tokenId: itemData.tokenId
+    };
+    
+    // Add to inventory
+    setInventory(prev => [...prev, newItem]);
+    
+    // Set the reward item for the dialog
+    setRewardItem(newItem);
+    
+    // Show dialog
+    setShowDialog(true);
+    
+    // Set spinning state to false
+    setSpinning(false);
+    
+    // Play appropriate sound and visual effect based on rarity
+    if (rarityType === 'legendary') {
+      // For legendary items
+      playSound(receiveItemSoundRef);
+      
+      // Epic confetti - lots of particles!
+      confetti({
+        particleCount: 200,
+        spread: 80,
+        origin: { y: 0.6 },
+        colors: ['#FFD700', '#FFC107', '#FFEB3B', '#FFEE58', '#FFF59D']
+      });
+      
+      // Trophy animation - more visible for legendary
+      confetti({
+        particleCount: 10,
+        angle: 90,
+        spread: 20,
+        origin: { y: 0.2 },
+        shapes: ['circle'],
+        scalar: 2,
+        colors: ['#FFD700', '#FFC107']
+      });
+      
+      // Notify user
+      if (newItem.isNFT) {
+        toast.success("AMAZING! You won a rare NFT!", {
+          icon: '🏆',
+          duration: 5000
+        });
+      } else {
+        toast.success("AMAZING! A legendary item!", {
+          icon: '🏆',
+          duration: 5000
+        });
+      }
+    } 
+    else if (rarityType === 'yellow') {
+      // For ultra rare items
+      playSound(receiveItemSoundRef);
+      
+      // Trigger confetti
+      confetti({
+        particleCount: 150,
+        spread: 70,
+        origin: { y: 0.6 },
+        colors: ['#FFC107', '#FFEB3B', '#FFEE58']
+      });
+      
+      // Notify user
+      toast.success("Amazing! An ultra rare item!", {
+        icon: '🌟',
+        duration: 4000
+      });
+    } 
+    else if (rarityType === 'red') {
+      // For very rare items
+      playSound(receiveItemSoundRef);
+      
+      // Some confetti
+      confetti({
+        particleCount: 100,
+        spread: 60,
+        origin: { y: 0.6 }
+      });
+      
+      // Notify user
+      toast.success("Great! A very rare item!", {
+        icon: '✨',
+        duration: 3000
+      });
+    } 
+    else if (rarityType === 'pink') {
+      // For rare items
+      playSound(receiveItemSoundRef);
+      
+      // Small confetti
+      confetti({
+        particleCount: 50,
+        spread: 50,
+        origin: { y: 0.6 }
+      });
+      
+      // Notify user
+      toast("You got a rare item!", {
+        icon: '🎁',
+        duration: 2000
+      });
+    } 
+    else {
+      // For common and uncommon items
+      playSound(receiveItemSoundRef);
+    }
+  };
+  
+  // Update shuffleItems function to better prepare the animation path
+  const shuffleItems = () => {
+    if (imagesRef.current.length === 0) {
+      console.error('No images loaded for shuffling');
+      return 0;
+    }
+    
+    // Log available rarities for debugging
+    console.log('Available rarities with indices:');
+    imageRarities.forEach((rarity, index) => {
+      console.log(`${index}: ${rarity} - ${itemDetails[rarity as keyof typeof itemDetails].name}`);
+    });
+    
+    // Debug log to check if Chester and Dojo3 tokens are available
+    const chesterIndex = imageRarities.indexOf('blue1');
+    const dojoIndex = imageRarities.indexOf('blue2');
+    const mopIndex = imageRarities.indexOf('legendary1');
+    
+    console.log(`DEBUG - Item indices: Chester=${chesterIndex}, Dojo3=${dojoIndex}, MOP=${mopIndex}`);
+    
+    // Force selection of Chester or Dojo3 occasionally to ensure they can be obtained
+    // Every 10 spins, force one of these tokens to appear
+    const forcedRoll = random(1, 10);
+    if (forcedRoll <= 3) {  // 30% chance to force a common item
+      const forcedItemIndex = random(1, 2) === 1 ? chesterIndex : dojoIndex;
+      console.log(`DEBUG - Forcing common item: ${forcedItemIndex === chesterIndex ? 'Chester' : 'Dojo3'}`);
+      
+      // Log selection details
+      console.log('** CASE OPENING STARTED - FORCED COMMON ITEM **');
+      console.log(`Selected winner: ${imageRarities[forcedItemIndex]} (index ${forcedItemIndex})`);
+      console.log(`Item: ${itemDetails[imageRarities[forcedItemIndex] as keyof typeof itemDetails].name}`);
+      
+      return forcedItemIndex;
+    }
+    
+    // Force MOP token occasionally
+    if (forcedRoll === 4) {  // 10% chance to force MOP
+      console.log(`DEBUG - Forcing legendary item: MOP Token`);
+      
+      // Log selection details
+      console.log('** CASE OPENING STARTED - FORCED LEGENDARY ITEM **');
+      console.log(`Selected winner: ${imageRarities[mopIndex]} (index ${mopIndex})`);
+      console.log(`Item: ${itemDetails[imageRarities[mopIndex] as keyof typeof itemDetails].name}`);
+      
+      return mopIndex;
+    }
+    
+    // For normal case openings, use weighted rarity selection
+    // Implement weighted selection based on rarity type
+    const weights = {
+      blue: 40,    // 40% chance for common (blue)
+      purple: 30,  // 30% chance for uncommon (purple)
+      pink: 15,    // 15% chance for rare (pink)
+      red: 8,      // 8% chance for very rare (red)
+      yellow: 5,   // 5% chance for ultra rare (yellow)
+      legendary: 2 // 2% chance for legendary
+    };
+    
+    // Create a weighted array for rarity selection with accumulative ranges
+    const weightedRanges: Array<{rarity: string, maxRange: number}> = [];
+    let accumulatedWeight = 0;
+    
+    Object.entries(weights).forEach(([rarityPrefix, weight]) => {
+      accumulatedWeight += weight;
+      weightedRanges.push({
+        rarity: rarityPrefix,
+        maxRange: accumulatedWeight
+      });
+    });
+    
+    // Generate a random number between 1-100 to determine rarity
+    const randomRoll = Math.floor(Math.random() * 100) + 1;
+    
+    // Find which rarity range the random roll falls into
+    let selectedRarityTier = 'blue'; // Default to blue (most common)
+    for (const range of weightedRanges) {
+      if (randomRoll <= range.maxRange) {
+        selectedRarityTier = range.rarity;
+        break;
+      }
+    }
+    
+    console.log(`Random roll: ${randomRoll}, Selected rarity tier: ${selectedRarityTier}`);
+    
+    // Then find all items of that rarity tier
+    const itemsInSelectedTier = imageRarities.filter(rarity => rarity.startsWith(selectedRarityTier));
+    
+    // If no items in this tier (should never happen), fallback to blue1
+    if (itemsInSelectedTier.length === 0) {
+      console.error('No items found in selected tier:', selectedRarityTier);
+      const fallbackIndex = imageRarities.indexOf('blue1');
+      return fallbackIndex >= 0 ? fallbackIndex : 0;
+    }
+    
+    // Randomly select an item from the tier
+    const randomItemInTier = itemsInSelectedTier[Math.floor(Math.random() * itemsInSelectedTier.length)];
+    const winnerIndex = imageRarities.indexOf(randomItemInTier);
+    
+    // Log selection details
+    console.log('** CASE OPENING STARTED - RANDOM ITEM **');
+    console.log(`Selected winner: ${randomItemInTier} (index ${winnerIndex})`);
+    console.log(`Item: ${itemDetails[randomItemInTier as keyof typeof itemDetails].name}`);
+    
+    return winnerIndex;
+  };
+  
+  const addToLivePreview = (item: any) => {
+    // Cap the live preview to 10 latest items
+    setLivePreview(prev => {
+      const newPreview = [item, ...prev];
+      if (newPreview.length > 10) {
+        return newPreview.slice(0, 10);
+      }
+      return newPreview;
+    });
+  };
+  
+  const simulateLivePreview = () => {
+    if (livePreview.length >= 5) return;
+    
+    // Ensure all rarities are valid
+    if (imageRarities.length === 0 || !itemDetails) {
+      console.error('No rarities or item details available');
+      return;
+    }
+    
+    try {
+      const randomIndex = Math.floor(Math.random() * imageRarities.length);
+      const rarity = imageRarities[randomIndex];
+      if (!rarity) {
+        console.error('Invalid rarity selected');
+        return;
+      }
+      
+      const item = itemDetails[rarity as keyof typeof itemDetails];
+      if (!item) {
+        console.error(`No item found for rarity: ${rarity}`);
+        return;
+      }
+      
+      addToLivePreview(item);
+    } catch (error) {
+      console.error('Error in simulateLivePreview:', error);
+    }
+  };
+  
+  const playSound = (audioRef: React.RefObject<HTMLAudioElement | null>) => {
+    try {
+      if (audioRef.current) {
+        // Reset the audio to ensure it plays from the beginning
+        audioRef.current.currentTime = 0;
+        
+        const playPromise = audioRef.current.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(error => {
+            console.error("Error playing sound:", error);
+            // Try playing again with user interaction
+            document.addEventListener('click', function playOnce() {
+              if (audioRef.current) {
+                audioRef.current.currentTime = 0;
+                audioRef.current.play().catch(e => console.error("Second attempt failed:", e));
+              }
+              document.removeEventListener('click', playOnce);
+            }, { once: true });
+          });
+        }
+      }
+    } catch (err) {
+      console.error("Failed to play sound:", err);
+    }
+  };
+  
+  // Add a transaction status dialog
+  const TransactionDialog = () => (
+    <div className={`fixed inset-0 flex items-center justify-center z-50 bg-black/80 transition-opacity ${showTxDialog ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
+      <div className="bg-gradient-to-r from-gray-900 to-black p-6 rounded-lg border border-yellow-600 shadow-xl max-w-md w-full">
+        <h3 className="text-xl font-semibold text-white mb-4">Transaction Status</h3>
+        
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="text-gray-300">Status:</span>
+            <span className={`font-semibold ${
+              txStatus === "confirmed" ? "text-green-400" : 
+              txStatus === "failed" ? "text-red-400" :
+              "text-yellow-400"
+            }`}>
+              {txStatus === "pending" ? "Pending" : 
+               txStatus === "confirming" ? "Confirming" :
+               txStatus === "confirmed" ? "Confirmed" :
+               txStatus === "failed" ? "Failed" : ""}
+            </span>
+          </div>
+          
+          {txHash && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-gray-300">Transaction Hash:</span>
+                <a 
+                  href={`${ABSTRACT_BLOCK_EXPLORER}/tx/${txHash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-400 hover:text-blue-300 underline text-sm truncate max-w-[200px]"
+                >
+                  {txHash.substring(0, 10)}...{txHash.substring(txHash.length - 8)}
+                </a>
+              </div>
+            </div>
+          )}
+        </div>
+        
+        <div className="mt-6 flex justify-end">
+          <button
+            onClick={() => setShowTxDialog(false)}
+            className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-md"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+  
+  // Function to claim token to web3 wallet
+  const claimTokenToWallet = async (item: InventoryItem) => {
+    if (!isWalletConnected || !walletAddress) {
+      toast.error("Please connect your wallet first");
+      return;
+    }
+    
+    try {
+      // Set loading state
+      setIsClaimingToken(true);
+      
+      // Create provider and get signer
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      
+      // Get chain ID and ensure we're on the right network
+      const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+      if (chainId !== ABSTRACT_TESTNET_CHAIN_ID) {
+        toast.error("Please switch to Abstract Testnet network");
+        setIsClaimingToken(false);
+        return;
+      }
+      
+      // Check if this is an NFT claim or a token claim
+      if (item.isNFT && item.nftAddress) {
+        await claimNFTToWallet(item);
+        return;
+      }
+      
+      // Add more debugging to check token key and addresses
+      const tokenKey = item.tokenKey || getRarityTokenMapping(item.rarity);
+      console.log(`[DEBUG] Claim token details:
+        - Token Key: ${tokenKey}
+        - Contract: ${NOOT_SWAP_ADDRESS}
+        - Rarity: ${item.rarity}
+      `);
+      
+      // Create token contract instance for the token being claimed
+      const tokenAddress = getChecksumAddress(item.tokenAddress || TOKEN_ADDRESSES[tokenKey as keyof typeof TOKEN_ADDRESSES]);
+      console.log(`[DEBUG] Using token address: ${tokenAddress}`);
+      
+      const tokenContract = new ethers.Contract(
+        tokenAddress,
+        TOKEN_ABI,
+        signer
+      );
+      
+      // Create swap contract instance
+      const swapContract = new ethers.Contract(
+        getChecksumAddress(NOOT_SWAP_ADDRESS),
+        SWAP_CONTRACT_ABI,
+        signer
+      );
+      
+      // Call the swap contract to claim the token reward
+      toast.loading("Claiming token to your wallet...", { id: "claim-toast" });
+      
+      const tokenAmount = etherUtils.parseUnits(
+        (item.tokenAmount || getTokenAmountForRarity(item.rarity)).toString(),
+        18 // Assuming all tokens have 18 decimals
+      );
+      
+      console.log("Claiming tokens:", {
+        address: tokenAddress,
+        amount: tokenAmount.toString(),
+        tokenKey: item.tokenKey,
+        tokenName: item.name
+      });
+      
+      // First verify if the swap contract has enough tokens to transfer
+      const contractBalance = await tokenContract.balanceOf(getChecksumAddress(NOOT_SWAP_ADDRESS));
+      const formattedContractBalance = etherUtils.formatUnits(contractBalance, 18);
+      console.log(`Contract has ${formattedContractBalance} ${item.tokenKey} tokens`);
+      
+      if (BigInt(contractBalance) < BigInt(tokenAmount)) {
+        toast.error(`Claim failed: Contract doesn't have enough ${item.tokenKey} tokens. Please contact support.`, { id: "claim-toast" });
+        setIsClaimingToken(false);
+        return;
+      }
+      
+      // Call the claimTestTokens function on the swap contract
+      const claimTx = await swapContract.claimTestTokens(
+        tokenAddress,
+        tokenAmount,
+        { gasLimit: 3000000 } // Increased gas limit to ensure transaction success
+      );
+      
+      toast.loading(`Finalizing token claim for ${item.tokenAmount} ${item.tokenKey}...`, { id: "claim-toast" });
+      
+      // Monitor the claim transaction
+      const claimSuccess = await monitorTransaction(claimTx.hash);
+      
+      if (claimSuccess) {
+        // Double-check if tokens were actually received by checking balance before and after
+        const newBalance = await tokenContract.balanceOf(walletAddress);
+        const formattedNewBalance = etherUtils.formatUnits(newBalance, 18);
+        console.log(`New balance of ${item.tokenKey}: ${formattedNewBalance}`);
+        
+        // Update the item to show it's been claimed
+        setInventory(prev => 
+          prev.map(invItem => 
+            invItem.id === item.id 
+              ? {...invItem, claimed: true} 
+              : invItem
+          )
+        );
+        
+        // Update NOOT balance
+        fetchNootBalance(walletAddress);
+        
+        toast.success(`Successfully claimed ${item.tokenAmount} ${item.tokenKey} tokens!`, { id: "claim-toast" });
+        
+        // Offer to add the token to the wallet
+        setTimeout(() => {
+          addTokenToWallet(tokenAddress, item.tokenKey || 'NOOT');
+        }, 1000);
+      } else {
+        toast.error("Token claim failed. Please try again.", { id: "claim-toast" });
+      }
+      
+    } catch (error) {
+      console.error("Error claiming token:", error);
+      toast.error("Error claiming token. Please try again.");
+    } finally {
+      setIsClaimingToken(false);
+    }
+  };
+
+  // Add a new function to claim NFTs
+  const claimNFTToWallet = async (item: InventoryItem) => {
+    if (!item.isNFT || !item.tokenId === undefined) {
+      toast.error("Invalid NFT data", { id: "claim-toast" });
+      setIsClaimingToken(false);
+      return;
+    }
+
+    try {
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      
+      // Determine the correct NFT address
+      let nftAddress;
+      if (item.nftAddress) {
+        nftAddress = getChecksumAddress(item.nftAddress);
+      } else if (item.tokenKey && NFT_ADDRESSES[item.tokenKey as keyof typeof NFT_ADDRESSES]) {
+        nftAddress = getChecksumAddress(NFT_ADDRESSES[item.tokenKey as keyof typeof NFT_ADDRESSES]);
+      } else {
+        console.error("Could not determine NFT address", item);
+        toast.error("Invalid NFT configuration. Please contact support.", { id: "claim-toast" });
+        setIsClaimingToken(false);
+        return;
+      }
+      
+      console.log(`[DEBUG] NFT claim details:
+        - NFT name: ${item.name}
+        - Token Key: ${item.tokenKey}
+        - Item NFT address: ${item.nftAddress}
+        - Selected NFT address: ${nftAddress}
+        - Token ID: ${item.tokenId}
+        - Recipient: ${walletAddress}
+      `);
+      
+      // Create NFT and swap contract instances
+      const nftContract = new ethers.Contract(
+        nftAddress,
+        NFT_ABI,
+        signer
+      );
+      
+      const swapContractAddress = getChecksumAddress(NOOT_SWAP_ADDRESS);
+      console.log(`[DEBUG] Swap contract address: ${swapContractAddress}`);
+      
+      const swapContract = new ethers.Contract(
+        swapContractAddress,
+        SWAP_CONTRACT_ABI,
+        signer
+      );
+      
+      toast.loading(`Claiming ${item.name} NFT to your wallet...`, { id: "claim-toast" });
+      
+      // Check if the contract owns the NFT
+      try {
+        const ownerOf = await nftContract.ownerOf(item.tokenId);
+        
+        console.log(`[DEBUG] Current owner of NFT #${item.tokenId}: ${ownerOf}`);
+        console.log(`[DEBUG] Expected owner (swap contract): ${swapContractAddress}`);
+        
+        if (ownerOf.toLowerCase() !== swapContractAddress.toLowerCase()) {
+          toast.error(`Claim failed: Contract doesn't own the NFT. Please contact support.`, { id: "claim-toast" });
+          setIsClaimingToken(false);
+          return;
+        }
+      } catch (error) {
+        console.error("Error checking NFT ownership:", error);
+        toast.error("Error verifying NFT ownership. Please contact support.", { id: "claim-toast" });
+        setIsClaimingToken(false);
+        return;
+      }
+      
+      // Verify all parameters before calling the contract
+      console.log(`[DEBUG] About to call transferNFT with:
+        - NFT address: ${nftAddress}
+        - Token ID: ${item.tokenId}
+        - Recipient: ${getChecksumAddress(walletAddress)}
+      `);
+      
+      // Call the transferNFT function on the swap contract
+      try {
+        const claimTx = await swapContract.transferNFT(
+          nftAddress,
+          item.tokenId,
+          getChecksumAddress(walletAddress),
+          { gasLimit: 3000000 } // Increased gas limit for NFT transfers
+        );
+        
+        toast.loading(`Finalizing NFT claim...`, { id: "claim-toast" });
+        
+        // Monitor the claim transaction
+        const claimSuccess = await monitorTransaction(claimTx.hash);
+        
+        if (claimSuccess) {
+          // Double-check if NFT was actually received
+          try {
+            const newOwner = await nftContract.ownerOf(item.tokenId);
+            if (newOwner.toLowerCase() === walletAddress.toLowerCase()) {
+              console.log(`NFT #${item.tokenId} successfully transferred to ${walletAddress}`);
+              
+              // Update the item to show it's been claimed
+              setInventory(prev => 
+                prev.map(invItem => 
+                  invItem.id === item.id 
+                    ? {...invItem, claimed: true} 
+                    : invItem
+                )
+              );
+              
+              toast.success(`Successfully claimed ${item.name} NFT!`, { id: "claim-toast" });
+            } else {
+              console.error(`NFT transfer succeeded but ownership verification failed. Current owner: ${newOwner}`);
+              toast.error("NFT claim completed but verification failed. Please check your wallet.", { id: "claim-toast" });
+            }
+          } catch (error) {
+            const newOwnerError = error as Error;
+            console.error("Error verifying NFT transfer:", newOwnerError);
+            toast.error(`NFT claim may have succeeded but verification failed: ${newOwnerError.message || "Unknown error"}. Please check your wallet.`, { id: "claim-toast" });
+          }
+        } else {
+          toast.error("NFT claim failed. Please try again.", { id: "claim-toast" });
+        }
+      } catch (error) {
+        console.error("Error executing NFT claim transaction:", error);
+        const errorMsg = (error as any)?.message || "Unknown error";
+        toast.error(`NFT claim transaction error: ${errorMsg.substring(0, 100)}...`, { id: "claim-toast" });
+        setIsClaimingToken(false);
+      }
+    } catch (error) {
+      console.error("Error claiming NFT:", error);
+      toast.error("Error claiming NFT. Please try again.");
+    } finally {
+      setIsClaimingToken(false);
+    }
+  };
+
+  // Add token to wallet function - similar to the one in token-swap.tsx
+  const addTokenToWallet = async (tokenAddress: string, tokenKey: string) => {
+    try {
+      // Get checksummed address
+      const checksummedAddress = getChecksumAddress(tokenAddress);
+      console.log("Adding token to wallet:", checksummedAddress, tokenKey);
+      
+      if (!window.ethereum) {
+        toast.error("No wallet provider detected");
+        return;
+      }
+      
+      // Get token info
+      const tokenInfo = {
+        symbol: tokenKey,
+        name: tokenKey,
+        decimals: 18
+      };
+      
+      // Try to use wallet_watchAsset for other wallets
+      try {
+        console.log("Attempting to add token using wallet_watchAsset method");
+        
+        const wasAdded = await window.ethereum.request({
+          method: 'wallet_watchAsset',
+          params: [
+            {
+              type: 'ERC20',
+              options: {
+                address: checksummedAddress,
+                symbol: tokenInfo.symbol,
+                decimals: 18,
+                image: `https://nooters.farm/tokens/${tokenKey.toLowerCase()}.png`,
+              },
+            }
+          ]
+        });
+        
+        if (wasAdded) {
+          console.log('Token was added successfully!');
+          toast.success(`${tokenInfo.symbol} token added to your wallet!`);
+        } else {
+          console.log('User rejected adding the token, using fallback method');
+          fallbackToManualMethod(checksummedAddress, tokenInfo);
+        }
+      } catch (error) {
+        console.error("Error using wallet_watchAsset:", error);
+        // Use fallback method without throwing a new error
+        console.log("wallet_watchAsset not supported, using fallback method");
+        fallbackToManualMethod(checksummedAddress, tokenInfo);
+      }
+    } catch (error) {
+      console.error("Token addition error:", error);
+      toast.error("Error adding token to wallet", {
+        duration: 5000,
+      });
+    }
+  };
+  
+  // Fallback method for adding tokens
+  const fallbackToManualMethod = (tokenAddress: string, tokenInfo: {symbol: string, name: string}) => {
+    // Copy the checksummed token address to clipboard
+    navigator.clipboard.writeText(tokenAddress).then(() => {
+      // Show token address copied confirmation
+      toast.success("Token address copied to clipboard!", {
+        duration: 5000,
+        icon: "📋"
+      });
+      
+      // Show detailed instructions toast
+      setTimeout(() => {
+        toast.success(
+          <div className="text-xs space-y-1">
+            <p className="font-bold">Add ${tokenInfo.symbol} to your wallet:</p>
+            <p>1. Open your wallet</p>
+            <p>2. Select "Import token" or "Add token"</p>
+            <p>3. Paste the address</p>
+            <p>4. Enter "{tokenInfo.symbol}" for symbol and "18" for decimals</p>
+          </div>,
+          { duration: 7000 }
+        );
+      }, 1000);
+    }).catch(err => {
+      console.error("Clipboard error:", err);
+      // Fallback for clipboard errors
+      toast(
+        <div className="text-xs space-y-1 mt-2">
+          <p className="font-semibold">Add token manually with these details:</p>
+          <p>Address: <span className="font-mono bg-black/40 px-1">{tokenAddress}</span></p>
+          <p>Symbol: {tokenInfo.symbol} | Decimals: 18</p>
+        </div>,
+        { duration: 10000 }
+      );
+    });
+  };
+
+  // Function to sell token for Farm Coins
+  const sellTokenForFarmCoins = async (item: InventoryItem) => {
+    try {
+      setIsSellingToken(true);
+      
+      // Calculate farm coins based on token amount and rarity
+      const farmCoinsToAdd = calculateFarmCoinsFromTokens(
+        item.tokenAmount || getTokenAmountForRarity(item.rarity),
+        item.rarity
+      );
+      
+      // Update user's farm coin balance
+      const newBalance = (farmCoins || 0) + farmCoinsToAdd;
+      setFarmCoins(newBalance);
+      
+      // Save updated balance to local storage
+      localStorage.setItem('farmCoins', newBalance.toString());
+      
+      // Remove item from inventory
+      setInventory(prev => prev.filter(invItem => invItem.id !== item.id));
+      
+      toast.success(`Sold ${item.tokenAmount} ${item.tokenKey} tokens for ${farmCoinsToAdd} Farm Coins!`);
+    } catch (error) {
+      console.error("Error selling token:", error);
+      toast.error("Error selling token. Please try again.");
+    } finally {
+      setIsSellingToken(false);
+    }
+  };
+  
+  // Function to calculate farm coins from tokens based on token amount and rarity
+  const calculateFarmCoinsFromTokens = (tokenAmount: number, rarity: string): number => {
+    // Base conversion rate
+    let rate = 1;
+    
+    // Adjust rate based on rarity
+    switch (rarity) {
+      case 'blue1':
+      case 'blue2':
+      case 'blue3':
+        rate = 1.5; // Common tokens
+        break;
+      case 'purple1':
+      case 'purple2':
+      case 'purple3':
+        rate = 2; // Uncommon tokens
+        break;
+      case 'pink1':
+      case 'pink2':
+        rate = 3; // Rare tokens
+        break;
+      case 'red1':
+      case 'red2':
+        rate = 4; // Epic tokens
+        break;
+      case 'yellow1':
+      case 'yellow2':
+      case 'yellow3':
+        rate = 5; // Legendary tokens
+        break;
+      default:
+        rate = 1;
+    }
+    
+    return Math.floor(tokenAmount * rate);
+  };
+  
+  // Function to render inventory items and their claim/sell buttons
+  const renderInventoryItem = (item: InventoryItem) => (
+    <div 
+      key={item.id} 
+      className={`noot-card relative p-4 ${getRarityBg(item.rarity)} transition-all hover:scale-[1.02] cursor-pointer mb-4`}
+    >
+      <div className="flex flex-col md:flex-row items-center gap-4">
+        {/* Item image */}
+        <div className="w-16 h-16 overflow-hidden rounded-md flex-shrink-0">
+          <Image 
+            src={item.imageUrl || '/case%20items/bronze/Chester.jpg'}
+            alt={item.name}
+            width={64}
+            height={64}
+            className="object-cover w-full h-full"
+          />
+        </div>
+        
+        {/* Item details */}
+        <div className="flex-grow">
+          <h3 className={`font-bold ${getRarityColor(item.rarity)}`}>
+            {item.name}
+            {item.isNFT && <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">NFT</span>}
+          </h3>
+          <p className="text-xs text-gray-400">
+            {item.isNFT ? 'Unique NFT #' + item.tokenId : `${item.tokenAmount} tokens`}
+          </p>
+        </div>
+        
+        {/* Claim/Sell buttons */}
+        <div className="flex flex-col xs:flex-row gap-2 mt-2 md:mt-0">
+          {!item.claimed ? (
+            <>
+              <button
+                onClick={() => claimTokenToWallet(item)}
+                disabled={isClaimingToken}
+                className="noot-button py-1 px-3 text-xs bg-green-600 hover:bg-green-700 text-white rounded-md flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Wallet className="w-3 h-3" />
+                {item.isNFT ? 'Claim NFT' : 'Claim Tokens'}
+              </button>
+              
+              <button
+                onClick={() => sellTokenForFarmCoins(item)}
+                disabled={isSellingToken}
+                className="noot-button py-1 px-3 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-md flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <CircleDollarSign className="w-3 h-3" />
+                Sell
+              </button>
+            </>
+          ) : (
+            <span className="text-green-400 text-xs flex items-center gap-1">
+              <Trophy className="w-3 h-3" />
+              {item.isNFT ? 'NFT Claimed' : 'Claimed'}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+  
+  return (
+    <div className="container mx-auto py-8 px-4 noot-theme min-h-screen">
+      {/* Add the styles to the page */}
+      <style jsx global>{SCROLL_ANIMATION}</style>
+      <style jsx global>{NOOT_THEME_STYLES}</style>
+      
+      {/* Transaction status dialog */}
+      <TransactionDialog />
+      
+      <div className="mb-6">
+        <Link href="/farm-cases">
+          <button className="noot-button border border-[#333] bg-[#222] hover:bg-[#2a2a2a] text-white font-medium py-2 px-4 rounded-lg flex items-center transition-all duration-200 shadow-md">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            <span>Back to Cases</span>
+          </button>
+        </Link>
+      </div>
+      
+      <div className="text-center mb-8">
+        <h1 className="font-bold text-3xl md:text-5xl text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-indigo-600 mb-3 noot-title"> Noot Noot CASE</h1>
+        <p className="text-[#999] max-w-2xl mx-auto">
+          Open special Noot Cases with $NOOT  or Farm coins to earn rare tokens and NFTs in Abstract Testnet!
+        </p>
+      </div>
+      
+      {/* Improved responsive grid layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 max-w-6xl mx-auto">
+        {/* Left side - Case opening (expanded on mobile, 8 cols on desktop) */}
+        <div className="noot-card flex flex-col items-center p-4 md:p-6 lg:col-span-8 order-2 lg:order-1">
+          <h2 className="noot-swap-title mb-4 flex items-center">Noot Case</h2>
+          
+          {/* Live preview - more compact, horizontal scrolling on mobile */}
+          <div className="w-full mb-4 fade-in">
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="text-sm text-[#999]">Live Drops:</h3>
+              {livePreview.length > 0 && (
+                <button 
+                  onClick={() => setLivePreview([])}
+                  className="text-xs text-purple-500 hover:text-purple-400"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+            <div className="flex overflow-x-auto p-2 border border-[#333] bg-[#111] rounded-md scrollbar-thin scrollbar-thumb-[#333] scrollbar-track-[#111]">
+              {livePreview.map((item, i) => (
+                <div 
+                  key={i} 
+                  className={`p-1 border mr-2 flex-shrink-0 ${item?.rarity ? getRarityBg(item.rarity) : 'border-[#333]'}`}
+                >
+                  <div className="w-10 h-10 relative flex items-center justify-center">
+                    <Image 
+                      src={item?.image || '/case%20items/bronze/Chester.jpg'}
+                      alt={item?.name || 'Item'}
+                      width={40}
+                      height={40}
+                      className="object-contain max-w-full max-h-full"
+                      style={{ objectFit: 'contain' }}
+                      priority
+                    />
+                  </div>
+                </div>
+              ))}
+              {livePreview.length === 0 && (
+                <p className="text-[#666] text-sm py-2 w-full text-center">No recent drops yet...</p>
+              )}
+            </div>
+          </div>
+          
+          <div className="w-full mb-6">
+            {spinning && (
+              <div 
+                className="h-2 bg-purple-500/30 mb-4 overflow-hidden rounded-full"
+                style={{
+                  width: '100%',
+                  transform: 'scaleX(0)',
+                  transformOrigin: 'left',
+                  animation: 'progressAnimation 3s ease-in-out forwards'
+                }}
+              ></div>
+            )}
+            
+            {/* Improved slot machine container - with purple theme */}
+            <div className="bg-[#171717] border border-[#333] rounded-md p-4 relative">
+              <div className="slot-machine-container relative overflow-hidden rounded-md">
+                <div className="absolute inset-0 opacity-20 bg-gradient-to-b from-purple-500/10 to-transparent pointer-events-none"></div>
+                <div className="relative mx-auto flex flex-col items-center">
+                  <canvas 
+                    ref={canvasRef} 
+                    width={IMAGE_WIDTH * IMAGE_COUNT} 
+                    height={IMAGE_HEIGHT}
+                    className="mx-auto border border-[#333] rounded"
+                    style={{ 
+                      maxWidth: '100%',
+                      height: 'auto',
+                      display: 'block',
+                      background: '#111',
+                      boxShadow: '0 0 10px rgba(0,0,0,0.5)'
+                    }}
+                  />
+                </div>
+                {spinning && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                    <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500"></div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          
+          {/* Payment options toggle - with token-swap styling */}
+          <div className="w-full mb-4">
+            <div className="flex justify-center mb-4">
+              <div className="flex p-1 bg-[#222] border border-[#333] rounded-lg">
+                <button
+                  onClick={() => setPaymentMethod("farm-coins")}
+                  className={`flex items-center px-4 py-2 rounded-md ${
+                    paymentMethod === "farm-coins" 
+                      ? "bg-purple-600 text-white" 
+                      : "bg-transparent text-[#999] hover:text-white"
+                  }`}
+                >
+                  <CircleDollarSign className="h-4 w-4 mr-2" />
+                  Farm Coins
+                </button>
+                <button
+                  onClick={() => {
+                    setPaymentMethod("noot-token");
+                    if (!isWalletConnected) {
+                      connectWallet();
+                    }
+                  }}
+                  className={`flex items-center px-4 py-2 rounded-md ${
+                    paymentMethod === "noot-token" 
+                      ? "bg-blue-600 text-white" 
+                      : "bg-transparent text-[#999] hover:text-white"
+                  }`}
+                >
+                  <Wallet className="h-4 w-4 mr-2" />
+                  NOOT Tokens
+                </button>
+              </div>
+            </div>
+          </div>
+          
+          {/* Case info and open button - with token-swap styling */}
+          <div className="w-full fade-in">
+            <div className="flex justify-between items-center mb-4 p-3 border border-[#333] bg-[#171717] rounded-md">
+              <span className="text-[#999]">Case Cost:</span>
+              <div className="flex items-center">
+                {paymentMethod === "farm-coins" ? (
+                  <>
+                    <CircleDollarSign className="h-4 w-4 text-purple-500 mr-1" />
+                    <span className="text-white">{CASE_COST} Farm Coins</span>
+                  </>
+                ) : (
+                  <>
+                    <Wallet className="h-4 w-4 text-blue-500 mr-1" />
+                    <span className="text-white">{NOOT_CASE_COST} NOOT</span>
+                  </>
+                )}
+              </div>
+            </div>
+            
+            {paymentMethod === "noot-token" && !isWalletConnected && (
+              <button 
+                onClick={connectWallet}
+                className="w-full py-4 mb-4 text-lg bg-gradient-to-r from-blue-500 to-blue-600 text-white font-medium transition-all duration-300 shadow-lg rounded-lg transform hover:scale-[1.01] active:scale-[0.99]"
+              >
+                Connect Wallet to Use NOOT
+              </button>
+            )}
+            
+            <button 
+              onClick={openCase}
+              disabled={spinning || 
+                (paymentMethod === "farm-coins" && farmCoins < CASE_COST) || 
+                (paymentMethod === "noot-token" && (!isWalletConnected || parseFloat(nootBalance) < NOOT_CASE_COST))
+              }
+              className={`w-full py-4 text-lg relative overflow-hidden ${
+                spinning || 
+                (paymentMethod === "farm-coins" && farmCoins < CASE_COST) ||
+                (paymentMethod === "noot-token" && (!isWalletConnected || parseFloat(nootBalance) < NOOT_CASE_COST))
+                  ? 'bg-[#333] cursor-not-allowed'
+                  : paymentMethod === "farm-coins"
+                    ? 'bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700'
+                    : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700'
+              } text-white font-medium transition-all duration-300 shadow-lg rounded-lg transform hover:scale-[1.01] active:scale-[0.99]`}
+            >
+              {spinning ? (
+                <>Opening...</>
+              ) : (
+                <>
+                  {!spinning && 
+                   ((paymentMethod === "farm-coins" && farmCoins >= CASE_COST) || 
+                    (paymentMethod === "noot-token" && isWalletConnected && parseFloat(nootBalance) >= NOOT_CASE_COST)) && (
+                    <span className="absolute inset-0 flex items-center justify-center">
+                      <span className="absolute w-full h-full bg-white/10 transform rotate-12 -translate-x-12 -translate-y-2 animate-pulse"></span>
+                    </span>
+                  )}
+                  <span className="relative z-10">Open Case</span>
+                </>
+              )}
+            </button>
+            
+            <div className="mt-4 p-3 border border-[#333] bg-[#171717] rounded-md">
+              <div className="flex justify-between items-center">
+                <span className="text-[#999]">Your Balance:</span>
+                {paymentMethod === "farm-coins" ? (
+                  <div className="flex items-center">
+                    <CircleDollarSign className="h-4 w-4 text-purple-500 mr-1" />
+                    <span className="text-white">{farmCoins} Farm Coins</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center">
+                    <Wallet className="h-4 w-4 text-blue-500 mr-1" />
+                    <span className="text-white">{parseFloat(nootBalance).toFixed(2)} NOOT</span>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            {/* Possible rewards - moved to bottom on mobile, displayed after case opening */}
+            <div className="mt-6 block lg:hidden">
+              <h3 className="text-sm mb-3 text-[#999] flex items-center">
+                <Trophy className="h-4 w-4 mr-2 text-purple-500" />
+                Possible Rewards:
+              </h3>
+              <div className="grid grid-cols-3 gap-2 p-3 border border-[#333] bg-[#111] rounded-md">
+                {Object.entries(itemDetails)
+                  // Filter out duplicate items by display name to avoid showing multiple of the same token
+                  .filter((entry, index, self) => {
+                    const [rarity, item] = entry;
+                    const displayName = item.name;
+                    // Check if this is the first occurrence of this display name
+                    return index === self.findIndex(([_, otherItem]) => otherItem.name === displayName);
+                  })
+                  .map(([rarity, item]) => {
+                    // Get token key for this rarity
+                    const tokenKey = getRarityTokenMapping(rarity);
+                    // Get token info from TOKEN_INFO
+                    const tokenInfo = TOKEN_INFO[tokenKey as keyof typeof TOKEN_INFO];
+                    
+                    return (
+                      <div 
+                        key={rarity} 
+                        className={`p-2 border ${getRarityBg(rarity)} flex flex-col items-center rounded`}
+                      >
+                        <div className="w-10 h-10 relative mb-1 flex items-center justify-center">
+                          <Image 
+                            src={item?.image}
+                            alt={tokenInfo?.name || item?.name || 'Item'}
+                            width={40}
+                            height={40}
+                            className="object-contain max-w-full max-h-full"
+                            style={{ objectFit: 'contain' }}
+                            priority
+                          />
+                        </div>
+                        <h4 className={`text-xs font-semibold text-center truncate w-full ${getRarityColor(rarity)}`}>
+                          {item.name}
+                          {item.isNFT && <span className="ml-1 text-[8px] text-purple-300">(NFT)</span>}
+                        </h4>
+                        <div className="flex items-center text-xs mt-1">
+                          <CircleDollarSign className="h-3 w-3 mr-1 text-yellow-500" />
+                          <span className="text-white/80">{item?.price}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        {/* Right side - Inventory (to top on mobile, 4 cols on desktop) */}
+        <div className="noot-card p-4 md:p-6 lg:col-span-4 order-1 lg:order-2">
+          <h2 className="noot-swap-title mb-4 flex items-center">
+            <Package className="h-5 w-5 mr-2" />
+            Your Inventory
+          </h2>
+          
+          <div className="overflow-y-auto max-h-[360px] border border-[#333] bg-[#111] p-3 rounded-md">
+            {inventory.length === 0 ? (
+              <p className="text-[#666] text-center py-6">Your inventory is empty. Open cases to collect items!</p>
+            ) : (
+              <div className="grid grid-cols-1 gap-3">
+                {inventory.map(renderInventoryItem)}
+              </div>
+            )}
+          </div>
+          
+          {/* Possible rewards - only visible on desktop in sidebar */}
+          <div className="mt-6 hidden lg:block">
+            <h3 className="text-sm mb-3 text-[#999] flex items-center">
+              <Trophy className="h-4 w-4 mr-2 text-purple-500" />
+              Possible Rewards:
+            </h3>
+            <div className="grid grid-cols-2 gap-2 p-3 border border-[#333] bg-[#111] rounded-md">
+              {Object.entries(itemDetails).map(([rarity, item]) => {
+                // Get token key for this rarity
+                const tokenKey = getRarityTokenMapping(rarity);
+                // Get token info from TOKEN_INFO
+                const tokenInfo = TOKEN_INFO[tokenKey as keyof typeof TOKEN_INFO];
+                
+                return (
+                  <div 
+                    key={rarity} 
+                    className={`p-2 border ${getRarityBg(rarity)} flex flex-col items-center rounded`}
+                  >
+                    <div className="w-12 h-12 relative mb-1 flex items-center justify-center">
+                      <Image 
+                        src={item?.image}
+                        alt={tokenInfo?.name || item?.name || 'Item'}
+                        width={48}
+                        height={48}
+                        className="object-contain max-w-full max-h-full"
+                        style={{ objectFit: 'contain' }}
+                        priority
+                      />
+                    </div>
+                    <h4 className={`text-xs font-semibold text-center truncate w-full ${getRarityColor(rarity)}`}>
+                      {tokenInfo?.name || item?.name}
+                    </h4>
+                    <div className="flex items-center text-xs mt-1">
+                      <CircleDollarSign className="h-3 w-3 mr-1 text-yellow-500" />
+                      <span className="text-white/80">{item?.price}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      {/* Award dialog - improved with better responsive design */}
+      {showDialog && rewardItem && (
+        <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/90 p-4">
+          <div 
+            className={`max-w-md w-full p-6 sm:p-8 ${
+              rewardItem?.rarity?.startsWith('legendary') 
+                ? 'bg-gradient-to-br from-black to-purple-950 glow-pulse' 
+                : 'bg-gradient-to-br from-black to-indigo-950'
+            } rounded-lg border ${
+              rewardItem?.rarity?.startsWith('legendary') 
+                ? 'border-purple-500' 
+                : rewardItem?.rarity?.startsWith('yellow') 
+                  ? 'border-blue-500'
+                  : rewardItem?.rarity?.startsWith('red')
+                    ? 'border-red-500'
+                    : rewardItem?.rarity?.startsWith('pink')
+                      ? 'border-pink-500'
+                      : rewardItem?.rarity?.startsWith('purple')
+                        ? 'border-purple-500'
+                        : 'border-blue-500'
+            } pop-in shadow-xl`}
+            style={{ backdropFilter: 'blur(10px)' }}
+          >
+            <div className="absolute -top-10 left-1/2 transform -translate-x-1/2">
+              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-purple-500 to-indigo-700 flex items-center justify-center shadow-lg">
+                <Trophy className="h-10 w-10 text-white" />
+              </div>
+            </div>
+            
+            <h2 className="text-2xl font-bold text-center mb-6 text-white mt-6">You received:</h2>
+            <div className="flex flex-col items-center">
+              {/* Image display wrapper with better error handling */}
+              <div 
+                className="w-40 h-40 relative mb-3 flex items-center justify-center bg-black/30 p-3 rounded-lg border border-yellow-900/50"
+                style={{ 
+                  animation: 'popIn 0.5s ease-out forwards',
+                  animationDelay: '0.2s',
+                  opacity: 0,
+                  boxShadow: rewardItem?.rarity?.startsWith('legendary') 
+                    ? '0 0 30px rgba(251, 191, 36, 0.3)' 
+                    : '0 0 20px rgba(234, 179, 8, 0.2)'
+                }}
+              >
+                {/* Use the imageUrl property to display the image */}
+                <Image 
+                  src={rewardItem.imageUrl || '/case%20items/bronze/Chester.jpg'}
+                  alt={rewardItem?.name || 'Item'}
+                  width={140}
+                  height={140}
+                  className="object-contain max-w-full max-h-full rounded"
+                  style={{ objectFit: 'contain' }}
+                  priority
+                />
+              </div>
+              
+              <h3 
+                className={`text-xl sm:text-2xl font-bold mb-2 text-center ${getRarityColor(rewardItem?.rarity?.replace(/[0-9]/g, '') || 'blue')}`}
+                style={{ 
+                  animation: 'popIn 0.5s ease-out forwards',
+                  animationDelay: '0.4s',
+                  opacity: 0
+                }}
+              >
+                {rewardItem?.name || 'Unknown Item'}
+              </h3>
+              <div 
+                className="flex items-center mb-6"
+                style={{ 
+                  animation: 'popIn 0.5s ease-out forwards',
+                  animationDelay: '0.5s',
+                  opacity: 0
+                }}
+              >
+                <CircleDollarSign className="h-5 w-5 mr-2 text-yellow-500" />
+                <span className="text-white text-lg">{rewardItem?.price || 0} coins</span>
+              </div>
+              <button 
+                onClick={() => setShowDialog(false)}
+                className="bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white font-medium py-3 px-8 rounded-lg transform hover:scale-105 active:scale-95 transition-all duration-200"
+                style={{
+                  animation: 'popIn 0.5s ease-out forwards',
+                  animationDelay: '0.6s',
+                  opacity: 0
+                }}
+              >
+                Awesome!
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -174,7 +174,7 @@ export const Sidebar = ({
           </div>
           <div className="ml-3">
             <h1 className="font-bold text-xl text-white noot-title">Nooter's Farm</h1>
-            <p className="text-xs text-white/60 noot-text">First CTO GAME on Abstract</p>
+            <p className="text-xs text-white/60 noot-text">First Noot Noot GAME on Abstract</p>
           </div>
         </div>
         
@@ -192,17 +192,6 @@ export const Sidebar = ({
             )}
           </Button>
           
-          <Button 
-            variant={activeTab === "case-simulator" ? "default" : "ghost"} 
-            className={`w-full justify-start rounded-none border border-transparent noot-text ${activeTab === "case-simulator" ? "bg-white text-black hover:bg-white/90" : "text-white/80 hover:bg-[#222] hover:text-white"}`}
-            onClick={() => handleTabClick("case-simulator")}
-          >
-            <Briefcase className="h-4 w-4 mr-2" />
-            <span>Case Simulator</span>
-            {activeTab === "case-simulator" && (
-              <ChevronRight className="h-4 w-4 ml-auto" />
-            )}
-          </Button>
           
           <Button 
             variant={activeTab === "profile" ? "default" : "ghost"} 

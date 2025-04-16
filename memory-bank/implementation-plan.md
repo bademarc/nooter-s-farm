@@ -974,3 +974,153 @@ After implementing the core game, consider these additions:
 
 This implementation plan provides a clear roadmap for building "Defend Your Farm" as an integrated component within your existing React application, while leveraging Phaser.js for optimized game mechanics.
 
+## Sound Implementation Plan
+
+To enhance the game experience, we'll implement a comprehensive sound system:
+
+### Sound Manager Utility
+
+```javascript
+// components/farm-game/utils/SoundManager.js
+export default class SoundManager {
+  constructor(scene) {
+    this.scene = scene;
+    this.sounds = {};
+    this.music = null;
+    this.isMuted = false;
+  }
+  
+  preload() {
+    // Load all sound assets
+    this.scene.load.audio('bgm_gameplay', ['assets/sounds/game/farm_bgm.mp3']);
+    this.scene.load.audio('click', ['assets/sounds/game/ui_click.mp3']);
+    // Additional sound loading...
+  }
+  
+  play(key, options = {}) {
+    if (this.isMuted) return;
+    
+    try {
+      if (this.sounds[key]) {
+        this.sounds[key].play(options);
+      } else if (this.scene.sound.get(key)) {
+        this.scene.sound.play(key, options);
+      }
+    } catch (error) {
+      console.warn(`Error playing sound ${key}:`, error);
+    }
+  }
+  
+  playMusic() {
+    if (this.isMuted || !this.music) return;
+    
+    try {
+      if (!this.music.isPlaying) {
+        this.music.play();
+      }
+    } catch (error) {
+      console.warn('Error playing background music:', error);
+    }
+  }
+  
+  toggleMute() {
+    this.isMuted = !this.isMuted;
+    
+    if (this.isMuted) {
+      if (this.music && this.music.isPlaying) {
+        this.music.pause();
+      }
+    } else {
+      if (this.music && !this.music.isPlaying) {
+        this.music.resume();
+      }
+    }
+    
+    return this.isMuted;
+  }
+}
+```
+
+### Integration with Game
+
+Add to the GameScene preload method:
+```javascript
+preload() {
+  // Initialize sound manager
+  this.soundManager = new SoundManager(this);
+  this.soundManager.preload();
+  
+  // Other preload code...
+}
+```
+
+Add to the GameScene create method:
+```javascript
+create() {
+  // Add mute button
+  const muteButton = this.add.rectangle(750, 30, 40, 40, 0x333333);
+  muteButton.setInteractive();
+  
+  const muteIcon = this.add.text(750, 30, '🔊', {
+    fontFamily: 'Arial',
+    fontSize: '20px'
+  }).setOrigin(0.5);
+  
+  muteButton.on('pointerdown', () => {
+    const isMuted = this.soundManager.toggleMute();
+    muteIcon.setText(isMuted ? '🔇' : '🔊');
+    
+    if (!isMuted) {
+      this.soundManager.play('click');
+    }
+  });
+  
+  // Other create code...
+}
+```
+
+### Sound Event Implementation
+
+Add sound effects to key game events:
+
+```javascript
+// In startGame method
+startGame() {
+  // Existing code...
+  this.soundManager.playMusic();
+  this.soundManager.play('click');
+}
+
+// In plantCrop method
+plantCrop(x, y) {
+  // Existing code...
+  this.soundManager.play('plant');
+}
+
+// In Enemy takeDamage method
+takeDamage(amount) {
+  // Existing code...
+  if (this.scene.soundManager) {
+    this.scene.soundManager.play('enemy_hit');
+  }
+}
+
+// In Defense attack method
+attack(enemy) {
+  // Existing code...
+  if (this.scene.soundManager) {
+    const soundKey = `${this.type}_attack`;
+    this.scene.soundManager.play(soundKey);
+  }
+}
+```
+
+### Required Sound Assets
+
+All sound files should be placed in `/public/assets/sounds/game/`:
+- `farm_bgm.mp3`: Background music
+- `ui_click.mp3`: Button click sound
+- `plant.mp3`: Planting crops sound
+- `enemy_hit.mp3`: Enemy being hit
+- Additional sounds as needed...
+
