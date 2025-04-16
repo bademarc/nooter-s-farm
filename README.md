@@ -4,7 +4,7 @@
 
 This repository includes an implementation of the token-swap component with support for multiple wallet providers, specifically:
 
-1. Abstract Gaming Wallet (AGW)
+1. Abstract Global Wallet (AGW)
 2. Privy Cross-App Connect
 3. MetaMask (default fallback)
 
