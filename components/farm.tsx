@@ -3467,7 +3467,7 @@ export function Farm() {
       <footer className="bg-black border-t border-[#333] py-3 px-4" key={`footer-${profileVersion}`}>
         <div className="container mx-auto flex justify-between items-center">
           <div className="text-sm text-white/60">
-            Nooter's Farm - First CTO on Abstract
+            Nooter's Farm - First Noot Noot Playground on Abstract
           </div>
           
           <div className="flex items-center gap-2">

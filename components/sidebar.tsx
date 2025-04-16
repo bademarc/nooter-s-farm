@@ -174,7 +174,7 @@ export const Sidebar = ({
           </div>
           <div className="ml-3">
             <h1 className="font-bold text-xl text-white noot-title">Nooter's Farm</h1>
-            <p className="text-xs text-white/60 noot-text">First Noot Noot GAME on Abstract</p>
+            <p className="text-xs text-white/60 noot-text">First Noot Noot Playground on Abstract</p>
           </div>
         </div>
         

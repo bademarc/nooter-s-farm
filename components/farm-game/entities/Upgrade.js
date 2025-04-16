@@ -260,6 +260,7 @@ export default class Upgrade {
     const panelY = panelHeight / 2;
     
     this.uiElements.panel = this.scene.add.rectangle(panelX, panelY, panelWidth, panelHeight, 0x333333, 0.8);
+    this.uiElements.panel.setDepth(1000); // Ensure panel is above game elements
     
     // Title
     this.uiElements.title = this.scene.add.text(panelX, 20, 'UPGRADES', {
@@ -268,6 +269,7 @@ export default class Upgrade {
       color: '#FFFFFF',
       align: 'center'
     }).setOrigin(0.5, 0);
+    this.uiElements.title.setDepth(1001); // Ensure title is above panel
     
     // Create buttons for each upgrade
     this.createUpgradeButtons();
@@ -304,6 +306,7 @@ export default class Upgrade {
       const button = this.scene.add.rectangle(panelX, buttonY, 180, buttonHeight, 0x555555);
       button.setInteractive();
       button.on('pointerdown', () => this.upgrade(type));
+      button.setDepth(1001); // Ensure button is above panel
       
       // Button text
       const level = this.levels[type];
@@ -314,6 +317,7 @@ export default class Upgrade {
         fontSize: '12px',
         color: '#FFFFFF'
       });
+      text.setDepth(1001); // Ensure text is above panel
       
       // Cost text
       const costText = level < maxLevel 
@@ -327,6 +331,7 @@ export default class Upgrade {
             fontSize: '10px',
             color: '#00FF00'
           });
+      costText.setDepth(1001); // Ensure cost text is above panel
       
       // Store UI elements
       this.uiElements[`${type}Button`] = button;
@@ -339,6 +344,7 @@ export default class Upgrade {
     // Create separator
     const separator = this.scene.add.rectangle(panelX, currentY, 180, 2, 0xFFFFFF, 0.5);
     this.uiElements.separator = separator;
+    separator.setDepth(1001); // Ensure separator is above panel
     currentY += spacing * 2;
     
     // Create unlock defense buttons
@@ -351,6 +357,7 @@ export default class Upgrade {
       const button = this.scene.add.rectangle(panelX, buttonY, 180, buttonHeight, 0x553366);
       button.setInteractive();
       button.on('pointerdown', () => this.unlockDefense(type));
+      button.setDepth(1001); // Ensure button is above panel
       
       // Button text
       const requirements = this.unlockRequirements[type];
@@ -359,6 +366,7 @@ export default class Upgrade {
         fontSize: '12px',
         color: '#FFFFFF'
       });
+      text.setDepth(1001); // Ensure text is above panel
       
       // Requirements text
       const reqText = this.scene.add.text(panelX - 85, buttonY + 5, `Req: Wave ${requirements.wave}, ${requirements.cost} coins`, {
@@ -366,6 +374,7 @@ export default class Upgrade {
         fontSize: '10px',
         color: '#FFAA00'
       });
+      reqText.setDepth(1001); // Ensure text is above panel
       
       // Store UI elements
       this.uiElements[`${type}UnlockButton`] = button;

@@ -20,6 +20,10 @@ export default class Defense {
     this.enemiesDefeated = 0; // Track enemies defeated by this mage
     this.enemiesNeededForSpecial = 5; // Number of enemies needed to unlock special attack
     
+    // Default AOE properties (can be overridden by type)
+    this.aoeRadius = 0;
+    this.aoeDamageMultiplier = 0;
+    
     // Get current wave for scaling
     const currentWave = this.scene.gameState?.wave || 1;
     
@@ -42,6 +46,23 @@ export default class Defense {
       this.aoeRadius = 60; // Radius of area effect for fire mage
       this.aoeDamageMultiplier = 0.8; // AoE damage is 80% of direct damage
       this.createNOOTMage();
+    } else if (type === 'wizard') {
+      this.cost = 100;
+      this.range = 300;
+      this.cooldown = 1200; // 1.2 seconds
+      this.damage = 3.0; // High single-target damage
+      this.targetTypes = ['bird', 'rabbit', 'fox', 'slime', 'ghost', 'skeleton', 'bat', 'spider', 'wolf', 'snake', 'goblin']; // Target most ground/air except bosses initially
+      // Wizard is single target focused, low/no AOE by default
+      this.createWizard(); 
+    } else if (type === 'cannon') {
+      this.cost = 150;
+      this.range = 350;
+      this.cooldown = 2500; // 2.5 seconds (slow firing)
+      this.damage = 5.0; // High damage 
+      this.targetTypes = ['rabbit', 'fox', 'slime', 'skeleton', 'spider', 'wolf', 'snake', 'goblin']; // Ground targets primarily
+      this.aoeRadius = 100; // Large AOE radius
+      this.aoeDamageMultiplier = 0.6; // Significant AOE damage
+      this.createCannon();
     }
     
     // Store the last time this defense attacked
@@ -55,7 +76,7 @@ export default class Defense {
     // Create cooldown text indicator
     this.createCooldownText();
     
-    const defenseName = type === 'scarecrow' ? 'ABS ice mage' : 'NOOT fire mage';
+    const defenseName = type === 'scarecrow' ? 'ABS ice mage' : type === 'dog' ? 'NOOT fire mage' : type === 'wizard' ? 'Wizard' : type === 'cannon' ? 'Cannon' : type.charAt(0).toUpperCase() + type.slice(1);
     console.log(`Created ${defenseName} at ${x}, ${y} with range ${this.range}`);
     
     // Apply any existing upgrades
@@ -92,6 +113,42 @@ export default class Defense {
     this.sprite.on('pointerout', () => this.hideRange());
   }
   
+  createWizard() {
+    // Create visual representation of Wizard
+    this.sprite = this.scene.add.image(this.x, this.y, 'wizard_idle');
+    this.sprite.setDisplaySize(48, 48); // Scale to appropriate size
+    this.sprite.setDepth(101); // Ensure visible above ground tiles
+    
+    // Add a range indicator (usually invisible, shown on hover)
+    this.rangeIndicator = this.scene.add.circle(this.x, this.y, this.range, 0xFFFFFF, 0.1);
+    this.rangeIndicator.setStrokeStyle(2, 0xFF00FF); // Purple outline for range
+    this.rangeIndicator.visible = false;
+    this.rangeIndicator.setDepth(100);
+    
+    // Make it interactive
+    this.sprite.setInteractive();
+    this.sprite.on('pointerover', () => this.showRange());
+    this.sprite.on('pointerout', () => this.hideRange());
+  }
+  
+  createCannon() {
+    // Create visual representation of Cannon
+    this.sprite = this.scene.add.image(this.x, this.y, 'cannon_idle');
+    this.sprite.setDisplaySize(48, 48); // Scale to appropriate size
+    this.sprite.setDepth(101); // Ensure visible above ground tiles
+    
+    // Add a range indicator (usually invisible, shown on hover)
+    this.rangeIndicator = this.scene.add.circle(this.x, this.y, this.range, 0xFFFFFF, 0.1);
+    this.rangeIndicator.setStrokeStyle(2, 0xCC0000); // Dark red outline for range
+    this.rangeIndicator.visible = false;
+    this.rangeIndicator.setDepth(100);
+    
+    // Make it interactive
+    this.sprite.setInteractive();
+    this.sprite.on('pointerover', () => this.showRange());
+    this.sprite.on('pointerout', () => this.hideRange());
+  }
+  
   showRange() {
     if (this.rangeIndicator) {
       this.rangeIndicator.visible = true;
@@ -106,7 +163,7 @@ export default class Defense {
   
   createCooldownText() {
     // Create a text object to display cooldown
-    const color = this.type === 'scarecrow' ? '#0088FF' : '#FF4400';
+    const color = this.getColor(); // Use helper method for color
     this.cooldownText = this.scene.add.text(this.x, this.y - 30, '', {
       fontFamily: 'Arial',
       fontSize: '14px',
@@ -121,8 +178,8 @@ export default class Defense {
     // Hide initially
     this.cooldownText.visible = false;
     
-    // Create ready indicator
-    const readyColor = this.type === 'scarecrow' ? 0x0088FF : 0xFF4400;
+    // Create ready indicator using color from helper
+    const readyColor = Phaser.Display.Color.HexStringToColor(this.getColor()).color; 
     this.readyIndicator = this.scene.add.circle(this.x, this.y - 25, 5, readyColor, 0.8);
     this.readyIndicator.setStrokeStyle(1, 0xFFFFFF);
     this.readyIndicator.setDepth(300);
@@ -194,7 +251,8 @@ export default class Defense {
       
       // Foreground arc for indicating progress - starts empty
       this.cooldownIndicator = this.scene.add.graphics();
-      this.cooldownIndicator.fillStyle(this.type === 'scarecrow' ? 0x66CCFF : 0xFF6644, 1);
+      const indicatorColor = Phaser.Display.Color.HexStringToColor(this.getColor()).color;
+      this.cooldownIndicator.fillStyle(indicatorColor, 1);
       this.cooldownContainer.add(this.cooldownIndicator);
       
       // Add this to our container if it exists
@@ -218,6 +276,9 @@ export default class Defense {
         if (!this.cooldownIndicator) return;
       }
       
+      // Define indicatorColor earlier in the scope
+      const indicatorColor = Phaser.Display.Color.HexStringToColor(this.getColor()).color;
+
       // Make visible
       this.cooldownContainer.setVisible(true);
       
@@ -230,8 +291,7 @@ export default class Defense {
       
       // Only draw if actually on cooldown
       if (remainingPercent > 0) {
-        // Draw cooldown arc - we draw clockwise from top, so it depletes clockwise
-        this.cooldownIndicator.fillStyle(this.type === 'scarecrow' ? 0x66CCFF : 0xFF6644, 1);
+        this.cooldownIndicator.fillStyle(indicatorColor, 1);
         
         // Calculate end angle based on remaining percent (radians)
         // 0 at top, increases clockwise
@@ -239,7 +299,10 @@ export default class Defense {
         const endAngle = startAngle + (Math.PI * 2 * (1 - remainingPercent)); // Full circle is 2*PI
         
         // Draw the arc
-        this.cooldownIndicator.slice(0, -40, 15, startAngle, endAngle, false);
+        this.cooldownIndicator.beginPath();
+        this.cooldownIndicator.arc(this.x, this.y, 25, startAngle, endAngle, false);
+        this.cooldownIndicator.lineTo(this.x, this.y);
+        this.cooldownIndicator.closePath();
         this.cooldownIndicator.fillPath();
       } else {
         // Hide when cooldown is complete
@@ -450,6 +513,40 @@ export default class Defense {
     } else if (this.type === 'dog') {
       // Fire mage AOE attack
       this.performAreaAttack(enemyX, enemyY, this.aoeRadius, this.damage * this.aoeDamageMultiplier, 'fire');
+    } else if (this.type === 'wizard') {
+      if (this.sprite) {
+        this.sprite.setTexture('wizard_attack');
+        this.scene.tweens.add({
+          targets: this.sprite,
+          scaleX: 1.1, scaleY: 1.1, duration: 150, yoyo: true,
+          onComplete: () => { if (this.sprite && this.sprite.active) this.sprite.setTexture('wizard_idle'); }
+        });
+      }
+      // Launch a projectile (e.g., magic bolt)
+      this.launchProjectile(enemy, 'magic'); 
+      this.showDamageText(enemy, `${damageAmount.toFixed(1)}`, 0xFF00FF);
+    } else if (this.type === 'cannon') {
+      if (this.sprite) {
+        this.sprite.setTexture('cannon_attack');
+        // Add recoil animation
+        const originalX = this.x;
+        this.scene.tweens.add({
+          targets: this.sprite,
+          x: this.x - 5, // Move back slightly
+          duration: 100,
+          yoyo: true,
+          onComplete: () => { 
+            if (this.sprite && this.sprite.active) {
+               this.sprite.setTexture('cannon_idle');
+               this.sprite.x = originalX; // Ensure it returns to original position
+            } 
+          }
+        });
+      }
+      // Launch a projectile (e.g., cannonball)
+      this.launchProjectile(enemy, 'cannonball');
+      this.performAreaAttack(enemyX, enemyY, this.aoeRadius, damageAmount * this.aoeDamageMultiplier, 'explosion');
+      this.showDamageText(enemy, `${damageAmount.toFixed(1)}`, 0xCC0000);
     }
     
     // Reset and display cooldown
@@ -1063,6 +1160,10 @@ export default class Defense {
       return 'ABS Ice Mage';
     } else if (this.type === 'dog') {
       return 'NOOT Fire Mage';
+    } else if (this.type === 'wizard') {
+      return 'Wizard';
+    } else if (this.type === 'cannon') {
+      return 'Cannon';
     } else {
       return this.type.charAt(0).toUpperCase() + this.type.slice(1);
     }
@@ -1074,6 +1175,10 @@ export default class Defense {
       return '#0088FF'; // Blue for ABS
     } else if (this.type === 'dog') {
       return '#FF4400'; // Red for NOOT
+    } else if (this.type === 'wizard') {
+      return '#FF00FF'; // Purple for Wizard
+    } else if (this.type === 'cannon') {
+      return '#CC0000'; // Dark Red for Cannon
     } else {
       return '#FFFFFF'; // Default white
     }
@@ -1085,6 +1190,9 @@ export default class Defense {
       return 'ice';
     } else if (this.type === 'dog') {
       return 'fire';
+    } else if (this.type === 'wizard') {
+      return 'magic';
+    } else if (this.type === 'cannon') {
     } else {
       return 'normal';
     }
@@ -1348,7 +1456,7 @@ export default class Defense {
     if (this.type === 'scarecrow') {
       // Launch multiple ice projectiles
       enemiesInRange.forEach(enemy => {
-        this.launchFireball(enemy, 'blue', true);
+        this.launchProjectile(enemy, 'blue', true);
         
         // Apply enhanced damage and slow effect
         const damageAmount = this.damage * this.specialAttackDamageMultiplier;
@@ -1369,7 +1477,7 @@ export default class Defense {
     else if (this.type === 'dog') {
       // Launch multiple fire projectiles
       enemiesInRange.forEach(enemy => {
-        this.launchFireball(enemy, 'red', true);
+        this.launchProjectile(enemy, 'red', true);
         
         // Apply enhanced damage and burn effect
         const damageAmount = this.damage * this.specialAttackDamageMultiplier;
@@ -1435,4 +1543,95 @@ export default class Defense {
     
     return enemiesInRange;
   }
+
+  // --- MOVE launchProjectile INSIDE THE CLASS DEFINITION --- 
+  launchProjectile(enemy, projectileType) {
+    try {
+      if (!this.scene || !enemy) return;
+
+      const enemyX = enemy.x || (enemy.container && enemy.container.x) || 400;
+      const enemyY = enemy.y || (enemy.container && enemy.container.y) || 300;
+
+      let projectile;
+      let textureKey = 'pixel'; // Default fallback
+      let size = 10;
+      let color = 0xFFFFFF;
+
+      if (projectileType === 'magic') {
+        textureKey = 'magic_particle'; // Use a specific magic texture if available
+        size = 15;
+        color = 0xFF00FF;
+      } else if (projectileType === 'cannonball') {
+        textureKey = 'pixel'; // Use pixel for simple cannonball
+        size = 20;
+        color = 0x333333;
+      } else if (projectileType === 'ice') { // Added for consistency
+        textureKey = 'iceball'; 
+        size = 18;
+        color = 0x66CCFF;
+      } else if (projectileType === 'fire') { // Added for consistency
+        textureKey = 'fireball';
+        size = 18;
+        color = 0xFF6600;
+      }
+
+      if (this.scene.textures.exists(textureKey) && textureKey !== 'pixel') { // Prioritize texture if exists and not pixel
+        projectile = this.scene.add.image(this.x, this.y, textureKey);
+        projectile.setDisplaySize(size, size);
+      } else { // Fallback to circle or pixel image
+        if (textureKey === 'pixel' && this.scene.textures.exists('pixel')) {
+           projectile = this.scene.add.image(this.x, this.y, 'pixel');
+           projectile.setDisplaySize(size, size).setTint(color); // Tint the pixel
+        } else {
+           projectile = this.scene.add.circle(this.x, this.y, size / 2, color); // Circle fallback
+        }
+      }
+
+      projectile.setDepth(200);
+      projectile.targetEnemy = enemy;
+      projectile.damage = this.damage; // Use defense's damage
+      projectile.projectileType = projectileType;
+      projectile.originX = this.x; // Store origin for distance check
+      projectile.originY = this.y;
+
+      const angle = Phaser.Math.Angle.Between(this.x, this.y, enemyX, enemyY);
+      if (projectile.setRotation) projectile.setRotation(angle);
+
+      const distance = Phaser.Math.Distance.Between(this.x, this.y, enemyX, enemyY);
+      const duration = distance * (projectileType === 'cannonball' ? 3 : 2); // Cannonballs slower
+
+      this.scene.tweens.add({
+        targets: projectile,
+        x: enemyX,
+        y: enemyY,
+        duration: duration,
+        ease: 'Linear',
+        onComplete: () => {
+          // Trigger hit effect based on type
+          if (this.scene && typeof this.scene.createHitEffect === 'function') {
+            this.scene.createHitEffect(enemyX, enemyY, this.type); // Pass defense type
+          }
+          
+          // Apply damage directly on hit ONLY if it's NOT a cannonball (cannonball applies damage via AOE)
+          if (projectileType !== 'cannonball' && projectile.targetEnemy && typeof projectile.targetEnemy.takeDamage === 'function') {
+              // Verify enemy still exists and is active before applying damage
+              if (projectile.targetEnemy.active && projectile.targetEnemy.health > 0) {
+                   this.applyDamageToEnemy(projectile.targetEnemy, projectile.damage);
+              }
+          }
+
+          // Cannonballs trigger AOE damage on impact
+          if (projectileType === 'cannonball' && typeof this.performAreaAttack === 'function') {
+            this.performAreaAttack(enemyX, enemyY, this.aoeRadius, this.damage * this.aoeDamageMultiplier, 'explosion');
+          }
+
+          if (projectile.active) projectile.destroy(); // Check active before destroy
+        }
+      });
+
+    } catch (error) {
+      console.error("Error launching projectile:", error);
+    }
+  }
+  // --- END launchProjectile METHOD DEFINITION ---
 } 

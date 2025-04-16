@@ -74,34 +74,13 @@ export default function FarmCasesPage() {
             </p>
             <div className="flex items-center justify-center mt-2 border border-yellow-500 bg-black py-2 px-4 group-hover:bg-yellow-500 group-hover:text-black transition-all">
               <span className="text-sm font-bold flex items-center">
-                START BATTLE <ArrowRight className="w-4 h-4 ml-1 transition-transform group-hover:translate-x-1" />
+                START BATTLE features coming soon! <ArrowRight className="w-4 h-4 ml-1 transition-transform group-hover:translate-x-1" />
               </span>
             </div>
           </div>
         </Link>
 
         {/* Case Simulator Card */}
-        <Link 
-          href="/farm-cases/case-simulator"
-          className="noot-card group overflow-hidden border-2 hover:border-yellow-500"
-          onMouseEnter={() => setHoverState('simulator')}
-          onMouseLeave={() => setHoverState(null)}
-        >
-          <div className="p-6 flex flex-col items-center text-center h-full">
-            <div className="mb-4 w-16 h-16 bg-black rounded-full flex items-center justify-center border-2 border-yellow-500">
-              <Package className="w-8 h-8 text-yellow-500" />
-            </div>
-            <h2 className="noot-title text-xl mb-2">Case Simulator</h2>
-            <p className="text-white/70 mb-4 flex-grow">
-              Open virtual farm cases to collect rare items and expand your collection
-            </p>
-            <div className="flex items-center justify-center mt-2 border border-yellow-500 bg-black py-2 px-4 group-hover:bg-yellow-500 group-hover:text-black transition-all">
-              <span className="text-sm font-bold flex items-center">
-                OPEN CASES <ArrowRight className="w-4 h-4 ml-1 transition-transform group-hover:translate-x-1" />
-              </span>
-            </div>
-          </div>
-        </Link>
 
         {/* Contract Simulator Card */}
         <Link 
@@ -120,7 +99,7 @@ export default function FarmCasesPage() {
             </p>
             <div className="flex items-center justify-center mt-2 border border-yellow-500 bg-black py-2 px-4 group-hover:bg-yellow-500 group-hover:text-black transition-all">
               <span className="text-sm font-bold flex items-center">
-                MANAGE CONTRACTS <ArrowRight className="w-4 h-4 ml-1 transition-transform group-hover:translate-x-1" />
+                MANAGE CONTRACTS features coming soon!<ArrowRight className="w-4 h-4 ml-1 transition-transform group-hover:translate-x-1" />
               </span>
             </div>
           </div>

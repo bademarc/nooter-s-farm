@@ -363,7 +363,7 @@ export default class Enemy {
     
     // Ensure container is visible and opaque
     this.container.visible = true; // Force visibility
-    this.container.setDepth(2000); // INCREASED DEPTH
+    this.container.setDepth(100); // LOWERED DEPTH to keep below UI
     this.container.alpha = 1; // CRITICAL FIX: Force full opacity
     
     // Make container interactive if not already
@@ -626,16 +626,16 @@ export default class Enemy {
       console.log(`Destroying enemy ${this.id} at (${xDisplay}, ${yDisplay})`);
     }
     
-    // Remove from enemies array IMMEDIATELY using splice
-    if (this.scene && this.scene.enemies) {
-      const index = this.scene.enemies.indexOf(this);
-      if (index !== -1) {
-        console.log(`Splicing enemy ${this.id} from scene array at index ${index}`);
-        this.scene.enemies.splice(index, 1);
-      } else {
-        console.warn(`Enemy ${this.id} not found in scene array during destroy.`);
-      }
-    }
+    // REMOVED direct splice - Scene will filter destroyed enemies instead
+    // if (this.scene && this.scene.enemies) {
+    //   const index = this.scene.enemies.indexOf(this);
+    //   if (index !== -1) {
+    //     console.log(`Splicing enemy ${this.id} from scene array at index ${index}`);
+    //     this.scene.enemies.splice(index, 1);
+    //   } else {
+    //     console.warn(`Enemy ${this.id} not found in scene array during destroy.`);
+    //   }
+    // }
     
     // Cleanup sprites with delay to allow animations to finish
     if (this.scene && this.scene.time && typeof this.scene.time.delayedCall === 'function') {
@@ -822,8 +822,8 @@ export default class Enemy {
     
     this.healthBar.background.setPosition(this.x, this.y + offsetY);
     this.healthBar.fill.setPosition(this.x, this.y + offsetY);
-    this.healthBar.background.setDepth(2501); // EVEN HIGHER DEPTH
-    this.healthBar.fill.setDepth(2502); // EVEN HIGHER DEPTH
+    this.healthBar.background.setDepth(101); // LOWERED DEPTH
+    this.healthBar.fill.setDepth(102); // LOWERED DEPTH
     
     // Calculate health percentage and update health bar width
     const healthPercent = Math.max(0, Math.min(1, this.health / this.maxHealth));
@@ -881,6 +881,7 @@ export default class Enemy {
       // Mark as inactive immediately to prevent multiple defeat calls
       this.active = false;
       this.dead = true;
+      this.destroyed = true;
       
       // Add coins to player
       if (this.scene && this.scene.gameState) {
@@ -929,6 +930,7 @@ export default class Enemy {
     } catch (error) {
       console.error("Error in defeat method:", error);
       // Ensure cleanup still happens
+      this.destroyed = true;
       this.cleanupSprites();
     }
   }
