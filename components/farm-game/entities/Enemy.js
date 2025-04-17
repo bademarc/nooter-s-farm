@@ -25,13 +25,13 @@ export default class Enemy {
     
     // Get current wave for scaling difficulty
     const currentWave = this.scene.gameState?.wave || 1;
-    const waveScaling = Math.min(2.5, 1 + (currentWave * 0.2)); // Increased scaling
+    const waveScaling = Math.min(3.5, 1 + (currentWave * 0.3)); // Increased scaling further
     
     // Set properties based on type with wave scaling
     if (type === 'bird') {
       // Base properties - increased health
       this.baseSpeed = 1.8;
-      this.baseHealth = 3;
+      this.baseHealth = 6; // Increased from 5
       this.baseValue = 8;
       
       // Scale with wave
@@ -46,7 +46,7 @@ export default class Enemy {
     } else if (type === 'deer') {
       // Deer: Tougher, slower, higher value, appears later
       this.baseSpeed = 1.0; // Slower than rabbit/bird
-      this.baseHealth = 10; // Tougher
+      this.baseHealth = 18; // Increased from 15
       this.baseValue = 15; // Higher reward
       
       // Scale with wave
@@ -60,12 +60,12 @@ export default class Enemy {
       this.weaknessMultiplier = 1.8;
       
       // Deer might have higher damage resistance
-      this.damageResistance = Math.min(0.4, (currentWave - 4) * 0.05); // Starts resistance later
+      this.damageResistance = Math.min(0.6, Math.max(0, currentWave - 3) * 0.07); // Increased scaling and cap
       
     } else {
       // Base properties - increased health
       this.baseSpeed = 1.5;
-      this.baseHealth = 4;
+      this.baseHealth = 7; // Increased from 6
       this.baseValue = 6;
       
       // Scale with wave
@@ -80,7 +80,7 @@ export default class Enemy {
     }
     
     // Set a default damage value used when enemy reaches the end
-    this.damage = type === 'deer' ? 2 : 1; // Deer deals more damage if it reaches the end
+    this.damage = type === 'deer' ? 4 : 3; // Increased damage further
     
     // RE-ENABLED: Anti-stacking position variation
     this.x += (Math.random() - 0.5) * 40; // Add some horizontal spread 
@@ -98,10 +98,13 @@ export default class Enemy {
     this.speed = Math.min(3, this.speed);
     
     // Apply difficulty bonuses to later waves with reduced speed scaling
-    if (currentWave > 2) {
+    if (currentWave > 1) { // Start applying generic resistance earlier
       this.health += Math.floor(currentWave * 0.4);
       this.speed += 0.08 * Math.floor(currentWave / 2);
-      this.damageResistance = Math.min(0.3, (currentWave - 2) * 0.03);
+      // Apply general damage resistance if not deer
+      if (type !== 'deer') {
+          this.damageResistance = Math.min(0.5, Math.max(0, currentWave - 1) * 0.05); // Increased scaling and cap
+      }
     }
     
     // Boss waves - increased power

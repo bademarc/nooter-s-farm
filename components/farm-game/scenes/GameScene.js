@@ -3075,8 +3075,17 @@ if (isBrowser) {
             }
 
             // Make defenses attack enemies every frame
-            this.updateDefenseAttacks();
-            
+            // this.updateDefenseAttacks(); // COMMENTED OUT - Updating defenses directly below
+
+            // ADDED: Update individual defenses and pass delta
+            if (this.defenses && this.defenses.length > 0) {
+              this.defenses.forEach(defense => {
+                if (defense && defense.active && typeof defense.update === 'function') {
+                  defense.update(delta); // Pass delta here for mana regen etc.
+                }
+              });
+            }
+
             // Wave completion check 
             const isActive = this.gameState?.isActive;
             const waveChangeInProgress = this.waveChangeInProgress;

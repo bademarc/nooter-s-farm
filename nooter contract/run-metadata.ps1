@@ -1,0 +1,1 @@
+npx hardhat run scripts/set-nft-metadata.ts --network abstractTestnet 

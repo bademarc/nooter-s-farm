@@ -1,7 +1,7 @@
 {
   "name": "Bearish",
   "description": "Bearish NFT for Abstract testnet",
-  "image": "ipfs://bafkreiekvt2a2jd5qlaowhkpgvrvdpecpp7u6iktb3ovkam2bsucvh6wj4",
+  "image": "ipfs://bafkreiekvt2a2jd5qlaowhkpgvrvdpecpp7u6iktb3ovkam2bsucvh6wj4/bearish.jpg",
   "attributes": [
     {
       "trait_type": "Collection",

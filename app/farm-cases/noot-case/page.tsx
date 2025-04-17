@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Package, CircleDollarSign, Trophy, Wallet, CreditCard, Coins, LogOut, ExternalLink, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Package, CircleDollarSign, Trophy, Wallet, CreditCard, Coins, LogOut, ExternalLink, RefreshCw, CircleAlert } from 'lucide-react';
 import Image from 'next/image';
 import { toast } from 'react-hot-toast';
 import confetti from 'canvas-confetti';
@@ -14,10 +14,11 @@ import {
   useAbstractClient
 } from "@abstract-foundation/agw-react";
 import { useAccount } from "wagmi";
+import NFTSupport from './components/NFTSupport';
 
 // NOOT token constants
-const NOOT_TOKEN_ADDRESS = "0xBe4A56850cb822dD322190C15Bd2c66781007CBc";
-const NOOT_SWAP_ADDRESS = "0x324B6DA594145093b003Ec9b305e2A478A76Ba88"; // Updated to multiFarmSwapAddress from deployment info
+const NOOT_TOKEN_ADDRESS = "0x3d8b869eB751B63b7077A0A93D6b87a54e6C8f56";
+const NOOT_SWAP_ADDRESS = "0xc2d997A8d858275260BA97bb182C67CbC8B3CBB0"; // Updated to multiFarmSwapAddress from deployment info
 const TOKEN_ABI = [
   "function balanceOf(address owner) view returns (uint256)",
   "function transfer(address to, uint256 amount) returns (bool)",
@@ -31,12 +32,10 @@ const TOKEN_ABI = [
 
 // NFT ABI for ERC721 standard NFTs
 const NFT_ABI = [
-  "function balanceOf(address owner) view returns (uint256)",
-  "function ownerOf(uint256 tokenId) view returns (address)",
+  "function ownerOf(uint256 tokenId) external view returns (address)",
   "function safeTransferFrom(address from, address to, uint256 tokenId) external",
-  "function transferFrom(address from, address to, uint256 tokenId) external",
-  "function tokenOfOwnerByIndex(address owner, uint256 index) view returns (uint256)",
-  "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)"
+  "function balanceOf(address owner, uint256 id) external view returns (uint256)",
+  "function safeBatchTransferFrom(address from, address to, uint256[] calldata ids, uint256[] calldata amounts, bytes calldata data) external"
 ];
 
 // ABI for the swap contract that handles token claiming
@@ -50,6 +49,7 @@ const SWAP_CONTRACT_ABI = [
   "function claimTestTokens(address tokenAddress, uint256 tokenAmount) external",
   "function claimTestNOOT(uint256 amount) external",
   "function transferNFT(address nftAddress, uint256 tokenId, address to) external",
+  "function transferToken(address tokenAddress, address recipient, uint256 amount) external",
   // Admin functions
   "function setTokenPrice(address tokenAddress, uint256 price) external",
   "function setFarmCoinPrice(address tokenAddress, uint256 price) external",
@@ -61,30 +61,31 @@ const SWAP_CONTRACT_ABI = [
   "event NFTClaimed(address indexed nftAddress, uint256 indexed tokenId, address indexed player)"
 ];
 
+
 // Add all token addresses from token-swap.tsx
 const TOKEN_ADDRESSES = {
-  NOOT: "0xBe4A56850cb822dD322190C15Bd2c66781007CBc",
-  ABSTER: "0x46eBB071ecC6f1c836F8a63f9C1b8F0e9Ea64250",
-  ABBY: "0xEF96F05054B72172749a4D474641b6EdC4730147",
-  BIT77: "0x4A8AcEEe2D8767B6c3037FA9c130b11C1f2fF1e3", // Using the address from NFT_ADDRESSES.BIT77
-  BEARISH: "0x7a29062CC05ce0D0f2D9D6b028cAa1FA1F08b631", // Using the address from NFT_ADDRESSES.BEARISH
-  CHESTER: "0xD611EAb789f4D9640dFC11EC7472a1d92Fe0cCc5",
-  DOJO3: "0x63915576f992f5b106CA79D976921A808cC05e30",
-  FEATHERS: "0xDDf45775E88776F0B8b9B3D28348F10edE84De64",
-  MOP: "0xB28Ee25d59E642A9a072e8EDc97C0759d4dD3Ee2",
-  NUTZ: "0x259054F8A89e531d453219d8244b03d4B3FE6586",
-  PAINGU: "0x133a7f84eDB02798e7C2244f34c215e0C1410279",
-  PENGUIN: "0x5AeCA78594Eb5b7e02fb8E79FE97C200EC345Bfd",
-  PUDGY: "0xE4997F23017a7A082023786B2399cA5Fe479233A",
-  RETSBA: "0xdaa1628e23658B88E527FdeB0A7BDBbcC40CfB96",
-  WOJACT: "0x1f0FD9E9021c09539c03A09316f53633E32C85d1",
-  YUP: "0xe584b3c2f051BAe6827612907221a9041828F59C"
+  BIT77: "0x2BE78875629607D1d982d59d9564dAd218d7Bf51", // Updated address from redeployment
+  BEARISH: "0xe7d7c000c0D12Bb47869dEE8E43363255D9d8591", // Updated address from redeployment
+  NOOT: "0x3d8b869eB751B63b7077A0A93D6b87a54e6C8f56",
+  ABSTER: "0xC3f63f74501D225E0CAA6EceA2c8ee73092B3062",
+  ABBY: "0x529aF9EbFD8612077bA6b0B72F2898EF7be337D1",
+  CHESTER: "0x2460a0068A154C7F2673417dA09f6AE81Ce70e56",
+  DOJO3: "0x46BE8d4a214D6ddecE0b3251d76d42E186927781",
+  FEATHERS: "0xb4e815813875366e2b4e65eA857278Ae5bEceDc3",
+  MOP: "0x45955765a7898f707a523CB1B7a6e3A95DDD5CD7",
+  NUTZ: "0x77D29085727405340946919A88B0Ac6c9Ffb80BD",
+  PAINGU: "0x8033d82e1e0f949C0986F9102a01C405831b784A",
+  PENGUIN: "0x8814046950cDA7aee1B249C1689d070C0db6E58D",
+  PUDGY: "0xEcbC4AB2ed8fce5C04dfB1104947Ca4891597336",
+  RETSBA: "0x26707CE367C4758F73EF09fA9D8d730869a38e10",
+  WOJACT: "0x13D6CbB5f602Df7784bbb9612c5314CDC1ba9d3c",
+  YUP: "0xF5048aD4FB452f4E39472d085E29994f6088d96B"
 };
 
 // NFT Addresses
 const NFT_ADDRESSES = {
-  BEARISH: "0x58C51e74881eE2abD5CC0d85345d26d55F386c61", // Updated address
-  BIT77: "0x5cC1D55B2450d11417e0Bc82612c034aAEBeb3AE"    // Updated address
+  BEARISH: "0xe7d7c000c0D12Bb47869dEE8E43363255D9d8591", // Regular Bearish
+  BIT77: "0x2BE78875629607D1d982d59d9564dAd218d7Bf51"    // Updated address from redeployment
 };
 
 // Token information with symbols and names
@@ -254,12 +255,12 @@ const itemDetails: Record<string, ItemDetailType> = {
     image: '/case%20items/golden/RETSBA.jpg' 
   },
   legendary6: { 
-    name: 'Bearish NFT Premium', 
+    name: 'Exclusive Bearish NFT', 
     price: prices.legendary * 2.5, // Most valuable NFT
     image: '/case%20items/golden/bearish.jpg',
     isNFT: true,
     nftAddress: NFT_ADDRESSES.BEARISH,
-    tokenId: 2 // A different token ID
+    tokenId: 1 // Token ID in the Bearish contract is 1
   }
 };
 
@@ -807,6 +808,17 @@ const WALLET_OPTIONS = {
   METAMASK: "metamask" 
 }
 
+// NFT handler address
+const NFT_HANDLER_ADDRESS = "0x96b927A5a1e54C8bfCbeb0574BC0A9bA61a13d5E";
+
+// NFT handler ABI
+const NFT_HANDLER_ABI = [
+  "function transferNFT(address nftAddress, uint256 tokenId, address recipient, uint256 amount) external",
+  "function isNFTSupported(address nftAddress) external view returns (bool)",
+  "function getNFTBalance(address nftAddress, uint256 tokenId) external view returns (uint256)",
+  "function owner() external view returns (address)"
+];
+
 export default function NootCasePage() {
   // Update to include token properties in inventory items
   interface InventoryItem {
@@ -825,6 +837,7 @@ export default function NootCasePage() {
     tokenId?: number;
     caseOrigin?: string;
     openedAt?: string;
+    claimRequested?: boolean;
   }
 
   // State variables for inventory management
@@ -1422,31 +1435,65 @@ export default function NootCasePage() {
       
       const provider = new ethers.BrowserProvider(window.ethereum);
       
-      // Wait for transaction to be mined
-      const tx = await provider.getTransaction(hash);
+      // Wait for transaction to be mined with timeout
+      let attempts = 0;
+      const maxAttempts = 30; // 30 attempts with 2 second delay = 60 seconds max wait
+      let tx = null;
+      
+      while (attempts < maxAttempts) {
+        tx = await provider.getTransaction(hash);
+        if (tx) break;
+        
+        // Wait 2 seconds before retrying
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        attempts++;
+      }
+      
       if (!tx) {
         setTxStatus("failed");
-        toast.error("Transaction not found. Please try again.");
+        toast.error("Transaction not found after multiple attempts. Please check the block explorer.");
         return false;
       }
       
       setTxStatus("confirming");
-      const receipt = await tx.wait();
       
-      // Check if transaction was successful
-      if (receipt && receipt.status === 1) {
-        setTxStatus("confirmed");
-        toast.success("Transaction confirmed!");
+      // Wait for confirmation with timeout handling
+      try {
+        const receipt = await Promise.race([
+          tx.wait(1), // Wait for 1 confirmation
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error("Transaction confirmation timeout")), 120000)
+          ) // 2 minute timeout
+        ]) as ethers.TransactionReceipt;
         
-        // Update NOOT balance after successful transaction
-        if (walletAddress) {
-          await fetchNootBalance(walletAddress);
+        // Check if transaction was successful
+        if (receipt && receipt.status === 1) {
+          setTxStatus("confirmed");
+          toast.success("Transaction confirmed!");
+          
+          // Update balances after successful transaction
+          if (walletAddress) {
+            await fetchNootBalance(walletAddress);
+            
+            // Add a short delay before dismissing the transaction dialog
+            setTimeout(() => {
+              setShowTxDialog(false);
+            }, 3000);
+          }
+          
+          return true;
+        } else {
+          setTxStatus("failed");
+          toast.error("Transaction failed. Please check the block explorer.");
+          return false;
         }
+      } catch (timeoutError) {
+        console.error("Transaction confirmation timeout:", timeoutError);
+        toast("Transaction is taking longer than expected. You can check its status on the block explorer.", {
+          duration: 10000,
+        });
         
-        return true;
-      } else {
-        setTxStatus("failed");
-        toast.error("Transaction failed. Please try again.");
+        // Don't mark as failed, but return false to avoid proceeding
         return false;
       }
     } catch (error) {
@@ -2112,24 +2159,51 @@ export default function NootCasePage() {
     }
   };
 
+  // Function to contact support for NFT claims
+  const contactSupport = (item: InventoryItem, nftAddress: string) => {
+    const subject = encodeURIComponent(`NFT Claim Assistance - ${item.name}`);
+    
+    const body = encodeURIComponent(
+      `Hello Nooters Support Team,\n\n` +
+      `I need assistance claiming my NFT. Here are the details:\n\n` +
+      `NFT Name: ${item.name}\n` +
+      `Token ID: ${item.tokenId}\n` +
+      `NFT Contract Address: ${nftAddress}\n` +
+      `My Wallet Address: ${walletAddress}\n\n` +
+      `Thank you for your help!\n\n`
+    );
+    
+    window.open(`mailto:support@nooters.farm?subject=${subject}&body=${body}`);
+  };
+
   // Add a new function to claim NFTs
   const claimNFTToWallet = async (item: InventoryItem) => {
-    if (!item.isNFT || !item.tokenId === undefined) {
+    if (!item.isNFT || item.tokenId === undefined) {
       toast.error("Invalid NFT data", { id: "claim-toast" });
       setIsClaimingToken(false);
       return;
     }
 
     try {
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const signer = await provider.getSigner();
+      setIsClaimingToken(true);
       
       // Determine the correct NFT address
       let nftAddress;
-      if (item.nftAddress) {
+      if (item.nftAddress && item.nftAddress.trim() !== '') {
         nftAddress = getChecksumAddress(item.nftAddress);
       } else if (item.tokenKey && NFT_ADDRESSES[item.tokenKey as keyof typeof NFT_ADDRESSES]) {
         nftAddress = getChecksumAddress(NFT_ADDRESSES[item.tokenKey as keyof typeof NFT_ADDRESSES]);
+      } else if (item.name) {
+        // Try to extract key from name (e.g., "Bearish NFT" -> "BEARISH")
+        const possibleKey = item.name.split(' ')[0].toUpperCase();
+        if (NFT_ADDRESSES[possibleKey as keyof typeof NFT_ADDRESSES]) {
+          nftAddress = getChecksumAddress(NFT_ADDRESSES[possibleKey as keyof typeof NFT_ADDRESSES]);
+        } else {
+          console.error("Could not determine NFT address from name", item);
+          toast.error("Invalid NFT configuration. Please contact support.", { id: "claim-toast" });
+          setIsClaimingToken(false);
+          return;
+        }
       } else {
         console.error("Could not determine NFT address", item);
         toast.error("Invalid NFT configuration. Please contact support.", { id: "claim-toast" });
@@ -2144,71 +2218,72 @@ export default function NootCasePage() {
         - Selected NFT address: ${nftAddress}
         - Token ID: ${item.tokenId}
         - Recipient: ${walletAddress}
+        - Handler Address: ${NFT_HANDLER_ADDRESS}
       `);
       
-      // Create NFT and swap contract instances
-      const nftContract = new ethers.Contract(
-        nftAddress,
-        NFT_ABI,
-        signer
-      );
-      
-      const swapContractAddress = getChecksumAddress(NOOT_SWAP_ADDRESS);
-      console.log(`[DEBUG] Swap contract address: ${swapContractAddress}`);
-      
-      const swapContract = new ethers.Contract(
-        swapContractAddress,
-        SWAP_CONTRACT_ABI,
-        signer
-      );
-      
-      toast.loading(`Claiming ${item.name} NFT to your wallet...`, { id: "claim-toast" });
-      
-      // Check if the contract owns the NFT
+      // Verify handler contract supports this NFT
       try {
-        const ownerOf = await nftContract.ownerOf(item.tokenId);
+        // Create NFT and handler contract instances
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const signer = await provider.getSigner();
         
-        console.log(`[DEBUG] Current owner of NFT #${item.tokenId}: ${ownerOf}`);
-        console.log(`[DEBUG] Expected owner (swap contract): ${swapContractAddress}`);
+        const nftContract = new ethers.Contract(
+          nftAddress,
+          NFT_ABI,
+          signer
+        );
         
-        if (ownerOf.toLowerCase() !== swapContractAddress.toLowerCase()) {
-          toast.error(`Claim failed: Contract doesn't own the NFT. Please contact support.`, { id: "claim-toast" });
+        // Create NFT handler contract instance
+        const nftHandlerContract = new ethers.Contract(
+          getChecksumAddress(NFT_HANDLER_ADDRESS),
+          NFT_HANDLER_ABI,
+          signer
+        );
+        
+        const isNFTSupported = await nftHandlerContract.isNFTSupported(nftAddress);
+        console.log(`[DEBUG] Is NFT ${nftAddress} supported by handler? ${isNFTSupported}`);
+        
+        if (!isNFTSupported) {
+          console.error(`NFT ${nftAddress} is not supported by the handler contract`);
+          toast.error("This NFT is not supported by the handler contract. Please contact support.", { id: "claim-toast" });
           setIsClaimingToken(false);
           return;
         }
-      } catch (error) {
-        console.error("Error checking NFT ownership:", error);
-        toast.error("Error verifying NFT ownership. Please contact support.", { id: "claim-toast" });
-        setIsClaimingToken(false);
-        return;
-      }
-      
-      // Verify all parameters before calling the contract
-      console.log(`[DEBUG] About to call transferNFT with:
-        - NFT address: ${nftAddress}
-        - Token ID: ${item.tokenId}
-        - Recipient: ${getChecksumAddress(walletAddress)}
-      `);
-      
-      // Call the transferNFT function on the swap contract
-      try {
-        const claimTx = await swapContract.transferNFT(
+        
+        // Check NFT balance in the handler contract
+        const nftBalance = await nftHandlerContract.getNFTBalance(nftAddress, item.tokenId);
+        console.log(`[DEBUG] NFT balance in handler: ${nftBalance}`);
+        
+        if (nftBalance <= 0) {
+          console.error(`NFT ${nftAddress} with token ID ${item.tokenId} is not available in the handler contract`);
+          toast.error("This NFT is not available for claiming. Please contact support.", { id: "claim-toast" });
+          setIsClaimingToken(false);
+          return;
+        }
+        
+        toast.loading(`Claiming ${item.name} NFT to your wallet...`, { id: "claim-toast" });
+        
+        // Transfer the NFT using the handler contract
+        const claimTx = await nftHandlerContract.transferNFT(
           nftAddress,
           item.tokenId,
           getChecksumAddress(walletAddress),
-          { gasLimit: 3000000 } // Increased gas limit for NFT transfers
+          1, // Amount is 1 for ERC1155 NFTs
+          { gasLimit: 3000000 }
         );
         
         toast.loading(`Finalizing NFT claim...`, { id: "claim-toast" });
         
-        // Monitor the claim transaction
+        // Monitor the transaction
         const claimSuccess = await monitorTransaction(claimTx.hash);
-        
+       
         if (claimSuccess) {
-          // Double-check if NFT was actually received
+          // Verify the transfer was successful by checking balance
           try {
-            const newOwner = await nftContract.ownerOf(item.tokenId);
-            if (newOwner.toLowerCase() === walletAddress.toLowerCase()) {
+            const balanceAfter = await nftContract.balanceOf(walletAddress, item.tokenId);
+            console.log(`[DEBUG] NFT balance after transfer: ${balanceAfter}`);
+            
+            if (balanceAfter > 0) {
               console.log(`NFT #${item.tokenId} successfully transferred to ${walletAddress}`);
               
               // Update the item to show it's been claimed
@@ -2221,33 +2296,74 @@ export default function NootCasePage() {
               );
               
               toast.success(`Successfully claimed ${item.name} NFT!`, { id: "claim-toast" });
+              
+              // Ask if they want to add the NFT to their wallet (MetaMask)
+              setTimeout(() => {
+                if (window.confirm(`Would you like to add ${item.name} to your wallet for easy viewing?`)) {
+                  // Call function to add NFT to wallet
+                  addNFTToWallet(nftAddress, item.tokenId || 1, item.name);
+                }
+              }, 1000);
             } else {
-              console.error(`NFT transfer succeeded but ownership verification failed. Current owner: ${newOwner}`);
-              toast.error("NFT claim completed but verification failed. Please check your wallet.", { id: "claim-toast" });
+              console.error(`Transfer seemed successful but balance check failed for NFT #${item.tokenId}`);
+              toast.error("Transfer completed, but unable to verify. Check your wallet or contact support.", { id: "claim-toast" });
             }
-          } catch (error) {
-            const newOwnerError = error as Error;
-            console.error("Error verifying NFT transfer:", newOwnerError);
-            toast.error(`NFT claim may have succeeded but verification failed: ${newOwnerError.message || "Unknown error"}. Please check your wallet.`, { id: "claim-toast" });
+          } catch (error: any) {
+            console.error("Error verifying NFT transfer:", error);
+            toast.error("Transaction completed but unable to verify. Please check your wallet.", { id: "claim-toast" });
           }
         } else {
-          toast.error("NFT claim failed. Please try again.", { id: "claim-toast" });
+          console.error(`NFT claim transaction failed`);
+          toast.error("Failed to claim NFT. Please try again or contact support.", { id: "claim-toast" });
         }
-      } catch (error) {
-        console.error("Error executing NFT claim transaction:", error);
-        const errorMsg = (error as any)?.message || "Unknown error";
-        toast.error(`NFT claim transaction error: ${errorMsg.substring(0, 100)}...`, { id: "claim-toast" });
+      } catch (error: any) {
+        console.error("Error claiming NFT:", error);
+        toast.error(`Failed to claim NFT: ${error.message || "Unknown error"}`, { id: "claim-toast" });
+      } finally {
         setIsClaimingToken(false);
       }
-    } catch (error) {
-      console.error("Error claiming NFT:", error);
-      toast.error("Error claiming NFT. Please try again.");
-    } finally {
+    } catch (error: any) {
+      console.error("Error in NFT claim process:", error);
+      toast.error(`Error: ${error.message || "Unknown error"}`, { id: "claim-toast" });
       setIsClaimingToken(false);
     }
   };
+  
+  // Helper function to add NFT to wallet (MetaMask)
+  const addNFTToWallet = async (nftAddress: string, tokenId: number, name: string) => {
+    try {
+      // Only works with MetaMask
+      if (!window.ethereum?.isMetaMask) {
+        toast.error("This feature is only available with MetaMask wallet", { id: "add-nft-toast" });
+        return;
+      }
+      
+      toast.loading("Adding NFT to your wallet...", { id: "add-nft-toast" });
+      
+      // Request to add the NFT to the wallet
+      const wasAdded = await (window.ethereum.request as any)({
+        method: 'wallet_watchAsset',
+        params: {
+          type: 'ERC1155',
+          options: {
+            address: nftAddress,
+            tokenId: tokenId.toString(16), // Convert to hex without 0x prefix
+          },
+        },
+      });
 
-  // Add token to wallet function - similar to the one in token-swap.tsx
+      if (wasAdded) {
+        toast.success(`${name} was added to your wallet!`, { id: "add-nft-toast" });
+      } else {
+        toast.error("Failed to add NFT to wallet", { id: "add-nft-toast" });
+      }
+    } catch (error: any) {
+      console.error("Error adding NFT to wallet:", error);
+      toast.error(`Error adding NFT to wallet: ${error.message || "Unknown error"}`, { id: "add-nft-toast" });
+    }
+  };
+
+  // Add token to wallet function - using pattern from token-swap.tsx
   const addTokenToWallet = async (tokenAddress: string, tokenKey: string) => {
     try {
       // Get checksummed address
@@ -2266,7 +2382,7 @@ export default function NootCasePage() {
         decimals: 18
       };
       
-      // Try to use wallet_watchAsset for other wallets
+      // Try to use wallet_watchAsset method first
       try {
         console.log("Attempting to add token using wallet_watchAsset method");
         
@@ -2288,13 +2404,41 @@ export default function NootCasePage() {
         if (wasAdded) {
           console.log('Token was added successfully!');
           toast.success(`${tokenInfo.symbol} token added to your wallet!`);
+          return;
         } else {
           console.log('User rejected adding the token, using fallback method');
           fallbackToManualMethod(checksummedAddress, tokenInfo);
         }
       } catch (error) {
         console.error("Error using wallet_watchAsset:", error);
-        // Use fallback method without throwing a new error
+        
+        // Try alternative format for wallet_watchAsset (MetaMask requires array format)
+        try {
+          const wasAdded = await window.ethereum.request({
+            method: 'wallet_watchAsset',
+            params: [
+              {
+                type: 'ERC20',
+                options: {
+                  address: checksummedAddress,
+                  symbol: tokenInfo.symbol,
+                  decimals: 18,
+                  image: `https://nooters.farm/tokens/${tokenKey.toLowerCase()}.png`,
+                },
+              }
+            ]
+          });
+          
+          if (wasAdded) {
+            console.log('Token was added successfully with alternative format!');
+            toast.success(`${tokenInfo.symbol} token added to your wallet!`);
+            return;
+          }
+        } catch (altError) {
+          console.error("Error with alternative wallet_watchAsset format:", altError);
+        }
+        
+        // Use fallback method if both attempts fail
         console.log("wallet_watchAsset not supported, using fallback method");
         fallbackToManualMethod(checksummedAddress, tokenInfo);
       }
@@ -2303,6 +2447,10 @@ export default function NootCasePage() {
       toast.error("Error adding token to wallet", {
         duration: 5000,
       });
+      // Still try the fallback method
+      if (tokenAddress) {
+        fallbackToManualMethod(tokenAddress, { symbol: tokenKey, name: tokenKey });
+      }
     }
   };
   
@@ -2448,7 +2596,12 @@ export default function NootCasePage() {
         
         {/* Claim/Sell buttons */}
         <div className="flex flex-col xs:flex-row gap-2 mt-3 md:mt-0">
-          {!item.claimed ? (
+          {item.claimed ? (
+            <span className="text-green-400 text-xs flex items-center gap-1">
+              <Trophy className="w-3 h-3" />
+              {item.isNFT ? 'NFT Claimed' : 'Tokens Claimed'}
+            </span>
+          ) : (
             <>
               <button
                 onClick={() => claimTokenToWallet(item)}
@@ -2468,14 +2621,15 @@ export default function NootCasePage() {
                 Sell
               </button>
             </>
-          ) : (
-            <span className="text-green-400 text-xs flex items-center gap-1">
-              <Trophy className="w-3 h-3" />
-              {item.isNFT ? 'NFT Claimed' : 'Claimed'}
-            </span>
           )}
         </div>
       </div>
+      {/* Add this to the renderInventoryItem function to show the requested status */}
+      {item.claimRequested && (
+        <div className="absolute top-2 right-2 bg-purple-600 text-white text-xs px-2 py-1 rounded-full">
+          Admin Requested
+        </div>
+      )}
     </div>
   );
   
@@ -2596,8 +2750,20 @@ export default function NootCasePage() {
         tokenKey: centerItem.tokenKey,
         tokenAmount: centerItem.tokenAmount,
         claimed: false,
-        isNFT: centerItem.isNFT || false
+        isNFT: centerItem.isNFT || false,
+        nftAddress: centerItem.nftAddress, // Add NFT address
+        tokenId: centerItem.tokenId     // Add token ID
       };
+      
+      // Debug logging for NFT items
+      if (inventoryItem.isNFT) {
+        console.log("Adding NFT to inventory:", {
+          name: inventoryItem.name,
+          isNFT: inventoryItem.isNFT,
+          nftAddress: inventoryItem.nftAddress,
+          tokenId: inventoryItem.tokenId
+        });
+      }
       
       setInventory(prev => [inventoryItem, ...prev]);
       setRewardItem(inventoryItem);
@@ -2646,29 +2812,90 @@ export default function NootCasePage() {
       
       // Create swap contract
       const swapContract = new ethers.Contract(
-        getChecksumAddress(NOOT_SWAP_ADDRESS),
+        getChecksumAddress("0xc2d997A8d858275260BA97bb182C67CbC8B3CBB0"), // Use the correct contract address directly
         SWAP_CONTRACT_ABI,
         signer
       );
       
-      // Use claimTestTokens function on the swap contract
+      // Get the actual contract balance for this token
+      const tokenContract = new ethers.Contract(
+        getChecksumAddress(item.tokenAddress),
+        TOKEN_ABI,
+        signer
+      );
+      
+      const contractBalance = await tokenContract.balanceOf(getChecksumAddress("0xc2d997A8d858275260BA97bb182C67CbC8B3CBB0"));
+      console.log(`Token ${item.tokenKey} contract balance: ${ethers.formatUnits(contractBalance, 18)}`);
+
+      if (contractBalance < ethers.parseUnits(item.tokenAmount?.toString() || "0", 18)) {
+        toast.error(`Contract has insufficient ${item.tokenKey} tokens. Please contact support.`, { id: "claim-toast" });
+        setIsClaimingToken(false);
+        return;
+      }
+      
+      // Calculate gas limit based on token amount - larger transfers need more gas
+      let gasLimit = 1000000; // Default
+      if (item.tokenKey === 'MOP' || item.tokenAmount >= 10000) {
+        gasLimit = 2500000; // Increase gas limit for large token amounts
+        console.log("Using higher gas limit for high-value token transfer");
+      }
+
       try {
-        // Determine token amount in wei (with 18 decimals)
-        const tokenAmount = etherUtils.parseUnits(item.tokenAmount?.toString() || "0", 18);
+        console.log("Trying direct token transfer from contract");
         
-        // Call claimTestTokens on the contract
-        const claimTx = await swapContract.claimTestTokens(
+        // Format amount properly
+        const tokenAmount = ethers.parseUnits(item.tokenAmount?.toString() || "0", 18);
+        
+        // Call claimTestTokens as primary method for MOP and high-value tokens
+        if (item.tokenKey === 'MOP' || item.tokenAmount >= 10000) {
+          console.log("Using claimTestTokens for MOP/high-value token");
+          const claimTx = await swapContract.claimTestTokens(
+            getChecksumAddress(item.tokenAddress),
+            tokenAmount,
+            { gasLimit }
+          );
+          
+          toast.loading(`Finalizing token claim...`, { id: "claim-toast" });
+          
+          // Monitor the transaction
+          const txResult = await monitorTransaction(claimTx.hash);
+          
+          if (txResult) {
+            // Update the claimed state
+            setInventory(prev => 
+              prev.map(invItem => 
+                invItem.id === item.id 
+                  ? {...invItem, claimed: true} 
+                  : invItem
+              )
+            );
+            
+            toast.success(`Successfully claimed ${item.tokenAmount} ${item.tokenKey} tokens!`, { id: "claim-toast" });
+            
+            // Offer to add token to wallet
+            setTimeout(() => {
+              addTokenToWallet(item.tokenAddress!, item.tokenKey!);
+            }, 1000);
+            return;
+          }
+          toast.error("High-value token claim failed. Trying alternative method...", { id: "claim-toast" });
+        }
+        
+        // Call transferToken - this is the most reliable function in NooterSwap.sol
+        const claimTx = await swapContract.transferToken(
           getChecksumAddress(item.tokenAddress),
-          tokenAmount
+          getChecksumAddress(walletAddress),
+          tokenAmount,
+          { gasLimit }
         );
         
-        toast.loading(`Finalizing token claim...`, { id: "claim-toast" });
+        toast.loading(`Finalizing token transfer...`, { id: "claim-toast" });
         
-        // Monitor the claim transaction
-        const claimSuccess = await monitorTransaction(claimTx.hash);
+        // Monitor the transaction
+        const txResult = await monitorTransaction(claimTx.hash);
         
-        if (claimSuccess) {
-          // Update inventory
+        if (txResult) {
+          // Update the claimed state
           setInventory(prev => 
             prev.map(invItem => 
               invItem.id === item.id 
@@ -2677,27 +2904,76 @@ export default function NootCasePage() {
             )
           );
           
-          // Suggest adding token to wallet
-          setTimeout(() => {
-            if (item.tokenAddress && item.tokenKey) {
-              addTokenToWallet(item.tokenAddress, item.tokenKey);
-            }
-          }, 1000);
-          
           toast.success(`Successfully claimed ${item.tokenAmount} ${item.tokenKey} tokens!`, { id: "claim-toast" });
+          
+          // Offer to add token to wallet
+          setTimeout(() => {
+            addTokenToWallet(item.tokenAddress!, item.tokenKey!);
+          }, 1000);
         } else {
-          toast.error("Token claim failed. Please try again.", { id: "claim-toast" });
+          toast.error("Token claim failed. Trying alternative method...", { id: "claim-toast" });
+          throw new Error("Transaction failed");
         }
+      } catch (transferError) {
+        console.error("Direct token transfer failed, trying claimTestTokens:", transferError);
         
-      } catch (error) {
-        console.error("Error claiming token:", error);
-        toast.error("Error claiming token. Please try again.");
-      } finally {
-        setIsClaimingToken(false);
+        // If transferToken isn't available, try the claimTestTokens function as fallback
+        try {
+          toast.loading(`Trying alternative claim method...`, { id: "claim-toast" });
+          
+          const tokenAmount = ethers.parseUnits(item.tokenAmount?.toString() || "0", 18);
+          
+          // Try claimTestTokens as fallback
+          const claimTx = await swapContract.claimTestTokens(
+            getChecksumAddress(item.tokenAddress),
+            tokenAmount,
+            { gasLimit }
+          );
+          
+          toast.loading(`Finalizing token claim...`, { id: "claim-toast" });
+          
+          // Monitor the transaction
+          const txResult = await monitorTransaction(claimTx.hash);
+          
+          if (txResult) {
+            // Update the claimed state
+            setInventory(prev => 
+              prev.map(invItem => 
+                invItem.id === item.id 
+                  ? {...invItem, claimed: true} 
+                  : invItem
+              )
+            );
+            
+            toast.success(`Successfully claimed ${item.tokenAmount} ${item.tokenKey} tokens!`, { id: "claim-toast" });
+            
+            // Offer to add token to wallet
+            setTimeout(() => {
+              addTokenToWallet(item.tokenAddress!, item.tokenKey!);
+            }, 1000);
+          } else {
+            toast.error("Token claim failed. Please try again.", { id: "claim-toast" });
+          }
+        } catch (claimError) {
+          console.error("Both token transfer methods failed:", claimError);
+          toast.error(
+            <div className="space-y-1">
+              <p>Unable to claim tokens from contract.</p>
+              <p className="text-xs">Please contact support for assistance.</p>
+              <button 
+                onClick={() => contactSupport(item, "")} 
+                className="mt-2 bg-yellow-600 hover:bg-yellow-700 text-white text-xs px-3 py-1 rounded"
+              >
+                Contact Support
+              </button>
+            </div>,
+            { id: "claim-toast", duration: 10000 }
+          );
+        }
       }
     } catch (error) {
-      console.error("Error claiming token:", error);
-      toast.error("Error claiming token. Please try again.");
+      console.error("Error in claim token process:", error);
+      toast.error("Error claiming token. Please try again later.");
     } finally {
       setIsClaimingToken(false);
     }
@@ -2897,6 +3173,291 @@ export default function NootCasePage() {
   const { login: loginWithAbstract } = useLoginWithAbstract();
   const abstractClient = useAbstractClient();
   const { address: agwAddress, isConnected: isAGWConnected } = useAccount();
+
+  // Add function to fund contract with tokens for admin use
+  const fundContractWithTokens = async () => {
+    try {
+      setIsRefreshing(true);
+      toast.loading("Funding contract with tokens...", { id: "fund-toast" });
+      
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      
+      // Correct contract address
+      const contractAddress = getChecksumAddress("0xc2d997A8d858275260BA97bb182C67CbC8B3CBB0");
+      const swapContract = new ethers.Contract(
+        contractAddress,
+        SWAP_CONTRACT_ABI,
+        signer
+      );
+      
+      // Get all tokens from TOKEN_ADDRESSES, including RETSBA
+      const tokensToFund = Object.keys(TOKEN_ADDRESSES);
+      
+      // Amount to fund per token (500 tokens)
+      const fundAmount = ethers.parseUnits("500", 18);
+      
+      console.log(`Funding contract with tokens...`);
+      
+      // Fund each token
+      let successCount = 0;
+      for (const tokenKey of tokensToFund) {
+        try {
+          const tokenAddress = getChecksumAddress(TOKEN_ADDRESSES[tokenKey as keyof typeof TOKEN_ADDRESSES]);
+          const tokenContract = new ethers.Contract(tokenAddress, TOKEN_ABI, signer);
+          
+          console.log(`Processing ${tokenKey} (${tokenAddress})...`);
+          
+          // Check if user has enough balance
+          const userBalance = await tokenContract.balanceOf(walletAddress);
+          const formattedBalance = ethers.formatUnits(userBalance, 18);
+          console.log(`Your ${tokenKey} balance: ${formattedBalance}`);
+          
+          if (userBalance < fundAmount) {
+            console.log(`Insufficient ${tokenKey} balance: ${formattedBalance}`);
+            toast.error(`Not enough ${tokenKey} tokens. You have ${formattedBalance} ${tokenKey}`);
+            continue;
+          }
+          
+          // First approve token spending
+          console.log(`Approving ${tokenKey} for contract funding...`);
+          const approveTx = await tokenContract.approve(contractAddress, fundAmount);
+          console.log(`Approval transaction submitted: ${approveTx.hash}`);
+          
+          toast.loading(`Approving ${tokenKey} tokens...`, { id: "approve-toast" });
+          await approveTx.wait();
+          toast.success(`${tokenKey} approved for funding`, { id: "approve-toast" });
+          
+          // Then fund the contract
+          console.log(`Funding contract with ${tokenKey}...`);
+          
+          // Use fundToken method for all tokens
+          const fundTx = await swapContract.fundToken(tokenAddress, fundAmount, { gasLimit: 1000000 });
+          
+          console.log(`Funding transaction submitted: ${fundTx.hash}`);
+          
+          // Monitor transaction
+          const fundSuccess = await monitorTransaction(fundTx.hash);
+          
+          if (fundSuccess) {
+            console.log(`Contract successfully funded with ${tokenKey}`);
+            successCount++;
+          }
+        } catch (error) {
+          console.error(`Error funding contract with ${tokenKey}:`, error);
+        }
+      }
+      
+      toast.dismiss("fund-toast");
+      
+      if (successCount > 0) {
+        toast.success(`Successfully funded contract with ${successCount} tokens`);
+      } else {
+        toast.error("Failed to fund contract with any tokens");
+      }
+    } catch (error) {
+      console.error("Error funding contract:", error);
+      toast.error("Failed to fund contract");
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  // Also add a function to register all tokens in the contract
+  const registerAllTokens = async () => {
+    try {
+      setIsRefreshing(true);
+      toast.loading("Registering tokens in contract...", { id: "register-toast" });
+      
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      
+      // Correct contract address
+      const contractAddress = getChecksumAddress("0xc2d997A8d858275260BA97bb182C67CbC8B3CBB0");
+      const swapContract = new ethers.Contract(
+        contractAddress,
+        SWAP_CONTRACT_ABI,
+        signer
+      );
+      
+      // Get all tokens from TOKEN_ADDRESSES except NOOT
+      const tokensToRegister = Object.keys(TOKEN_ADDRESSES).filter(key => key !== "NOOT");
+      
+      console.log(`Registering ${tokensToRegister.length} tokens...`);
+      
+      let successCount = 0;
+      
+      // Register each token
+      for (const tokenKey of tokensToRegister) {
+        try {
+          const tokenAddress = getChecksumAddress(TOKEN_ADDRESSES[tokenKey as keyof typeof TOKEN_ADDRESSES]);
+          
+          console.log(`Registering ${tokenKey} (${tokenAddress})...`);
+          
+          // Add token to contract
+          const tx = await swapContract.addToken(tokenAddress, { gasLimit: 500000 });
+          
+          console.log(`Registration transaction submitted: ${tx.hash}`);
+          
+          // Monitor transaction
+          const success = await monitorTransaction(tx.hash);
+          
+          if (success) {
+            console.log(`${tokenKey} registered successfully`);
+            successCount++;
+          }
+        } catch (error) {
+          console.error(`Error registering ${tokenKey}:`, error);
+          // Continue with other tokens even if one fails
+        }
+      }
+      
+      toast.dismiss("register-toast");
+      
+      if (successCount > 0) {
+        toast.success(`Successfully registered ${successCount} tokens`);
+      } else {
+        toast.error("Failed to register any tokens");
+      }
+    } catch (error) {
+      console.error("Error registering tokens:", error);
+      toast.dismiss("register-toast");
+      toast.error("Failed to register tokens");
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  // Add isRefreshing state
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Admin panel component near the WinCard component
+  const AdminPanel = () => {
+    if (!isWalletConnected) return null;
+    
+    return (
+      <div className="mb-4 p-4 border border-yellow-500 rounded-lg bg-black/50">
+        <h3 className="text-white font-bold mb-2">Admin Functions</h3>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={fundContractWithTokens}
+            disabled={isRefreshing}
+            className="px-3 py-2 bg-green-800 hover:bg-green-700 text-white rounded text-sm transition-all disabled:opacity-50"
+          >
+            {isRefreshing ? "Processing..." : "Fund Contract with Tokens"}
+          </button>
+          <button
+            onClick={registerAllTokens}
+            disabled={isRefreshing}
+            className="px-3 py-2 bg-purple-800 hover:bg-purple-700 text-white rounded text-sm transition-all disabled:opacity-50"
+          >
+            {isRefreshing ? "Processing..." : "Register All Tokens"}
+          </button>
+          <button
+            onClick={checkAndDisplayContractBalances}
+            disabled={isRefreshing}
+            className="px-3 py-2 bg-blue-800 hover:bg-blue-700 text-white rounded text-sm transition-all disabled:opacity-50 col-span-2"
+          >
+            {isRefreshing ? "Checking..." : "Check Contract Token Balances"}
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  // Add function to check and display contract token balances
+  const checkAndDisplayContractBalances = async () => {
+    try {
+      setIsRefreshing(true);
+      toast.loading("Checking contract balances...", { id: "check-balances-toast" });
+      
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      
+      // Correct contract address
+      const contractAddress = getChecksumAddress("0xc2d997A8d858275260BA97bb182C67CbC8B3CBB0");
+      
+      // Check balances for all tokens
+      const tokenBalances: Record<string, string> = {};
+      
+      for (const tokenKey of Object.keys(TOKEN_ADDRESSES)) {
+        try {
+          const tokenAddress = getChecksumAddress(TOKEN_ADDRESSES[tokenKey as keyof typeof TOKEN_ADDRESSES]);
+          
+          // Create token contract
+          const tokenContract = new ethers.Contract(tokenAddress, TOKEN_ABI, provider);
+          
+          // Check balance
+          const balance = await tokenContract.balanceOf(contractAddress);
+          const formattedBalance = ethers.formatUnits(balance, 18);
+          
+          tokenBalances[tokenKey] = formattedBalance;
+          console.log(`Contract ${tokenKey} balance: ${formattedBalance}`);
+        } catch (error) {
+          console.error(`Error checking ${tokenKey} balance:`, error);
+          tokenBalances[tokenKey] = "Error";
+        }
+      }
+      
+      toast.dismiss("check-balances-toast");
+      
+      // Display balances in a custom toast
+      toast.custom(
+        <div className="bg-[#121212] border border-blue-500 p-4 rounded-lg shadow-lg max-w-md">
+          <h3 className="font-bold text-white mb-2">Contract Token Balances</h3>
+          <div className="max-h-60 overflow-y-auto pr-2">
+            {Object.entries(tokenBalances).map(([token, balance]) => (
+              <div key={token} className="flex justify-between py-1 border-b border-gray-700">
+                <span className="text-gray-300">{token}:</span>
+                <span className={`font-mono ${parseFloat(balance) > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {balance}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 flex justify-end">
+            <button 
+              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-white text-sm transition-colors"
+              onClick={() => toast.dismiss()}
+            >
+              Close
+            </button>
+          </div>
+        </div>,
+        { duration: 15000 }
+      );
+    } catch (error) {
+      console.error("Error checking contract balances:", error);
+      toast.dismiss("check-balances-toast");
+      toast.error("Failed to check contract balances");
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  // Add function to check and display contract token balances
+  const checkContractTokenBalance = async (tokenAddress: string, tokenKey: string) => {
+    try {
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const contractAddress = getChecksumAddress("0xc2d997A8d858275260BA97bb182C67CbC8B3CBB0");
+      
+      // Create token contract to check balance
+      const tokenContract = new ethers.Contract(
+        getChecksumAddress(tokenAddress),
+        TOKEN_ABI,
+        provider
+      );
+      
+      // Check contract's token balance
+      const contractBalance = await tokenContract.balanceOf(contractAddress);
+      const formattedBalance = ethers.formatUnits(contractBalance, 18);
+      console.log(`Contract ${tokenKey} balance: ${formattedBalance}`);
+      
+      return { contractBalance, formattedBalance };
+    } catch (error) {
+      console.error("Error checking contract balance:", error);
+      return { contractBalance: BigInt(0), formattedBalance: "0" };
+    }
+  };
 
   return (
     <div className="container mx-auto py-8 px-4 noot-theme min-h-screen">
@@ -3503,6 +4064,17 @@ export default function NootCasePage() {
       )}
       <TransactionDialog />
       {showWalletOptions && <WalletOptionsDialog />}
+      <AdminPanel />
+      
+      {/* Add this new section at the bottom */}
+      <div className="w-full max-w-3xl mt-8">
+        <details className="bg-white p-3 rounded-lg shadow">
+          <summary className="font-bold text-lg cursor-pointer">NFT Claim Troubleshooting</summary>
+          <div className="mt-4">
+            <NFTSupport />
+          </div>
+        </details>
+      </div>
     </div>
   );
 }

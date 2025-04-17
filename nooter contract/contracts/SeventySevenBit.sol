@@ -19,8 +19,8 @@ contract SeventySevenBit is ERC1155Supply, Ownable {
     string private _baseURI = "";
     
     constructor() ERC1155("") Ownable(msg.sender) {
-        // Mint 1000 tokens with ID 1 to the deployer
-        _mint(msg.sender, SEVENTY_SEVEN_BIT, 1000, "");
+        // Mint 100000 tokens with ID 1 to the deployer
+        _mint(msg.sender, SEVENTY_SEVEN_BIT, 100000, "");
     }
     
     /**

@@ -12,6 +12,13 @@ export default class Defense {
     this.damage = 1; // Default damage
     this.targetTypes = []; // Types of enemies this defense can target
     
+    // Mana properties
+    this.maxMana = 100; // Default max mana
+    this.currentMana = this.maxMana;
+    this.manaCostPerShot = 10; // Default mana cost
+    this.manaRegenRate = 5; // Default mana regen per second
+    this.isOutOfMana = false;
+    
     // Special attack properties
     this.specialAttackAvailable = false;
     this.specialAttackCooldown = 10000; // 10 seconds cooldown
@@ -29,39 +36,54 @@ export default class Defense {
     
     // Set properties based on defense type
     if (type === 'scarecrow') {
-      this.cost = 35; 
-      this.range = 250; // Increased range for ice mage
-      this.cooldown = 1000; // 1 second cooldown for ice mage
-      this.damage = 1.2; // Reduced damage for balance (was 1.5)
+      this.cost = 35;
+      this.range = 210;
+      this.cooldown = 1600;
+      this.damage = 0.4; // Decreased from 0.5
       this.targetTypes = ['bird'];
-      this.aoeRadius = 80; // Radius of area effect for ice mage
-      this.aoeDamageMultiplier = 0.7; // AoE damage is 70% of direct damage
+      this.aoeRadius = 80;
+      this.aoeDamageMultiplier = 0.5;
+      this.maxMana = 50;
+      this.currentMana = this.maxMana;
+      this.manaCostPerShot = 8; // Decreased from 10 (~6 shots)
+      this.manaRegenRate = 4; // Increased from 2 (2s per shot regen)
       this.createABSMage();
     } else if (type === 'dog') {
       this.cost = 50;
-      this.range = 200; // Increased range for fire mage
-      this.cooldown = 800; // 0.8 second cooldown for fire mage
-      this.damage = 2.0; // Reduced damage for balance (was 2.5)
+      this.range = 180;
+      this.cooldown = 1500;
+      this.damage = 0.7; // Decreased from 0.9
       this.targetTypes = ['rabbit'];
-      this.aoeRadius = 60; // Radius of area effect for fire mage
-      this.aoeDamageMultiplier = 0.8; // AoE damage is 80% of direct damage
+      this.aoeRadius = 60;
+      this.aoeDamageMultiplier = 0.6;
+      this.maxMana = 60;
+      this.currentMana = this.maxMana;
+      this.manaCostPerShot = 10; // Decreased from 12 (6 shots)
+      this.manaRegenRate = 5; // Increased from 2.4 (2s per shot regen)
       this.createNOOTMage();
     } else if (type === 'wizard') {
-      this.cost = 100;
-      this.range = 300;
-      this.cooldown = 1200; // 1.2 seconds
-      this.damage = 3.0; // High single-target damage
-      this.targetTypes = ['bird', 'rabbit', 'fox', 'slime', 'ghost', 'skeleton', 'bat', 'spider', 'wolf', 'snake', 'goblin']; // Target most ground/air except bosses initially
-      // Wizard is single target focused, low/no AOE by default
-      this.createWizard(); 
+      this.cost = 110;
+      this.range = 260;
+      this.cooldown = 2100;
+      this.damage = 1.2; // Decreased from 1.5
+      this.targetTypes = ['bird', 'rabbit', 'fox', 'slime', 'ghost', 'skeleton', 'bat', 'spider', 'wolf', 'snake', 'goblin'];
+      this.maxMana = 80;
+      this.currentMana = this.maxMana;
+      this.manaCostPerShot = 18; // Decreased from 20 (~4-5 shots)
+      this.manaRegenRate = 6; // Increased from 3 (3s per shot regen)
+      this.createWizard();
     } else if (type === 'cannon') {
-      this.cost = 150;
-      this.range = 350;
-      this.cooldown = 2500; // 2.5 seconds (slow firing)
-      this.damage = 5.0; // High damage 
-      this.targetTypes = ['rabbit', 'fox', 'slime', 'skeleton', 'spider', 'wolf', 'snake', 'goblin']; // Ground targets primarily
-      this.aoeRadius = 100; // Large AOE radius
-      this.aoeDamageMultiplier = 0.6; // Significant AOE damage
+      this.cost = 165;
+      this.range = 310;
+      this.cooldown = 3800;
+      this.damage = 2.0; // Decreased from 2.5
+      this.targetTypes = ['rabbit', 'fox', 'slime', 'skeleton', 'spider', 'wolf', 'snake', 'goblin'];
+      this.aoeRadius = 100;
+      this.aoeDamageMultiplier = 0.4;
+      this.maxMana = 100;
+      this.currentMana = this.maxMana;
+      this.manaCostPerShot = 30; // Decreased from 35 (~3-4 shots)
+      this.manaRegenRate = 7.5; // Increased from 4 (4s per shot regen)
       this.createCannon();
     }
     
@@ -75,6 +97,8 @@ export default class Defense {
     
     // Create cooldown text indicator
     this.createCooldownText();
+    // Create "No mana" text indicator
+    this.createNoManaText();
     
     const defenseName = type === 'scarecrow' ? 'ABS ice mage' : type === 'dog' ? 'NOOT fire mage' : type === 'wizard' ? 'Wizard' : type === 'cannon' ? 'Cannon' : type.charAt(0).toUpperCase() + type.slice(1);
     console.log(`Created ${defenseName} at ${x}, ${y} with range ${this.range}`);
@@ -186,6 +210,18 @@ export default class Defense {
     this.readyIndicator.visible = true;
   }
   
+  createNoManaText() {
+    this.noManaText = this.scene.add.text(this.x, this.y - 45, 'No mana', {
+      fontFamily: 'Arial',
+      fontSize: '12px',
+      color: '#FF8888', // Light red
+      stroke: '#000000',
+      strokeThickness: 2
+    }).setOrigin(0.5);
+    this.noManaText.setDepth(301); // Above cooldown text
+    this.noManaText.visible = false; // Initially hidden
+  }
+  
   updateCooldownText() {
     try {
       if (!this.active || !this.cooldownText) return;
@@ -203,7 +239,8 @@ export default class Defense {
         // Show seconds with one decimal point
         const seconds = (remaining / 1000).toFixed(1);
         this.cooldownText.setText(`${seconds}s`);
-        this.cooldownText.setVisible(true);
+        // Hide cooldown text if out of mana, otherwise show it
+        this.cooldownText.setVisible(!this.isOutOfMana);
         
         // Position the text above the defense tower
         if (this.sprite) {
@@ -337,7 +374,12 @@ export default class Defense {
     this.updateCooldownText();
   }
   
-  update() {
+  update(delta) { // Pass delta to update
+    if (!this.active) return;
+
+    // Regenerate Mana
+    this.regenerateMana(delta);
+
     // Update cooldown
     if (this.cooldownRemaining > 0) {
       // Reduce cooldown based on time since last frame 
@@ -369,6 +411,13 @@ export default class Defense {
       this.readyIndicator.y = this.y - 25;
     }
     
+    // ADDED: Update "No mana" text position
+    if (this.noManaText) {
+        this.noManaText.x = this.x;
+        this.noManaText.y = this.y - 45; // Position above cooldown text
+        this.noManaText.visible = this.isOutOfMana;
+    }
+    
     // Only attempt to attack if not on cooldown
     if (this.cooldownRemaining <= 0) {
       this.attackNearestEnemy(true);
@@ -390,6 +439,16 @@ export default class Defense {
     // Skip if on cooldown and not forcing attack
     if (this.cooldownRemaining > 0 && !forceAttack) {
       return false;
+    }
+    
+    // ADDED: Check for mana before finding enemy
+    if (this.currentMana < this.manaCostPerShot) {
+        if (!this.isOutOfMana) {
+            this.isOutOfMana = true;
+            if(this.noManaText) this.noManaText.visible = true;
+            if(this.cooldownText) this.cooldownText.visible = false; // Hide cooldown when OOM
+        }
+        return false; // Not enough mana to attack
     }
     
     // Check if scene has enemies
@@ -503,6 +562,9 @@ export default class Defense {
       this.showDamageText(enemy, "CRITICAL!", 0xFFFF00);
     }
     
+    // ADDED: Deduct mana cost
+    this.currentMana -= this.manaCostPerShot;
+
     // Apply damage to primary target
     this.applyDamageToEnemy(enemy, damageAmount);
     
@@ -1220,9 +1282,22 @@ export default class Defense {
   updatePower(multiplier) {
     if (typeof multiplier !== 'number' || multiplier <= 0) return;
     
-    // Store original damage for reference
-    const originalDamage = this.type === 'scarecrow' ? 1.2 : 2.0;
-    
+    // Store original damage for reference - UPDATED to reflect new base damage
+    // Determine original damage based on type AFTER the nerfs applied above
+    let originalDamage;
+    if (this.type === 'scarecrow') {
+      originalDamage = 0.4; // Updated base damage
+    } else if (this.type === 'dog') {
+      originalDamage = 0.7; // Updated base damage
+    } else if (this.type === 'wizard') {
+      originalDamage = 1.2; // Updated base damage
+    } else if (this.type === 'cannon') {
+      originalDamage = 2.0; // Updated base damage
+    } else {
+      // Default or fallback damage if type is unknown
+      originalDamage = 1.0;
+    }
+
     // Apply multiplier to damage
     this.damage = originalDamage * multiplier;
     
@@ -1634,4 +1709,47 @@ export default class Defense {
     }
   }
   // --- END launchProjectile METHOD DEFINITION ---
+
+  // Regenerate mana over time
+  regenerateMana(delta) {
+      // ADDED: Log delta for debugging
+      if (!delta || typeof delta !== 'number' || delta <= 0) {
+          // Log only once if delta seems invalid
+          if (!this.loggedInvalidDelta) {
+              console.warn(`Defense ${this.type} ID ${this.id || ''}: Invalid delta received: ${delta}. Mana regen might not work.`);
+              this.loggedInvalidDelta = true; 
+          }
+          delta = 16.67; // Fallback to assuming ~60fps if delta is invalid
+      }
+      else {
+          // Reset flag if valid delta received later
+          this.loggedInvalidDelta = false;
+      }
+
+      if (this.currentMana < this.maxMana) {
+          const manaToAdd = this.manaRegenRate * (delta / 1000);
+          this.currentMana += manaToAdd;
+          this.currentMana = Math.min(this.currentMana, this.maxMana);
+
+          // ADDED: Log mana changes
+          if (manaToAdd > 0 && Math.random() < 0.05) { // Log occasionally when mana changes
+              console.log(`Defense ${this.type} ID ${this.id || ''}: Mana +${manaToAdd.toFixed(3)}, Current: ${this.currentMana.toFixed(2)}/${this.maxMana}, Delta: ${delta.toFixed(2)}`);
+          }
+
+          // If mana regenerated enough for a shot, update state
+          if (this.isOutOfMana && this.currentMana >= this.manaCostPerShot) {
+              // ADDED: Log mana recovery state change
+              console.log(`Defense ${this.type} ID ${this.id || ''}: Recovered mana! Now ${this.currentMana.toFixed(2)}, Cost ${this.manaCostPerShot}. Setting isOutOfMana=false.`);
+              this.isOutOfMana = false;
+              if(this.noManaText) this.noManaText.visible = false;
+              // Make cooldown text visible again if cooldown isn't finished
+              const now = this.scene ? this.scene.time.now : 0;
+              const elapsed = now - this.lastAttackTime;
+              const remainingCooldown = Math.max(0, this.cooldown - elapsed);
+              if(this.cooldownText && remainingCooldown > 0) {
+                  this.cooldownText.visible = true;
+              }
+          }
+      }
+  }
 } 

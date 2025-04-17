@@ -134,11 +134,15 @@ export const Sidebar = ({
     
     if (tab === "farm") {
       setActiveView('farm');
+      window.location.href = '/farm';
     } else if (tab === "market") {
       setActiveView('market');
+      window.location.href = '/market';
     } else if (tab === "social") {
       setActiveView('social');
+      window.location.href = '/social';
     } else if (tab === "case-simulator") {
+      setActiveView('case-simulator');
       window.location.href = '/case-simulator';
     }
     

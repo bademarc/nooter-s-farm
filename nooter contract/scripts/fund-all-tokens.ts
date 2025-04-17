@@ -5,20 +5,16 @@ import * as fs from "fs";
 import { Wallet } from "zksync-ethers";
 
 async function main() {
-  console.log("Funding MultiFarmSwap contract with 500,000 of each token...");
+  console.log("Transferring full balance of specified tokens to the new contract...");
 
   // Get the provider and wallet
   const provider = new zk.Provider((hre.network.config as any).url);
   const wallet = new Wallet(process.env.WALLET_PRIVATE_KEY || "", provider);
   console.log(`Using account: ${wallet.address}`);
 
-  // Target faucet address
-  const faucetAddress = "0x324B6DA594145093b003Ec9b305e2A478A76Ba88";
-  console.log(`Target faucet address: ${faucetAddress}`);
-
-  // Amount to fund for each token (500,000)
-  const fundAmount = ethers.parseUnits("500000", 18);
-  console.log(`Funding amount per token: 500,000 tokens`);
+  // Target new contract address
+  const newContractAddress = "0xc2d997A8d858275260BA97bb182C67CbC8B3CBB0"; // UPDATED ADDRESS
+  console.log(`Target contract address: ${newContractAddress}`);
 
   // Token ABI for ERC20 interactions
   const TOKEN_ABI = [
@@ -30,85 +26,82 @@ async function main() {
     "function decimals() view returns (uint8)"
   ];
 
-  // Collect all ERC20 token addresses from the .address files
-  // These are known ERC20 tokens, not ERC1155 NFTs
+  // Collect the 13 specific ERC20 token addresses from the .address files
   const tokenAddresses = [
-    { name: "NOOT", address: fs.readFileSync(".noot-address", "utf8").trim() },
     { name: "ABSTER", address: fs.readFileSync(".abster-address", "utf8").trim() },
-    { name: "PENGUIN", address: fs.readFileSync(".penguin-address", "utf8").trim() },
-    { name: "PAINGU", address: fs.readFileSync(".paingu-address", "utf8").trim() },
-    { name: "YUP", address: fs.readFileSync(".yup-address", "utf8").trim() },
-    { name: "WOJACT", address: fs.readFileSync(".wojact-address", "utf8").trim() },
-    { name: "RETSBA", address: fs.readFileSync(".retsba-address", "utf8").trim() },
-    { name: "NUTZ", address: fs.readFileSync(".nutz-address", "utf8").trim() },
-    { name: "MOP", address: fs.readFileSync(".mop-address", "utf8").trim() },
-    { name: "FEATHERS", address: fs.readFileSync(".feathers-address", "utf8").trim() },
     { name: "ABBY", address: fs.readFileSync(".abby-address", "utf8").trim() },
+    { name: "CHESTER", address: fs.readFileSync(".chester-address", "utf8").trim() },
     { name: "DOJO3", address: fs.readFileSync(".dojo3-address", "utf8").trim() },
-    { name: "CHESTER", address: fs.readFileSync(".chester-address", "utf8").trim() }
+    { name: "FEATHERS", address: fs.readFileSync(".feathers-address", "utf8").trim() },
+    { name: "MOP", address: fs.readFileSync(".mop-address", "utf8").trim() },
+    { name: "NUTZ", address: fs.readFileSync(".nutz-address", "utf8").trim() },
+    { name: "PAINGU", address: fs.readFileSync(".paingu-address", "utf8").trim() },
+    { name: "PENGUIN", address: fs.readFileSync(".penguin-address", "utf8").trim() },
+    { name: "PUDGY", address: fs.readFileSync(".pudgy-penguins-address", "utf8").trim() }, // Added PUDGY
+    { name: "RETSBA", address: fs.readFileSync(".retsba-address", "utf8").trim() },
+    { name: "WOJACT", address: fs.readFileSync(".wojact-address", "utf8").trim() },
+    { name: "YUP", address: fs.readFileSync(".yup-address", "utf8").trim() }
+    // NOOT is excluded as requested
   ];
-
-  // Don't include these as they're ERC1155 NFTs, not ERC20 tokens
-  // { name: "BEARISH", address: fs.readFileSync(".bearish-address", "utf8").trim() },
-  // { name: "77BIT", address: fs.readFileSync(".77bit-address", "utf8").trim() },
 
   // Process each token
   for (const token of tokenAddresses) {
     try {
       console.log(`\nProcessing ${token.name} (${token.address})...`);
-      
+
       // Create contract instance
       const tokenContract = await ethers.getContractAt(TOKEN_ABI, token.address, wallet);
-      
+
       // Check token symbol and decimals to confirm it's the right token
       const symbol = await tokenContract.symbol();
       const decimals = await tokenContract.decimals();
       console.log(`Token symbol: ${symbol}, Decimals: ${decimals}`);
-      
-      // Check sender balance
+
+      // Get sender balance
       const senderBalance = await tokenContract.balanceOf(wallet.address);
-      console.log(`Sender balance: ${ethers.formatUnits(senderBalance, decimals)} ${symbol}`);
-      
-      // Check faucet's current balance
-      const faucetBalance = await tokenContract.balanceOf(faucetAddress);
-      console.log(`Faucet current balance: ${ethers.formatUnits(faucetBalance, decimals)} ${symbol}`);
-      
-      // Ensure sender has enough tokens
-      if (senderBalance < fundAmount) {
-        console.warn(`⚠️ Insufficient balance for ${symbol}. Skipping...`);
-        console.log(`Required: ${ethers.formatUnits(fundAmount, decimals)}, Available: ${ethers.formatUnits(senderBalance, decimals)}`);
-        continue;
+      const formattedSenderBalance = ethers.formatUnits(senderBalance, decimals);
+      console.log(`Sender balance: ${formattedSenderBalance} ${symbol}`);
+
+      // Check the new contract's current balance
+      const contractBalance = await tokenContract.balanceOf(newContractAddress);
+      console.log(`Target contract current balance: ${ethers.formatUnits(contractBalance, decimals)} ${symbol}`);
+
+      // Only transfer if sender has a balance greater than 0
+      if (senderBalance > 0) {
+        console.log(`Transferring full balance (${formattedSenderBalance} ${symbol}) to new contract...`);
+        const tx = await tokenContract.transfer(newContractAddress, senderBalance); // Transfer full balance
+        console.log(`Transaction hash: ${tx.hash}`);
+        await tx.wait();
+
+        // Verify new balances
+        const newSenderBalance = await tokenContract.balanceOf(wallet.address);
+        const newContractBalance = await tokenContract.balanceOf(newContractAddress);
+        console.log(`✅ Transfer complete!`);
+        console.log(`   New sender balance: ${ethers.formatUnits(newSenderBalance, decimals)} ${symbol}`);
+        console.log(`   New contract balance: ${ethers.formatUnits(newContractBalance, decimals)} ${symbol}`);
+      } else {
+        console.log(`Sender has 0 ${symbol}. Skipping transfer.`);
       }
-      
-      // Transfer tokens to faucet
-      console.log(`Transferring 500,000 ${symbol} to faucet...`);
-      const tx = await tokenContract.transfer(faucetAddress, fundAmount);
-      console.log(`Transaction hash: ${tx.hash}`);
-      await tx.wait();
-      
-      // Verify new balance
-      const newFaucetBalance = await tokenContract.balanceOf(faucetAddress);
-      console.log(`✅ Transfer complete! New faucet balance: ${ethers.formatUnits(newFaucetBalance, decimals)} ${symbol}`);
-      
+
     } catch (error) {
       console.error(`❌ Error processing ${token.name}:`, error);
     }
   }
-  
-  console.log("\n📊 Summary of token transfers:");
+
+  console.log("\n📊 Summary of final contract balances:");
   for (const token of tokenAddresses) {
     try {
       const tokenContract = await ethers.getContractAt(TOKEN_ABI, token.address, wallet);
       const symbol = await tokenContract.symbol();
       const decimals = await tokenContract.decimals();
-      const faucetBalance = await tokenContract.balanceOf(faucetAddress);
-      console.log(`${symbol}: ${ethers.formatUnits(faucetBalance, decimals)}`);
+      const contractBalance = await tokenContract.balanceOf(newContractAddress);
+      console.log(`${symbol}: ${ethers.formatUnits(contractBalance, decimals)}`);
     } catch (error) {
-      console.error(`Failed to get balance for ${token.name}`);
+      console.error(`Failed to get final balance for ${token.name}`);
     }
   }
-  
-  console.log("\n✅ Token funding process completed!");
+
+  console.log("\n✅ Token transfer process completed!");
 }
 
 main()

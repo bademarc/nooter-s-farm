@@ -1,0 +1,85 @@
+/* Crashout Game React Component Styles */
+:root {
+  --neon-green: #39ff14;
+  --neon-red: #ff3131;
+}
+
+/* Curve Animation */
+@keyframes riseCurve {
+  from {
+    height: 0%;
+  }
+  to {
+    height: 100%;
+  }
+}
+
+#multiplierCurve {
+  background: linear-gradient(to right, 
+      rgba(57, 255, 20, 0.2), 
+      rgba(57, 255, 20, 0.5)
+  );
+  animation: riseCurve linear;
+  transform-origin: bottom;
+}
+
+/* Button Hover Effects */
+.game-buttons button:hover:not(:disabled) {
+  transform: scale(1.05);
+  box-shadow: 0 0 15px rgba(0, 0, 0, 0.3);
+}
+
+/* Fade In/Out Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+.fade-in {
+  animation: fadeIn 0.5s ease-in;
+}
+
+.fade-out {
+  animation: fadeOut 0.5s ease-out;
+}
+
+/* Countdown Animation */
+@keyframes countdown {
+  from { transform: scale(1); opacity: 1; }
+  to { transform: scale(1.5); opacity: 0; }
+}
+
+/* Game Container Styles */
+.game-container {
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+.game-display {
+  position: relative;
+  height: 16rem;
+  border-radius: 0.5rem;
+  margin-bottom: 1.5rem;
+  overflow: hidden;
+}
+
+/* Hidden helper */
+.hidden {
+  display: none !important;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+  .game-container {
+    padding: 0.5rem;
+  }
+  
+  #multiplierText {
+    font-size: 3rem !important;
+  }
+} 

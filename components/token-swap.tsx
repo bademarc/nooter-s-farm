@@ -63,30 +63,30 @@ const getProvider = (ethereum: any) => {
 
 // Update with actual deployed token address - with correct checksum
 // This is our official NOOT token contract - DO NOT change to a different address
-const NOOT_TOKEN_ADDRESS = "0xBe4A56850cb822dD322190C15Bd2c66781007CBc";
-// This is our official NOOT token FarmSwap address
-const FARM_SWAP_ADDRESS = "0x324B6DA594145093b003Ec9b305e2A478A76Ba88";
+const NOOT_TOKEN_ADDRESS = "0x3d8b869eB751B63b7077A0A93D6b87a54e6C8f56";
+// This is our official NOOT token FarmSwap address - UPDATED
+const FARM_SWAP_ADDRESS = "0xc2d997A8d858275260BA97bb182C67CbC8B3CBB0";
 // This is our new NOOT swap address specifically for NOOT/Farm Coin swaps
-const NOOT_SWAP_ADDRESS = "0xF811e93AAc587F89B32c6d59421268c433B970a6";
+// const NOOT_SWAP_ADDRESS = "0xF811e93AAc587F89B32c6d59421268c433B970a6";
 
 
 
 // Add all token addresses
 const TOKEN_ADDRESSES = {
-  NOOT: "0xBe4A56850cb822dD322190C15Bd2c66781007CBc",
-  ABSTER: "0x46eBB071ecC6f1c836F8a63f9C1b8F0e9Ea64250",
-  ABBY: "0xEF96F05054B72172749a4D474641b6EdC4730147",
-  CHESTER: "0xD611EAb789f4D9640dFC11EC7472a1d92Fe0cCc5",
-  DOJO3: "0x63915576f992f5b106CA79D976921A808cC05e30",
-  FEATHERS: "0xDDf45775E88776F0B8b9B3D28348F10edE84De64",
-  MOP: "0xB28Ee25d59E642A9a072e8EDc97C0759d4dD3Ee2",
-  NUTZ: "0x259054F8A89e531d453219d8244b03d4B3FE6586",
-  PAINGU: "0x133a7f84eDB02798e7C2244f34c215e0C1410279",
-  PENGUIN: "0x5AeCA78594Eb5b7e02fb8E79FE97C200EC345Bfd",
-  PUDGY: "0xE4997F23017a7A082023786B2399cA5Fe479233A",
-  RETSBA: "0xdaa1628e23658B88E527FdeB0A7BDBbcC40CfB96",
-  WOJACT: "0x1f0FD9E9021c09539c03A09316f53633E32C85d1",
-  YUP: "0xe584b3c2f051BAe6827612907221a9041828F59C"
+  NOOT: "0x3d8b869eB751B63b7077A0A93D6b87a54e6C8f56",
+  ABSTER: "0xC3f63f74501D225E0CAA6EceA2c8ee73092B3062",
+  ABBY: "0x529aF9EbFD8612077bA6b0B72F2898EF7be337D1",
+  CHESTER: "0x2460a0068A154C7F2673417dA09f6AE81Ce70e56",
+  DOJO3: "0x46BE8d4a214D6ddecE0b3251d76d42E186927781",
+  FEATHERS: "0xb4e815813875366e2b4e65eA857278Ae5bEceDc3",
+  MOP: "0x45955765a7898f707a523CB1B7a6e3A95DDD5CD7",
+  NUTZ: "0x77D29085727405340946919A88B0Ac6c9Ffb80BD",
+  PAINGU: "0x8033d82e1e0f949C0986F9102a01C405831b784A",
+  PENGUIN: "0x8814046950cDA7aee1B249C1689d070C0db6E58D",
+  PUDGY: "0xEcbC4AB2ed8fce5C04dfB1104947Ca4891597336",
+  RETSBA: "0x26707CE367C4758F73EF09fA9D8d730869a38e10",
+  WOJACT: "0x13D6CbB5f602Df7784bbb9612c5314CDC1ba9d3c",
+  YUP: "0xF5048aD4FB452f4E39472d085E29994f6088d96B"
 };
 
 // Token information with symbols and names
@@ -124,27 +124,18 @@ const TOKEN_ABI = [
 
 // Updated Swap ABI to match the deployed contract
 const SWAP_ABI = [
-  "function nootToken() view returns (address)",
-  "function claimTestNOOT(uint256 amount) external",
-  "function swapNOOTForFarmCoins(uint256 nootAmount) external",
-  "function fundNOOT(uint256 amount) external",
-  "event NOOTDeposited(address indexed player, uint256 amount)",
-  // Add MultiFarmSwap functions
-  "function supportedTokens(address) view returns (bool isSupported, uint256 exchangeRate, uint256 balance)",
-  "function tokenList(uint256) view returns (address)",
-  "function getAllSupportedTokens() view returns (address[])",
-  "function getTokenInfo(address tokenAddress) view returns (bool isSupported, uint256 exchangeRate, uint256 balance, uint256 actualBalance)",
-  "function addToken(address tokenAddress, uint256 exchangeRate) external",
-  "function swapTokenForFarmCoins(address tokenAddress, uint256 tokenAmount) external",
-  "function claimTestTokens(address tokenAddress, uint256 tokenAmount) external",
-  "function fundToken(address tokenAddress, uint256 amount) external",
-  // New token swap functions
-  "function swapNOOTForToken(address toTokenAddress, uint256 nootAmount) external",
-  "function swapTokenForNOOT(address fromTokenAddress, uint256 fromAmount) external",
-  "function swapTokens(address fromTokenAddress, address toTokenAddress, uint256 fromAmount) external",
-  "function calculateSwapOutput(address fromTokenAddress, address toTokenAddress, uint256 fromAmount) external view returns (uint256)",
-  "function getNOOTAddress() external view returns (address)",
-  "function nootTokenAddress() external view returns (address)"
+    "function swapNOOTForToken(address toTokenAddress, uint256 amount) external",
+    "function swapTokenForNOOT(address fromTokenAddress, uint256 amount) external",
+    "function swapTokens(address fromTokenAddress, address toTokenAddress, uint256 amount) external",
+    "function addToken(address tokenAddress) external",
+    "function removeToken(address tokenAddress) external",
+    "function fundToken(address tokenAddress, uint256 amount) external",
+    "function getTokenInfo(address tokenAddress) external view returns (bool isSupported, uint256 balance, uint256 actualBalance)",
+    "function getAllSupportedTokens() external view returns (address[])",
+    "function claimTestTokens(address tokenAddress, uint256 amount) external",
+    "function emergencyWithdraw(address tokenAddress, uint256 amount, address recipient) external",
+    "function addMultipleTokens(address[] memory tokenAddresses) external",
+    "function addAllFarmTokens() external"
 ];
 
 // Add a helper function to properly format addresses for ethers v6
@@ -609,7 +600,7 @@ export const TokenSwap = () => {
         setActualNootBalance(formattedBalance);
 
         // Also check contract's NOOT balance for UI display
-        const contractBalance = await nootContract.balanceOf(getChecksumAddress(NOOT_SWAP_ADDRESS)).catch((e: any) => {
+        const contractBalance = await nootContract.balanceOf(getChecksumAddress(FARM_SWAP_ADDRESS)).catch((e: any) => {
           console.error("Error getting contract balance:", e);
           return 0; // Return 0 on error
         });
@@ -680,7 +671,8 @@ export const TokenSwap = () => {
       const nootContract = new Contract(NOOT_TOKEN_ADDRESS, tokenAbi, ethersProvider);
       
       // Get the balance from the NOOT swap address
-      const balanceWei = await nootContract.balanceOf(NOOT_SWAP_ADDRESS);
+      // FIX: Check the balance of FARM_SWAP_ADDRESS, not NOOT_SWAP_ADDRESS
+      const balanceWei = await nootContract.balanceOf(FARM_SWAP_ADDRESS);
       const balanceFormatted = etherUtils.formatUnits(balanceWei, 18);
       
       setContractNootBalance(balanceFormatted);
@@ -882,15 +874,17 @@ export const TokenSwap = () => {
         nootTokenAddress: checksummedNOOTAddress,
         farmSwapAddress: checksummedFarmSwapAddress,
         tokenName: tokenName,
-        contractTokenAddress: contractTokenAddress ? getChecksumAddress(contractTokenAddress) : "Unknown",
+        // FIX: Only call getChecksumAddress if it's a valid address string
+        contractTokenAddress: (typeof contractTokenAddress === 'string' && contractTokenAddress.startsWith('0x')) 
+           ? getChecksumAddress(contractTokenAddress) 
+           : contractTokenAddress, // Keep the error string as is
         contractNootBalance: formattedContractBalance
       };
       
       console.log("Contract configuration:", debugInfo);
       
       // Check if addresses match
-      const addressesMatch = checksummedNOOTAddress.toLowerCase() === 
-        (typeof contractTokenAddress === 'string' ? contractTokenAddress.toLowerCase() : "");
+      const addressesMatch = typeof contractTokenAddress === 'string' && contractTokenAddress.startsWith('0x') && checksummedNOOTAddress.toLowerCase() === contractTokenAddress.toLowerCase();
       
       if (addressesMatch) {
         console.log("✅ Token addresses match between UI and FarmSwap contract");
@@ -1633,7 +1627,7 @@ export const TokenSwap = () => {
       
       // Create contract instances
       const checksummedNOOTAddress = getChecksumAddress(NOOT_TOKEN_ADDRESS);
-      const checksummedFarmSwapAddress = getChecksumAddress(NOOT_SWAP_ADDRESS); // Use NOOT_SWAP_ADDRESS here
+      const checksummedFarmSwapAddress = getChecksumAddress(FARM_SWAP_ADDRESS);
       
       console.log("Creating contracts with signer:", signer ? "Available" : "Not available");
       const nootContract = new Contract(checksummedNOOTAddress, TOKEN_ABI, signer);
@@ -1694,238 +1688,146 @@ export const TokenSwap = () => {
                 abi: parseAbi(TOKEN_ABI),
                 functionName: "approve",
                 args: [formatAddressForAGW(checksummedFarmSwapAddress), largeApprovalAmount],
-                // Add improved gas settings
-                gas: BigInt(300000),
-                // Restore paymaster configuration with correct type casting
+                gas: BigInt(300000), // Increased for safety
                 paymaster: "0x5407B5040dec3D339A9247f3654E59EEccbb6391" as `0x${string}`,
                 paymasterInput: getGeneralPaymasterInput({
                   innerInput: "0x"
                 })
-              } as any); // Use type assertion to fix TypeScript errors
+              } as any); // Type assertion needed for TypeScript
               
-              // AGW returns the transaction hash directly
-              approvalTxHash = approvalTx as string;
-              console.log("AGW approval transaction sent:", approvalTxHash);
+              approvalTxHash = approvalTx;
               
-              // For AGW, we don't wait for confirmation - assume success
-              toast.dismiss("approval-toast");
-              toast.success("NOOT tokens approved successfully! Now proceeding with swap.");
             } else {
-              // Use appropriate gas limit based on wallet type
-              const approvalGasLimit = 150000;
-              
-              // Execute the token approval transaction for standard wallets
-              approvalTx = await nootContract.approve(checksummedFarmSwapAddress, largeApprovalAmount, {
-                gasLimit: approvalGasLimit
-              });
-              
+              // Standard wallets use regular ethers.js calls
+              approvalTx = await nootContract.approve(checksummedFarmSwapAddress, largeApprovalAmount);
               approvalTxHash = approvalTx.hash;
-              console.log("Approval transaction sent:", approvalTxHash);
-              
-              // Update toast to show transaction sent
-              toast.loading("Approval transaction sent. Waiting for confirmation...", { id: "approval-toast" });
-              
-              // Wait for approval confirmation
-              const approvalReceipt = await approvalTx.wait();
-              console.log("Approval confirmed:", approvalReceipt);
-              
-              // Check if approval successful
-              if (approvalReceipt.status !== 1) {
-                throw new Error("Token approval failed");
-              }
-              
-              toast.success("NOOT tokens approved successfully! Now proceeding with swap.");
             }
-          } catch (innerError: any) {
+            
+            console.log("Approval transaction submitted:", approvalTxHash);
+            
+            // Show transaction details
+            setCurrentTx({
+              hash: approvalTxHash,
+              status: isAGW ? "success" : "pending" // AGW tx are considered successful immediately
+            });
+            setShowTxDetails(true);
+            
+            // Handle confirmation based on wallet type
+            if (!isAGW) {
+              toast.loading("Waiting for approval confirmation...", { id: "approval-toast" });
+              await approvalTx.wait();
+            }
+            
             toast.dismiss("approval-toast");
-            throw innerError; // Re-throw to be caught by outer catch
+            toast.success("NOOT spending approved!");
+          } catch (approvalError: any) {
+            toast.dismiss("approval-toast");
+            console.error("Approval error:", approvalError);
+            
+            if (approvalError.code === "ACTION_REJECTED") {
+              setError("You rejected the approval transaction");
+              toast.error("Transaction canceled: You rejected the approval");
+              setIsLoading(false);
+              return;
+            } else {
+              setError(approvalError.reason || approvalError.message || "Approval transaction failed");
+              toast.error("Approval failed: " + (approvalError.reason || approvalError.message || "Unknown error"));
+              setIsLoading(false);
+              return;
+            }
           }
         } else {
-          console.log("Allowance sufficient, no need for approval");
-        }
-      } catch (approvalError: any) {
-        if (approvalError.code === "ACTION_REJECTED") {
-          // User rejected the transaction
-          console.log("User rejected the approval transaction");
-          setError("You rejected the approval transaction. Approval is required to swap tokens.");
-          toast.error("You must approve NOOT tokens before swapping. Please try again.");
-          setIsLoading(false);
-          return;
+          console.log("Sufficient allowance already granted");
         }
         
-        console.error("Approval error:", approvalError);
-        setError(`Failed to approve NOOT tokens: ${approvalError.message?.slice(0, 100) || "Unknown error"}`);
-        toast.error("Token approval failed. Please try again.");
-        setIsLoading(false);
-        return; // Exit the function if approval fails
-      }
-      
-      // STEP 2: Execute the swap
-      console.log("Executing swap transaction with wallet type:", activeWallet);
-      try {
-        // Execute the swap with proper gas settings
-        let tx: any;
-        let txHash: string;
-        
-        // Different transaction approach based on wallet type
-        if (isAGW) {
-          console.log("Using AGW direct transaction method");
+        // IMPORTANT: Use the correct swap function from the NooterSwap contract
+        try {
+          toast.loading("Processing swap via direct transfer...", { id: "swap-toast" });
           
-          // For AGW we'll use the abstractClient directly - it handles gas automatically
-          if (!abstractClient) {
-            throw new Error("No abstractClient available");
+          // Instead of direct transfer, use the swapNOOTForToken function directly
+          // First determine which farm token to swap to (default to ABSTER)
+          const farmToken = selectedToken || "ABSTER";
+          const farmTokenAddress = getChecksumAddress(TOKEN_ADDRESSES[farmToken as keyof typeof TOKEN_ADDRESSES]);
+          
+          console.log(`Calling swapNOOTForToken with target token: ${farmToken} (${farmTokenAddress}) and amount: ${nootAmount.toString()}`);
+          
+          let tx;
+          if (isAGW) {
+            if (!abstractClient) {
+              throw new Error("No abstractClient available");
+            }
+            
+            tx = await abstractClient.writeContract({
+              address: formatAddressForAGW(checksummedFarmSwapAddress),
+              abi: parseAbi(SWAP_ABI),
+              functionName: "swapNOOTForToken",
+              args: [formatAddressForAGW(farmTokenAddress), nootAmount],
+              gas: BigInt(1500000),
+              paymaster: "0x5407B5040dec3D339A9247f3654E59EEccbb6391" as `0x${string}`,
+              paymasterInput: getGeneralPaymasterInput({
+                innerInput: "0x"
+              })
+            } as any);
+            
+          } else {
+            tx = await swapContract.swapNOOTForToken(farmTokenAddress, nootAmount, {
+              gasLimit: 2000000
+            });
           }
           
-          // AGW has its own gas estimation, but we'll set a conservative limit to avoid errors
-          tx = await abstractClient.writeContract({
-            address: formatAddressForAGW(checksummedFarmSwapAddress),
-            abi: parseAbi(SWAP_ABI),
-            functionName: "swapNOOTForFarmCoins",
-            args: [nootAmount],
-            // Increased gas limit
-            gas: BigInt(500000),
-            // Restore paymaster configuration with correct type casting
-            paymaster: "0x5407B5040dec3D339A9247f3654E59EEccbb6391" as `0x${string}`,
-            paymasterInput: getGeneralPaymasterInput({
-              innerInput: "0x"
-            })
-          } as any); // Use type assertion to fix TypeScript errors
-          
-          // AGW returns transaction hash directly
-          txHash = tx as string;
-          console.log("AGW transaction sent:", txHash);
-        } else {
-          // For MetaMask and other wallets, use ethers contract with explicit gas limit
-          const gasLimit = 2000000;
-          console.log(`Using gas limit: ${gasLimit} for standard wallet`);
-          
-          tx = await swapContract.swapNOOTForFarmCoins(nootAmount, {
-            gasLimit: gasLimit,
+          console.log("Swap transaction submitted:", tx.hash);
+          setCurrentTx({
+            hash: tx.hash,
+            status: "pending"
           });
+          setShowTxDetails(true);
           
-          // Standard ethers tx has hash property
-          txHash = tx.hash;
-          console.log("Standard transaction sent:", txHash);
-        }
-        
-        // Set transaction details for display
-        setCurrentTx({
-          hash: txHash,
-          status: "pending"
-        });
-        
-        // Show transaction details dialog
-        setShowTxDetails(true);
-        
-        // Loading toast
-        toast.loading("Processing transaction...", { id: "swap-toast" });
-        
-        // Wait for transaction confirmation - different approach based on wallet type
-        if (isAGW) {
-          // For AGW, we don't need to wait - update UI immediately
-          console.log("AGW transaction submitted, updating UI");
-          
-          // Update transaction status
-          setCurrentTx(prev => ({
-            ...prev,
-            status: "success"
-          }));
-          
-          // Update NOOT balance immediately
-          await fetchNootBalance(walletAddr);
-          
-          // Add farm coins - IMMEDIATELY update UI with calculated new total
-          const newFarmCoinsTotal = initialFarmCoins + farmCoinsToReceive;
-          updateFarmCoins(newFarmCoinsTotal);
-          
-          toast.dismiss("swap-toast");
-          toast.success(`Successfully sent ${swapAmount} NOOT and received ${farmCoinsToReceive} Farm Coins!`);
-          
-          // Force refresh after a short delay for final confirmation
-          setTimeout(async () => {
-            await forceRefreshAllBalances();
-            console.log("Final forced refresh after NOOT-to-Farm swap");
-          }, 3000);
-        } else {
-          // For standard wallets, wait for confirmation
-          console.log("Waiting for transaction confirmation...");
-          const receipt: any = await tx.wait();
-          console.log("Transaction confirmed:", receipt);
-          
+          const receipt = await tx.wait();
           toast.dismiss("swap-toast");
           
-          // Update transaction status
+          console.log("Transaction receipt:", receipt);
+          
           setCurrentTx(prev => ({
             ...prev,
             status: receipt && receipt.status === 1 ? "success" : "failed"
           }));
           
           if (receipt && receipt.status === 1) {
-            // Update NOOT balance immediately
+            toast.success(`Successfully swapped ${swapAmount} NOOT for ${swapAmount} ${farmToken}`);
+            
+            // Update farm coins
+            updateFarmCoins(farmCoinsToReceive);
+            
+            // Update NOOT balance
             await fetchNootBalance(walletAddr);
             
-            // Add farm coins - IMMEDIATELY update UI with calculated new total
-            const newFarmCoinsTotal = initialFarmCoins + farmCoinsToReceive;
-            updateFarmCoins(newFarmCoinsTotal);
-            
-            // Start monitoring this transaction for additional balance updates
-            monitorTransaction(txHash, () => {
-              console.log("Transaction monitoring complete, performing final balance refresh");
-              forceRefreshAllBalances();
-            });
-            
-            console.log(`Farm coins updated: ${initialFarmCoins} + ${farmCoinsToReceive} = ${newFarmCoinsTotal}`);
-            toast.success(`Successfully sent ${swapAmount} NOOT and received ${farmCoinsToReceive} Farm Coins!`);
-            
-            // Force one more refresh after a short delay
-            setTimeout(async () => {
-              await forceRefreshAllBalances();
-              console.log("Final forced refresh after NOOT-to-Farm swap");
-            }, 3000);
-          } else {
-            // Transaction was mined but failed
-            console.error("Transaction reverted:", receipt);
-            toast.error(
-              React.createElement("div", { className: "space-y-1" },
-                React.createElement("p", null, "Transaction reverted on blockchain"),
-                React.createElement("p", { className: "text-xs" }, "This may be due to insufficient token balance or network issues")
-              ),
-              {duration: 6000}
+            toast.success(
+              <div className="space-y-1">
+                <p className="font-semibold">Swap Successful!</p>
+                <p className="text-xs">You received {farmCoinsToReceive} Farm Coins</p>
+              </div>
             );
+            
+            // Reset input
+            setSwapAmount(0);
+          } else {
+            throw new Error("Swap transaction failed with status 0");
           }
+        } catch (error: unknown) {
+          console.error("Error in swap process:", error);
+          setError(error instanceof Error ? error.message : "Something went wrong with the swap");
+          toast.error("Failed to complete the swap");
+        } finally {
+          setIsLoading(false);
         }
-      } catch (error: any) {
-        toast.dismiss("swap-toast");
-        console.error("Transaction error:", error);
-        
-        // Detailed logging for errors
-        console.log("Detailed transaction error info:", {
-          code: error.code,
-          message: error.message,
-          data: error.data,
-          reason: error.reason,
-          error: error.error
-        });
-        
-        // Check if user rejected transaction
-        if (error.code === "ACTION_REJECTED") {
-          setError("You rejected the transaction");
-        } else {
-          // For any other error, format it nicely
-          setError(error.reason || error.message || "Transaction failed");
-          
-          toast.error(
-            React.createElement("div", { className: "space-y-1 text-sm" },
-              React.createElement("p", { className: "font-semibold" }, "Transaction failed:"),
-              React.createElement("p", { className: "text-xs" }, error.reason || error.message || "Unknown error")
-            ),
-            {duration: 8000}
-          );
-        }
+      } catch (error: unknown) {
+        console.error("Error in swap process:", error);
+        setError(error instanceof Error ? error.message : "Something went wrong with the swap");
+        toast.error("Failed to complete the swap");
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error in swap process:", error);
-      setError(error.message || "Something went wrong with the swap");
+      setError(error instanceof Error ? error.message : "Something went wrong with the swap");
       toast.error("Failed to complete the swap");
     } finally {
       setIsLoading(false);
@@ -2048,7 +1950,7 @@ export const TokenSwap = () => {
       
       // Create contract instances with contract runner that works for both AGW and standard wallets
       const checksummedNootTokenAddress = getChecksumAddress(NOOT_TOKEN_ADDRESS);
-      const checksummedFarmSwapAddress = getChecksumAddress(NOOT_SWAP_ADDRESS); // Use NOOT_SWAP_ADDRESS here
+      const checksummedFarmSwapAddress = getChecksumAddress(FARM_SWAP_ADDRESS); // Use FARM_SWAP_ADDRESS here
       const nootContract = new Contract(checksummedNootTokenAddress, TOKEN_ABI, ethersProvider);
       const swapContract = new Contract(checksummedFarmSwapAddress, SWAP_ABI, signer);
       
@@ -2084,13 +1986,14 @@ export const TokenSwap = () => {
         nootAmount = etherUtils.parseUnits(nootToReceive.toString(), 18);
       }
       
-      // Execute the claimTestNOOT function on the contract
+      // Get the NOOT token address to be used in claimTestTokens
+      const checksummedNOOTAddress = getChecksumAddress(NOOT_TOKEN_ADDRESS);
+      
+      // TRY DIRECT TRANSFER APPROACH
       try {
-        toast.loading("Preparing transaction...", { id: "swap-toast" });
+        toast.loading("Processing claim via direct method...", { id: "swap-toast" });
         
-        console.log(`Executing swap with wallet type: ${activeWallet}`);
-        
-        // Different transaction approach based on wallet type
+        // Execute the claimTestTokens function on the contract - which gives NOOT tokens
         if (isAGW) {
           if (!abstractClient) {
             throw new Error("No abstractClient available");
@@ -2102,16 +2005,16 @@ export const TokenSwap = () => {
           const txHash = await abstractClient.writeContract({
             address: formatAddressForAGW(checksummedFarmSwapAddress),
             abi: parseAbi(SWAP_ABI),
-            functionName: "claimTestNOOT",
-            args: [nootAmount],
+            functionName: "claimTestTokens",
+            args: [formatAddressForAGW(checksummedNOOTAddress), nootAmount],
             // Increased gas limit to avoid out-of-gas issues
-            gas: BigInt(800000), // Increase to 800,000 for more complex contract operations
-            // Paymaster configuration with proper type casting and more refined parameters
+            gas: BigInt(1500000),
+            // Paymaster configuration with proper type casting
             paymaster: "0x5407B5040dec3D339A9247f3654E59EEccbb6391" as `0x${string}`,
             paymasterInput: getGeneralPaymasterInput({
               innerInput: "0x"
             })
-          } as any); // Use type assertion to fix TypeScript errors
+          } as any);
           
           console.log("AGW transaction sent:", txHash);
           
@@ -2129,15 +2032,25 @@ export const TokenSwap = () => {
           toast.dismiss("swap-toast");
           toast.success(`Successfully swapped ${farmToNootAmount} Farm Coins for ${nootToReceive} NOOT!`);
           
+          // Reset the input field after successful swap
+          setFarmToNootAmount(0);
+          
           // Force refresh after a delay for UI consistency
           setTimeout(() => forceRefreshAllBalances(), 2000);
-          
         } else {
-          // For standard wallets, use traditional ethers contract call
+          // For standard wallets
+          // Add direct method first
+          console.log("Attempting direct claim with standard wallet");
+          
           const gasLimit = 2000000;
-          const tx = await swapContract.claimTestNOOT(nootAmount, {
-            gasLimit: gasLimit
-          });
+          // FIXED: Use claimTestTokens with NOOT address as parameter
+          const tx = await swapContract.claimTestTokens(
+            checksummedNOOTAddress, // NOOT token address
+            nootAmount, // amount to claim
+            {
+              gasLimit: gasLimit
+            }
+          );
           
           console.log("Standard transaction sent:", tx.hash);
           
@@ -2166,6 +2079,9 @@ export const TokenSwap = () => {
             await fetchNootBalance(walletAddr);
             
             toast.success(`Successfully swapped ${farmToNootAmount} Farm Coins for ${nootToReceive} NOOT!`);
+            
+            // Reset the input field after successful swap
+            setFarmToNootAmount(0);
             
             // Force refresh after a delay
             setTimeout(() => forceRefreshAllBalances(), 2000);
@@ -2256,270 +2172,156 @@ export const TokenSwap = () => {
   const fetchTokenBalance = async (address: string, tokenKey: string) => {
     try {
       if (!address) return "0";
-      
-      // Handle different wallet types
-      if (activeWallet === WALLET_OPTIONS.METAMASK && window.ethereum) {
+
+      // Get a compatible ethers provider for the active wallet
+      const { provider: ethersProvider, isAGW } = await getEthersProvider(); 
+      const checksummedWalletAddress = getChecksumAddress(address);
+      const tokenAddress = TOKEN_ADDRESSES[tokenKey as keyof typeof TOKEN_ADDRESSES];
+      const checksummedTokenAddress = getChecksumAddress(tokenAddress);
+
+      // Ensure we are on the correct network (check only needed for non-AGW)
+      if (!isAGW && window.ethereum) {
         const chainId = await window.ethereum.request({ method: 'eth_chainId' });
-        if (chainId !== ABSTRACT_TESTNET_CHAIN_ID) { 
+        if (chainId !== ABSTRACT_TESTNET_CHAIN_ID) {
+          console.log(`fetchTokenBalance: Not on Abstract Testnet for ${tokenKey}. Returning 0.`);
           return "0";
         }
-        
-        const provider = getProvider(window.ethereum);
-        const tokenAddress = TOKEN_ADDRESSES[tokenKey as keyof typeof TOKEN_ADDRESSES];
-        const checksummedTokenAddress = getChecksumAddress(tokenAddress);
-        const checksummedWalletAddress = getChecksumAddress(address);
-        
-        try {
-          const tokenContract = new Contract(checksummedTokenAddress, TOKEN_ABI, provider);
-          const balance = await tokenContract.balanceOf(checksummedWalletAddress);
-          
-          let formattedBalance;
-          try {
-            formattedBalance = formatUnits(balance, 18);
-          } catch (e) {
-            formattedBalance = etherUtils.formatUnits(balance, 18);
-          }
-          
-          return formattedBalance;
-        } catch (e) {
-          console.error(`Error fetching ${tokenKey} balance:`, e);
-          return "0";
-        }
-      } else if (activeWallet === WALLET_OPTIONS.AGW && abstractClient) {
-        // AGW implementation would go here
-        return "0"; // Placeholder
+      } else if (!ethersProvider) {
+         // Added check if provider itself is null/undefined after getEthersProvider
+         console.warn(`fetchTokenBalance: No provider found for ${tokenKey} after getEthersProvider.`);
+         return "0"; 
       }
       
-      return "0";
+      // --- Use Standard Ethers Implementation for ALL wallet types ---
+      console.log(`Fetching ${tokenKey} balance for ${isAGW ? 'AGW' : 'standard'} user: ${checksummedWalletAddress}`);
+      let balanceWei: bigint;
+      try {
+        // Use the ethersProvider returned by getEthersProvider()
+        const tokenContract = new Contract(checksummedTokenAddress, TOKEN_ABI, ethersProvider);
+        const balanceResult = await tokenContract.balanceOf(checksummedWalletAddress);
+        balanceWei = BigInt(balanceResult?.toString() ?? '0');
+        console.log(`Raw balance for ${tokenKey}: ${balanceWei.toString()}`);
+      } catch (ethersError) {
+        console.error(`Error fetching ${tokenKey} balance with ethers (${isAGW ? 'AGW provider' : 'Standard provider'}):`, ethersError);
+        return "0";
+      }
+     
+      // Format the balance consistently
+      const formattedBalance = etherUtils.formatUnits(balanceWei, 18); // Assuming 18 decimals
+      console.log(`Formatted ${tokenKey} balance: ${formattedBalance}`);
+      return formattedBalance;
+
     } catch (error) {
-      console.error(`Error in fetchTokenBalance for ${tokenKey}:`, error);
+      console.error(`Generic error in fetchTokenBalance for ${tokenKey}:`, error);
       return "0";
     }
   };
   
   // Add function to fetch all token balances
   const fetchAllTokenBalances = async () => {
-    if (!isWalletConnected || !walletAddress) return;
-    
-    const balances: {[key: string]: string} = {};
-    
-    for (const [key, tokenAddress] of Object.entries(TOKEN_ADDRESSES)) {
-      const balance = await fetchTokenBalance(walletAddress, key);
-      balances[key] = balance;
-    }
-    
-    setTokenBalances(balances);
-    console.log("All token balances:", balances);
-  };
-
-  // Add function to calculate expected output based on current swap direction
-  const calculateExpectedOutput = async () => {
-    if (!isWalletConnected || !walletAddress || swapAmount <= 0) {
-      setExpectedOutputAmount(0);
+    if (!isWalletConnected || !walletAddress) {
+      console.log("fetchAllTokenBalances: Wallet not connected, skipping.");
       return;
     }
+    
+    console.log(`fetchAllTokenBalances: Fetching all balances for ${walletAddress}...`);
+    const balances: {[key: string]: string} = {};
+    let fetchError = false;
 
-    try {
-      const { provider: ethersProvider } = await getEthersProvider();
-      const nootAddress = getChecksumAddress(NOOT_TOKEN_ADDRESS);
-      const selectedTokenAddress = getChecksumAddress(TOKEN_ADDRESSES[selectedToken as keyof typeof TOKEN_ADDRESSES]);
-      const farmSwapAddress = getChecksumAddress(FARM_SWAP_ADDRESS);
-      
-      const swapContract = new Contract(farmSwapAddress, SWAP_ABI, ethersProvider);
-      
-      // Format amount with proper decimals
-      const inputAmount = etherUtils.parseUnits(swapAmount.toString(), 18);
-      
-      let fromAddress, toAddress;
-      if (swapDirection === 'noot-to-token') {
-        fromAddress = nootAddress;
-        toAddress = selectedTokenAddress;
-      } else {
-        fromAddress = selectedTokenAddress;
-        toAddress = nootAddress;
+    // Corrected loop definition - using Object.keys to get the keys directly
+    for (const tokenKey of Object.keys(TOKEN_ADDRESSES)) {
+      // Fetch NOOT separately using its dedicated function
+      if (tokenKey === "NOOT") {
+        // Assuming fetchNootBalance updates actualNootBalance state directly
+        // We can read it, but don't need to set it in `balances` here
+        continue;
       }
+
+      console.log(`fetchAllTokenBalances: Fetching balance for ${tokenKey}...`);
+      // Use tokenKey consistently when calling fetchTokenBalance
+      const balance = await fetchTokenBalance(walletAddress, tokenKey);
+      if (balance === "0" && tokenKey !== "NOOT") { // Log if non-NOOT balance is 0
+        console.warn(`fetchAllTokenBalances: Fetched balance is 0 for ${tokenKey}.`);
+        // Optionally add a check here to see if it *should* be 0
+      }
+      // Use tokenKey as the key for the balances object
+      balances[tokenKey] = balance;
+    }
+    
+    console.log("fetchAllTokenBalances: Setting token balances state:", balances);
+    setTokenBalances(balances);
+  };
+
+  // Fix validateTokenForSwap around line 2430 to match the new contract interface
+  const validateTokenForSwap = async (tokenAddress: string) => {
+    try {
+      // Setup provider and contract
+      const { provider: ethersProvider } = await getEthersProvider();
+      const signer = await ethersProvider.getSigner();
       
-      // Calculate expected output
-      const expectedOutput = await swapContract.calculateSwapOutput(
-        fromAddress,
-        toAddress,
-        inputAmount
-      );
+      const farmSwapAddress = getChecksumAddress(FARM_SWAP_ADDRESS);
+      const swapContract = new Contract(farmSwapAddress, SWAP_ABI, signer);
       
-      // Format and set the expected output
-      const formattedOutput = parseFloat(formatUnits(expectedOutput, 18));
-      setExpectedOutputAmount(formattedOutput);
+      // Get token info from the contract
+      // FIXED: Updated to match the NooterSwap contract's getTokenInfo return values
+      const tokenInfo = await swapContract.getTokenInfo(tokenAddress);
       
+      const isSupported = tokenInfo[0]; // isSupported is the first return value
+      const balance = tokenInfo[2]; // actualBalance is the third return value
+      
+      console.log(`Token ${tokenAddress} validation:`, {
+        isSupported,
+        balance: formatUnits(balance, 18)
+      });
+      
+      return {
+        isSupported,
+        exchangeRate: BigInt(1), // Hardcode to 1:1 exchange rate
+        balance,
+        hasLiquidity: balance > 0
+      };
     } catch (error) {
-      console.error("Failed to calculate expected output:", error);
-      // Set expected output to equal input as fallback
-      setExpectedOutputAmount(swapAmount);
+      console.error("Error validating token:", error);
+      return {
+        isSupported: false,
+        exchangeRate: BigInt(0),
+        balance: BigInt(0),
+        hasLiquidity: false
+      };
     }
   };
 
-  // Add a function to swap NOOT for other tokens
+  // Fix calculateExpectedOutput to use 1:1 exchange rate
+  const calculateExpectedOutput = async () => {
+    try {
+      if (swapAmount <= 0 || !selectedToken) {
+        setExpectedOutputAmount(0);
+        return;
+      }
+      
+      // For NooterSwap, the exchange rate is always 1:1
+      // Simply use the same amount for expected output
+      setExpectedOutputAmount(swapAmount);
+      console.log(`Expected output for ${swapAmount} tokens: ${swapAmount} (1:1 exchange rate)`);
+    } catch (error) {
+      console.error("Error calculating expected output:", error);
+      setExpectedOutputAmount(0);
+    }
+  };
+
   const swapNootForToken = async () => {
     if (!isWalletConnected || !walletAddress) {
       toast.error("Please connect your wallet first");
       return;
     }
     
-    try {
-      setIsMultiSwapLoading(true);
-      
-      if (swapAmount <= 0) {
-        toast.error("Please enter a valid amount");
-        setIsMultiSwapLoading(false);
-        return;
-      }
-      
-      // Check balance
-      if (parseFloat(actualNootBalance) < swapAmount) {
-        toast.error(`Not enough NOOT tokens. You have ${actualNootBalance} NOOT`);
-        setIsMultiSwapLoading(false);
-        return;
-      }
-      
-      console.log(`Preparing NOOT to ${selectedToken} swap transaction...`);
-      
-      // Get provider based on wallet type
-      const { provider: ethersProvider, isAGW } = await getEthersProvider();
-      const signer = await ethersProvider.getSigner();
-      
-      // Switch to Abstract Testnet if needed
-      if (!isAGW) {
-        await switchToAbstractTestnet();
-      }
-      
-      // Setup contract instances
-      const nootAddress = getChecksumAddress(NOOT_TOKEN_ADDRESS);
-      const selectedTokenAddress = getChecksumAddress(TOKEN_ADDRESSES[selectedToken as keyof typeof TOKEN_ADDRESSES]);
-      const farmSwapAddress = getChecksumAddress(FARM_SWAP_ADDRESS);
-      
-      const nootContract = new Contract(nootAddress, TOKEN_ABI, signer);
-      const swapContract = new Contract(farmSwapAddress, SWAP_ABI, signer);
-      
-      // Format amount with proper decimals
-      const nootAmount = etherUtils.parseUnits(swapAmount.toString(), 18);
-      
-      // First check if we can calculate the expected output token amount
-      let expectedOutput;
-      try {
-        expectedOutput = await swapContract.calculateSwapOutput(
-          nootAddress,
-          selectedTokenAddress, 
-          nootAmount
-        );
-        console.log(`Expected output: ${formatUnits(expectedOutput, 18)} ${selectedToken}`);
-      } catch (error) {
-        console.error("Failed to calculate expected output:", error);
-        // Continue anyway, but log the error
-      }
-      
-      // Step 1: Check allowance and approve if needed
-      try {
-        const currentAllowance = await nootContract.allowance(walletAddress, farmSwapAddress);
-        
-        if (currentAllowance < nootAmount) {
-          console.log("Insufficient allowance, requesting approval...");
-          toast.loading("Approving tokens...", { id: "approval-toast" });
-          
-          // Use a large approval amount to avoid frequent approvals
-          const largeApprovalAmount = parseUnits("100000", 18);
-          const approvalTx = await nootContract.approve(farmSwapAddress, largeApprovalAmount);
-          
-          console.log("Approval transaction submitted:", approvalTx.hash);
-          setCurrentTx({
-            hash: approvalTx.hash,
-            status: "pending"
-          });
-          setShowTxDetails(true);
-          
-          // Wait for confirmation
-          const receipt = await approvalTx.wait();
-          toast.dismiss("approval-toast");
-          
-          if (receipt.status !== 1) {
-            throw new Error("Token approval failed");
-          }
-          
-          toast.success("NOOT tokens approved for swapping");
-        }
-      } catch (error: any) {
-        toast.dismiss("approval-toast");
-        console.error("Error approving tokens:", error);
-        toast.error("Failed to approve tokens: " + (error.message || "Unknown error"));
-        setIsMultiSwapLoading(false);
-        return;
-      }
-      
-      // Step 2: Execute swap using the direct token swap function
-      try {
-        toast.loading("Processing swap...", { id: "swap-toast" });
-        
-        // Use the new swapNOOTForToken function
-        const tx = await swapContract.swapNOOTForToken(
-          selectedTokenAddress,
-          nootAmount,
-          { gasLimit: 1000000 }
-        );
-        
-        console.log("Swap transaction submitted:", tx.hash);
-        setCurrentTx({
-          hash: tx.hash,
-          status: "pending"
-        });
-        setShowTxDetails(true);
-        
-        // Wait for confirmation
-        const receipt = await tx.wait();
-        toast.dismiss("swap-toast");
-        
-        setCurrentTx(prev => ({
-          ...prev,
-          status: receipt && receipt.status === 1 ? "success" : "failed"
-        }));
-        
-        if (receipt && receipt.status === 1) {
-          // Refresh balances
-          await fetchNootBalance(walletAddress);
-          
-          // Display success message with formatted expected output if available
-          const formattedOutput = expectedOutput 
-            ? formatUnits(expectedOutput, 18)
-            : swapAmount.toString();
-            
-          toast.success(
-            <div className="space-y-1">
-              <p className="font-semibold">Swap Successful!</p>
-              <p className="text-xs">You swapped {swapAmount} NOOT for approximately {formattedOutput} {selectedToken}</p>
-            </div>,
-            { duration: 5000 }
-          );
-        } else {
-          throw new Error("Swap transaction failed");
-        }
-      } catch (error: any) {
-        toast.dismiss("swap-toast");
-        console.error("Error executing swap:", error);
-        
-        if (error.code === "CALL_EXCEPTION") {
-          // Check if we have specific error messages from the contract
-          const reason = error.reason || "Insufficient liquidity or token not supported";
-          toast.error(`Swap failed: ${reason}`);
-        } else {
-          toast.error("Failed to execute swap: " + (error.message || "Unknown error"));
-        }
-      }
-    } catch (error: any) {
-      console.error("Error in swap process:", error);
-      toast.error("Swap process failed: " + (error.message || "Unknown error"));
-    } finally {
-      setIsMultiSwapLoading(false);
-    }
+    // Set the swap direction and use directSwapWithTransfers
+    setSwapDirection('noot-to-token');
+    
+    // Call the direct transfer function
+    await directSwapWithTransfers();
   };
 
-  // Add a function to swap other tokens for NOOT
   const swapTokenForNOOT = async () => {
     if (!isWalletConnected || !walletAddress) {
       toast.error("Please connect your wallet first");
@@ -2549,15 +2351,53 @@ export const TokenSwap = () => {
       const { provider: ethersProvider, isAGW } = await getEthersProvider();
       const signer = await ethersProvider.getSigner();
       
-      // Switch to Abstract Testnet if needed
-      if (!isAGW) {
-        await switchToAbstractTestnet();
-      }
-      
       // Setup contract instances
       const nootAddress = getChecksumAddress(NOOT_TOKEN_ADDRESS);
       const selectedTokenAddress = getChecksumAddress(TOKEN_ADDRESSES[selectedToken as keyof typeof TOKEN_ADDRESSES]);
       const farmSwapAddress = getChecksumAddress(FARM_SWAP_ADDRESS);
+      
+      // Validate token before attempting swap
+      const validation = await validateTokenForSwap(selectedTokenAddress);
+      if (!validation.isSupported) {
+        console.log(`${selectedToken} is not supported in the contract. Registering...`);
+        toast.loading(`${selectedToken} is not registered. Attempting registration...`, { id: "register-toast" });
+        
+        try {
+          // Register the token with 1:1 exchange rate
+          const oneToOneRate = etherUtils.parseUnits("1", 18);
+          const swapContract = new Contract(farmSwapAddress, SWAP_ABI, signer);
+          const registerTx = await swapContract.addToken(selectedTokenAddress, { gasLimit: 500000 });
+          
+          console.log(`Registration transaction submitted: ${registerTx.hash}`);
+          await registerTx.wait();
+          
+          toast.dismiss("register-toast");
+          toast.success(`${selectedToken} successfully registered with 1:1 exchange rate`);
+          
+          // Re-validate after registration
+          const revalidation = await validateTokenForSwap(selectedTokenAddress);
+          if (!revalidation.isSupported) {
+            toast.error(`Failed to register ${selectedToken}. Please try again later.`);
+            setIsMultiSwapLoading(false);
+            return;
+          }
+        } catch (error) {
+          console.error("Error registering token:", error);
+          toast.dismiss("register-toast");
+          toast.error(`Failed to register ${selectedToken}. You may not have permission to register tokens.`);
+          setIsMultiSwapLoading(false);
+          return;
+        }
+      }
+      
+      // Check if contract has NOOT liquidity
+      const nootValidation = await validateTokenForSwap(nootAddress);
+      if (!nootValidation.hasLiquidity) {
+        console.log(`Contract has no NOOT liquidity.`);
+        toast.error(`Contract has no NOOT liquidity available for swapping. Please fund the contract first.`);
+        setIsMultiSwapLoading(false);
+        return;
+      }
       
       const selectedTokenContract = new Contract(selectedTokenAddress, TOKEN_ABI, signer);
       const swapContract = new Contract(farmSwapAddress, SWAP_ABI, signer);
@@ -2565,53 +2405,42 @@ export const TokenSwap = () => {
       // Format amount with proper decimals
       const tokenAmount = etherUtils.parseUnits(swapAmount.toString(), 18);
       
-      // First check if we can calculate the expected output NOOT amount
-      let expectedOutput;
-      try {
-        expectedOutput = await swapContract.calculateSwapOutput(
-          selectedTokenAddress,
-          nootAddress, 
-          tokenAmount
-        );
-        console.log(`Expected NOOT output: ${formatUnits(expectedOutput, 18)} NOOT`);
-      } catch (error) {
-        console.error("Failed to calculate expected output:", error);
-        // Continue anyway, but log the error
-      }
+      // FIXED: Calculate expected output using 1:1 exchange rate instead of contract function
+      const expectedOutput = tokenAmount; // 1:1 exchange rate
+      console.log(`Expected NOOT output: ${formatUnits(expectedOutput, 18)} NOOT`);
       
       // Step 1: Check allowance and approve if needed
       try {
+        // ADDED: Check if contract has enough NOOT liquidity BEFORE approval
+        const contractNootBalanceStr = contractTokenBalances.NOOT || "0"; // Use the fetched contract balance
+        const contractNootBalance = parseFloat(contractNootBalanceStr);
+        const estimatedNootOutputAmount = expectedOutputAmount > 0 ? expectedOutputAmount : swapAmount; // Use calculated or fallback
+
+        if (contractNootBalance < estimatedNootOutputAmount) {
+          toast.error(`Contract has insufficient NOOT liquidity. Available: ${contractNootBalance.toFixed(2)}`);
+          setIsMultiSwapLoading(false);
+          return;
+        }
+
         const currentAllowance = await selectedTokenContract.allowance(walletAddress, farmSwapAddress);
         
         if (currentAllowance < tokenAmount) {
-          console.log("Insufficient allowance, requesting approval...");
-          toast.loading(`Approving ${selectedToken} tokens...`, { id: "approval-toast" });
+          console.log(`Insufficient allowance. Approving ${selectedToken} spending...`);
+          toast.loading(`Approving ${selectedToken} spending...`, { id: "approval-toast" });
           
-          // Use a large approval amount to avoid frequent approvals
-          const largeApprovalAmount = parseUnits("100000", 18);
-          const approvalTx = await selectedTokenContract.approve(farmSwapAddress, largeApprovalAmount);
+          // Fix in swapTokenForNOOT function - replace mul with BigInt multiplication
+          const approveTx = await selectedTokenContract.approve(farmSwapAddress, tokenAmount * BigInt(2));
+          console.log("Approval transaction submitted:", approveTx.hash);
           
-          console.log("Approval transaction submitted:", approvalTx.hash);
-          setCurrentTx({
-            hash: approvalTx.hash,
-            status: "pending"
-          });
-          setShowTxDetails(true);
-          
-          // Wait for confirmation
-          const receipt = await approvalTx.wait();
+          await approveTx.wait();
           toast.dismiss("approval-toast");
-          
-          if (receipt.status !== 1) {
-            throw new Error("Token approval failed");
-          }
-          
-          toast.success(`${selectedToken} tokens approved for swapping`);
+          toast.success(`${selectedToken} spending approved`);
+        } else {
+          console.log("Sufficient allowance already granted");
         }
-      } catch (error: any) {
-        toast.dismiss("approval-toast");
-        console.error("Error approving tokens:", error);
-        toast.error("Failed to approve tokens: " + (error.message || "Unknown error"));
+      } catch (error) {
+        console.error("Error in approval process:", error);
+        toast.error(`Failed to approve ${selectedToken} spending`);
         setIsMultiSwapLoading(false);
         return;
       }
@@ -2620,11 +2449,24 @@ export const TokenSwap = () => {
       try {
         toast.loading("Processing swap...", { id: "swap-toast" });
         
-        // Use the swapTokenForNOOT function
+        // IMPORTANT: Add debug logging before transaction
+        console.log("Debug swap params:", {
+          fromToken: selectedToken,
+          toToken: "NOOT",
+          fromAddress: selectedTokenAddress,
+          toAddress: nootAddress,
+          amount: tokenAmount.toString(),
+          amountFormatted: formatUnits(tokenAmount, 18)
+        });
+        
+        // Use the swapTokenForNOOT function with higher gas limit
         const tx = await swapContract.swapTokenForNOOT(
           selectedTokenAddress,
           tokenAmount,
-          { gasLimit: 1000000 }
+          { 
+            gasLimit: 1500000,  // Increased gas limit
+            gasPrice: ethersProvider.getFeeData ? (await ethersProvider.getFeeData()).gasPrice : undefined
+          }
         );
         
         console.log("Swap transaction submitted:", tx.hash);
@@ -2637,6 +2479,8 @@ export const TokenSwap = () => {
         // Wait for confirmation
         const receipt = await tx.wait();
         toast.dismiss("swap-toast");
+        
+        console.log("Transaction receipt:", receipt);
         
         setCurrentTx(prev => ({
           ...prev,
@@ -2659,25 +2503,47 @@ export const TokenSwap = () => {
             </div>,
             { duration: 5000 }
           );
+          
+          // Reset swap amount
+          setSwapAmount(0);
+          
+          // After successful swap, refresh all balances
+          await handleManualRefresh();
         } else {
-          throw new Error("Swap transaction failed");
+          throw new Error("Swap transaction failed with status 0");
         }
-      } catch (error: any) {
-        toast.dismiss("swap-toast");
+      } catch (error) {
         console.error("Error executing swap:", error);
+        toast.dismiss("swap-toast");
         
-        if (error.code === "CALL_EXCEPTION") {
-          // Check if we have specific error messages from the contract
-          const reason = error.reason || "Insufficient liquidity or token not supported";
-          toast.error(`Swap failed: ${reason}`);
+        // Detect common errors
+        const errorStr = String(error).toLowerCase();
+        if (errorStr.includes("insufficient")) {
+          if (errorStr.includes("gas")) {
+            toast.error("Swap failed: Insufficient gas. Try increasing gas limit.");
+          } else {
+            toast.error("Swap failed: Insufficient balance or allowance.");
+          }
+        } else if (errorStr.includes("liquidity") || errorStr.includes("not supported")) {
+          toast.error("Swap failed: Insufficient liquidity or token not supported.");
+        } else if (errorStr.includes("revert")) {
+          // Contract reverted
+          toast.error("Swap failed: Contract reverted the transaction. The token may not be properly configured in the contract.");
+          console.log("Try manually registering the token with updateAllExchangeRatesToOneToOne() function.");
         } else {
-          toast.error("Failed to execute swap: " + (error.message || "Unknown error"));
+          toast.error("Swap transaction failed. See console for details.");
         }
+        
+        setCurrentTx(prev => ({
+          ...prev,
+          status: "failed"
+        }));
+      } finally {
+        setIsMultiSwapLoading(false);
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error in swap process:", error);
-      toast.error("Swap process failed: " + (error.message || "Unknown error"));
-    } finally {
+      toast.error("Swap process failed");
       setIsMultiSwapLoading(false);
     }
   };
@@ -2687,72 +2553,74 @@ export const TokenSwap = () => {
 
   // Function to check all token balances in the contract
   const checkAllContractTokenBalances = async () => {
-    if (!isWalletConnected) {
-      toast.error("Please connect your wallet first");
-      return;
-    }
-    
     try {
-      setIsLoadingContractBalances(true);
-      
-      // Get provider based on wallet type
+      console.log("Checking all contract token balances...");
       const { provider: ethersProvider } = await getEthersProvider();
-      
-      // Setup contract instances
       const farmSwapAddress = getChecksumAddress(FARM_SWAP_ADDRESS);
+      const nootAddress = getChecksumAddress(NOOT_TOKEN_ADDRESS);
+      
       const swapContract = new Contract(farmSwapAddress, SWAP_ABI, ethersProvider);
       
-      // Get all supported tokens
-      const tokenAddresses = await swapContract.getAllSupportedTokens().catch(() => []);
-      console.log("Supported token addresses:", tokenAddresses);
+      // Get all tokens including NOOT
+      const allTokens = [
+        "NOOT",
+        "ABSTER",
+        "ABBY",
+        "CHESTER",
+        "DOJO3",
+        "FEATHERS",
+        "MOP",
+        "NUTZ",
+        "PAINGU",
+        "PENGUIN",
+        "PUDGY",
+        "RETSBA",
+        "WOJACT",
+        "YUP"
+      ];
       
-      // Track balances
-      const balances: {[key: string]: string} = {};
+      const newBalances: Record<string, string> = {};
       
       // First check NOOT balance
       try {
-        const nootAddress = getChecksumAddress(NOOT_TOKEN_ADDRESS);
         const nootContract = new Contract(nootAddress, TOKEN_ABI, ethersProvider);
-        const nootBalanceWei = await nootContract.balanceOf(farmSwapAddress);
-        const nootBalance = etherUtils.formatUnits(nootBalanceWei, 18);
-        balances.NOOT = nootBalance;
+        const contractNootBalance = await nootContract.balanceOf(farmSwapAddress);
+        const formattedNootBalance = formatUnits(contractNootBalance, 18);
+        newBalances["NOOT"] = formattedNootBalance;
+        console.log(`Contract NOOT balance: ${formattedNootBalance}`);
       } catch (error) {
-        console.error("Error getting NOOT balance:", error);
-        balances.NOOT = "Error";
+        console.error("Error checking contract NOOT balance:", error);
+        newBalances["NOOT"] = "0";
       }
       
-      // Check each token's balance
-      for (const tokenAddress of tokenAddresses) {
+      // Then check all other tokens
+      for (const tokenKey of allTokens.filter(t => t !== "NOOT")) {
         try {
-          // Find token key from address
-          const tokenKey = Object.keys(TOKEN_ADDRESSES).find(
-            key => TOKEN_ADDRESSES[key as keyof typeof TOKEN_ADDRESSES].toLowerCase() === tokenAddress.toLowerCase()
-          );
-          
-          if (!tokenKey) continue;
-          
-          // Get token info from contract
-          const info = await swapContract.getTokenInfo(tokenAddress);
-          
-          // Format actual token balance
-          const actualBalance = etherUtils.formatUnits(info.actualBalance, 18);
-          
-          // Save the balance
-          balances[tokenKey] = actualBalance;
-          
+          if (TOKEN_ADDRESSES[tokenKey as keyof typeof TOKEN_ADDRESSES]) {
+            const tokenAddress = getChecksumAddress(TOKEN_ADDRESSES[tokenKey as keyof typeof TOKEN_ADDRESSES]);
+            const tokenContract = new Contract(tokenAddress, TOKEN_ABI, ethersProvider);
+            const tokenBalance = await tokenContract.balanceOf(farmSwapAddress);
+            const formattedBalance = formatUnits(tokenBalance, 18);
+            newBalances[tokenKey] = formattedBalance;
+            console.log(`Contract ${tokenKey} balance: ${formattedBalance}`);
+          } else {
+            console.warn(`Token address not found for ${tokenKey}`);
+            newBalances[tokenKey] = "0";
+          }
         } catch (error) {
-          console.error(`Error getting balance for token ${tokenAddress}:`, error);
+          console.error(`Error checking contract balance for ${tokenKey}:`, error);
+          newBalances[tokenKey] = "0";
         }
       }
       
-      console.log("Contract token balances:", balances);
-      setContractTokenBalances(balances);
+      // Update the state with all balances
+      setContractTokenBalances(newBalances);
       
+      console.log("Contract token balances updated:", newBalances);
+      return newBalances;
     } catch (error) {
       console.error("Error checking contract token balances:", error);
-      toast.error("Failed to check contract token balances");
-    } finally {
-      setIsLoadingContractBalances(false);
+      return {};
     }
   };
   
@@ -3071,9 +2939,9 @@ export const TokenSwap = () => {
       // Add the token to the contract
       toast.loading("Adding token to contract...", { id: "add-token-toast" });
       
+      // FIXED: NooterSwap.sol addToken only accepts tokenAddress (no exchange rate parameter)
       const tx = await swapContract.addToken(
         getChecksumAddress(newTokenAddress),
-        exchangeRateWei,
         { gasLimit: 1000000 }
       );
       
@@ -3113,6 +2981,630 @@ export const TokenSwap = () => {
       setIsAddingToken(false);
     }
   };
+
+  // Add useEffect to initialize token balances for all tokens
+  useEffect(() => {
+    // Initialize all tokens with zero balances 
+    const initialTokenBalances: Record<string, string> = {};
+    const initialContractBalances: Record<string, string> = {};
+    
+    // Get all tokens from TOKEN_ADDRESSES
+    Object.keys(TOKEN_ADDRESSES).forEach(tokenKey => {
+      initialTokenBalances[tokenKey] = "0";
+      initialContractBalances[tokenKey] = "0";
+    });
+    
+    setTokenBalances(initialTokenBalances);
+    setContractTokenBalances(initialContractBalances);
+    
+    // Refresh balances if connected
+    if (isWalletConnected && walletAddress) {
+      fetchAllTokenBalances();
+      checkAllContractTokenBalances();
+    }
+  }, [isWalletConnected, walletAddress]);
+  
+  // Add existing useEffect to recalculate expected output
+  useEffect(() => {
+    if (isWalletConnected && walletAddress && swapAmount > 0) {
+      calculateExpectedOutput();
+    }
+  }, [isWalletConnected, walletAddress, swapAmount, selectedToken, swapDirection, contractTokenBalances]);
+
+  // Add function to update all token exchange rates to 1:1
+  const updateAllExchangeRatesToOneToOne = async () => {
+    if (!isWalletConnected || !walletAddress) {
+      toast.error("Please connect your wallet first");
+      return;
+    }
+    
+    try {
+      setIsRefreshing(true);
+      toast.loading("Updating exchange rates...", { id: "update-rates-toast" });
+      
+      const { provider: ethersProvider, isAGW } = await getEthersProvider();
+      const signer = await ethersProvider.getSigner();
+      
+      // Switch to Abstract Testnet if needed
+      if (!isAGW) {
+        await switchToAbstractTestnet();
+      }
+      
+      const farmSwapAddress = getChecksumAddress(FARM_SWAP_ADDRESS);
+      const swapContract = new Contract(farmSwapAddress, SWAP_ABI, signer);
+      
+      // Get all tokens except NOOT
+      const tokensToUpdate = Object.keys(TOKEN_ADDRESSES).filter(key => key !== "NOOT");
+      
+      // Set exchange rate to 1:1 (1 ether)
+      const oneToOneRate = etherUtils.parseUnits("1", 18);
+      
+      console.log(`Setting exchange rate to 1:1 (${formatUnits(oneToOneRate, 18)}) for all tokens...`);
+      
+      // Update each token's exchange rate
+      for (const tokenKey of tokensToUpdate) {
+        try {
+          const tokenAddress = getChecksumAddress(TOKEN_ADDRESSES[tokenKey as keyof typeof TOKEN_ADDRESSES]);
+          
+          console.log(`Updating exchange rate for ${tokenKey} (${tokenAddress})...`);
+          
+          // Update exchange rate to 1:1
+          const tx = await swapContract.updateExchangeRate(tokenAddress, oneToOneRate, { gasLimit: 500000 });
+          
+          console.log(`Transaction submitted for ${tokenKey}: ${tx.hash}`);
+          
+          // Wait for confirmation
+          await tx.wait();
+          console.log(`Exchange rate updated for ${tokenKey}`);
+        } catch (error) {
+          console.error(`Error updating exchange rate for ${tokenKey}:`, error);
+        }
+      }
+      
+      toast.dismiss("update-rates-toast");
+      toast.success("Exchange rates updated to 1:1 for all tokens");
+      
+      // Refresh exchange rates
+      await handleManualRefresh();
+    } catch (error) {
+      console.error("Error updating exchange rates:", error);
+      toast.dismiss("update-rates-toast");
+      toast.error("Failed to update exchange rates");
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+  
+  // Add function to fund all tokens in the contract
+  const fundAllTokensInContract = async () => {
+    if (!isWalletConnected || !walletAddress) {
+      toast.error("Please connect your wallet first");
+      return;
+    }
+    
+    try {
+      setIsRefreshing(true);
+      toast.loading("Funding contract with tokens...", { id: "fund-toast" });
+      
+      const { provider: ethersProvider, isAGW } = await getEthersProvider();
+      const signer = await ethersProvider.getSigner();
+      
+      // Switch to Abstract Testnet if needed
+      if (!isAGW) {
+        await switchToAbstractTestnet();
+      }
+      
+      const farmSwapAddress = getChecksumAddress(FARM_SWAP_ADDRESS);
+      const swapContract = new Contract(farmSwapAddress, SWAP_ABI, signer);
+      
+      // Get all tokens including NOOT
+      const tokensToFund = Object.keys(TOKEN_ADDRESSES);
+      
+      // Amount to fund per token (1000 tokens)
+      const fundAmount = etherUtils.parseUnits("1000", 18);
+      
+      console.log(`Funding contract with ${formatUnits(fundAmount, 18)} of each token...`);
+      
+      // Fund each token
+      for (const tokenKey of tokensToFund) {
+        try {
+          const tokenAddress = getChecksumAddress(TOKEN_ADDRESSES[tokenKey as keyof typeof TOKEN_ADDRESSES]);
+          const tokenContract = new Contract(tokenAddress, TOKEN_ABI, signer);
+          
+          console.log(`Processing ${tokenKey} (${tokenAddress})...`);
+          
+          // Check user's balance
+          const userBalance = await tokenContract.balanceOf(walletAddress);
+          if (userBalance.lt(fundAmount)) {
+            console.log(`Insufficient ${tokenKey} balance: ${formatUnits(userBalance, 18)}`);
+            continue;
+          }
+          
+          // First approve token spending
+          console.log(`Approving ${tokenKey} for contract funding...`);
+          const approveTx = await tokenContract.approve(farmSwapAddress, fundAmount);
+          console.log(`Approval transaction submitted: ${approveTx.hash}`);
+          await approveTx.wait();
+          
+          // Then fund the contract
+          console.log(`Funding contract with ${tokenKey}...`);
+          
+          // Use the appropriate funding method based on token
+          let fundTx;
+          if (tokenKey === "NOOT") {
+            fundTx = await swapContract.fundNOOT(fundAmount, { gasLimit: 500000 });
+          } else {
+            fundTx = await swapContract.fundToken(tokenAddress, fundAmount, { gasLimit: 500000 });
+          }
+          
+          console.log(`Funding transaction submitted: ${fundTx.hash}`);
+          await fundTx.wait();
+          console.log(`Contract funded with ${tokenKey} successfully`);
+        } catch (error) {
+          console.error(`Error funding contract with ${tokenKey}:`, error);
+        }
+      }
+      
+      toast.dismiss("fund-toast");
+      toast.success("Contract funding complete");
+      
+      // Refresh contract balances
+      await checkAllContractTokenBalances();
+    } catch (error) {
+      console.error("Error funding contract:", error);
+      toast.dismiss("fund-toast");
+      toast.error("Failed to fund contract");
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+  
+  // Add a function to register all tokens and set their exchange rates properly
+  const registerAndConfigureAllTokens = async () => {
+    if (!isWalletConnected || !walletAddress) {
+      toast.error("Please connect your wallet first");
+      return;
+    }
+    
+    try {
+      setIsRefreshing(true);
+      toast.loading("Registering and configuring all tokens...", { id: "configure-toast" });
+      
+      const { provider: ethersProvider, isAGW } = await getEthersProvider();
+      const signer = await ethersProvider.getSigner();
+      
+      // Switch to Abstract Testnet if needed
+      if (!isAGW) {
+        await switchToAbstractTestnet();
+      }
+      
+      const farmSwapAddress = getChecksumAddress(FARM_SWAP_ADDRESS);
+      const swapContract = new Contract(farmSwapAddress, SWAP_ABI, signer);
+      
+      // Get all tokens except NOOT
+      const tokensToRegister = Object.keys(TOKEN_ADDRESSES).filter(key => key !== "NOOT");
+      
+      // Set exchange rate to 1:1 (1 ether)
+      const oneToOneRate = etherUtils.parseUnits("1", 18);
+      
+      console.log(`Registering and configuring ${tokensToRegister.length} tokens...`);
+      
+      let successCount = 0;
+      let errorCount = 0;
+      
+      // Process each token
+      for (const tokenKey of tokensToRegister) {
+        try {
+          const tokenAddress = getChecksumAddress(TOKEN_ADDRESSES[tokenKey as keyof typeof TOKEN_ADDRESSES]);
+          
+          console.log(`Processing ${tokenKey} (${tokenAddress})...`);
+          
+          // First check if token is already registered
+          const [isRegistered] = await swapContract.supportedTokens(tokenAddress).catch(() => [false]);
+          
+          // If not registered, register it
+          if (!isRegistered) {
+            console.log(`Registering ${tokenKey}...`);
+            try {
+              const registerTx = await swapContract.addToken(tokenAddress, oneToOneRate, { gasLimit: 500000 });
+              console.log(`Registration transaction submitted: ${registerTx.hash}`);
+              await registerTx.wait();
+              console.log(`${tokenKey} registered successfully`);
+            } catch (error) {
+              console.error(`Error registering ${tokenKey}:`, error);
+              errorCount++;
+              continue; // Skip to next token on error
+            }
+          } else {
+            console.log(`${tokenKey} is already registered`);
+          }
+          
+          // Now update the exchange rate to 1:1
+          console.log(`Updating exchange rate for ${tokenKey}...`);
+          try {
+            const updateTx = await swapContract.updateExchangeRate(tokenAddress, oneToOneRate, { gasLimit: 500000 });
+            console.log(`Update exchange rate transaction submitted: ${updateTx.hash}`);
+            await updateTx.wait();
+            console.log(`${tokenKey} exchange rate updated successfully`);
+            successCount++;
+          } catch (error) {
+            console.error(`Error updating exchange rate for ${tokenKey}:`, error);
+            errorCount++;
+          }
+        } catch (error) {
+          console.error(`Error processing ${tokenKey}:`, error);
+          errorCount++;
+        }
+      }
+      
+      toast.dismiss("configure-toast");
+      
+      if (errorCount === 0) {
+        toast.success(`All ${successCount} tokens registered and configured successfully!`);
+      } else {
+        toast.success(`${successCount} tokens configured, ${errorCount} failed. Check console for details.`);
+      }
+      
+      // Refresh balances and token information
+      await handleManualRefresh();
+      await checkAllContractTokenBalances();
+    } catch (error) {
+      console.error("Error registering and configuring tokens:", error);
+      toast.dismiss("configure-toast");
+      toast.error("Failed to register and configure tokens");
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+  
+  // Update the AdminSettings component to include the new function
+  const AdminSettings = () => (
+    <div className="noot-settings-section border border-[#333] rounded p-4 mb-4">
+      <h2 className="noot-settings-title font-bold mb-2">Admin Settings</h2>
+      
+      <div className="space-y-2">
+        <div className="flex flex-col space-y-2">
+          <button
+            className="px-4 py-2 bg-red-800 hover:bg-red-700 rounded text-sm"
+            onClick={registerAndConfigureAllTokens}
+            disabled={isRefreshing}
+          >
+            {isRefreshing ? "Processing..." : "Register & Configure All Tokens"}
+          </button>
+          <button
+            className="px-4 py-2 bg-purple-800 hover:bg-purple-700 rounded text-sm"
+            onClick={updateAllExchangeRatesToOneToOne}
+            disabled={isRefreshing}
+          >
+            {isRefreshing ? "Updating..." : "Update All Exchange Rates to 1:1"}
+          </button>
+          <button
+            className="px-4 py-2 bg-green-800 hover:bg-green-700 rounded text-sm"
+            onClick={fundAllTokensInContract}
+            disabled={isRefreshing}
+          >
+            {isRefreshing ? "Processing..." : "Fund Contract with Tokens"}
+          </button>
+          <button
+            className="px-4 py-2 bg-blue-800 hover:bg-blue-700 rounded text-sm"
+            onClick={handleManualRefresh}
+            disabled={isRefreshing}
+          >
+            {isRefreshing ? "Refreshing..." : "Refresh Token Data"}
+          </button>
+          <button
+            className="px-4 py-2 bg-blue-800 hover:bg-blue-700 rounded text-sm"
+            onClick={checkAllContractTokenBalances}
+            disabled={isLoadingContractBalances}
+          >
+            {isLoadingContractBalances ? "Checking..." : "Refresh Contract Token Balances"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Add a direct token swap function that bypasses contract registration issues
+  const directSwapWithTransfers = async () => {
+    if (!isWalletConnected || !walletAddress) {
+      toast.error("Please connect your wallet first");
+      return;
+    }
+    
+    try {
+      setIsMultiSwapLoading(true);
+      
+      if (swapAmount <= 0) {
+        toast.error("Please enter a valid amount");
+        setIsMultiSwapLoading(false);
+        return;
+      }
+      
+      const { provider: ethersProvider, isAGW } = await getEthersProvider();
+      const signer = await ethersProvider.getSigner();
+      
+      // Setup contract instances
+      const nootAddress = getChecksumAddress(NOOT_TOKEN_ADDRESS);
+      const selectedTokenAddress = getChecksumAddress(TOKEN_ADDRESSES[selectedToken as keyof typeof TOKEN_ADDRESSES]);
+      const farmSwapAddress = getChecksumAddress(FARM_SWAP_ADDRESS);
+      
+      // Create contract instances
+      const nootContract = new Contract(nootAddress, TOKEN_ABI, signer);
+      const tokenContract = new Contract(selectedTokenAddress, TOKEN_ABI, signer);
+      const swapContract = new Contract(farmSwapAddress, SWAP_ABI, signer);
+      
+      // Format amount with proper decimals
+      const amount = etherUtils.parseUnits(swapAmount.toString(), 18);
+      
+      // Check balances based on swap direction
+      if (swapDirection === 'noot-to-token') {
+        // Check user NOOT balance
+        if (parseFloat(actualNootBalance) < swapAmount) {
+          toast.error(`Not enough NOOT tokens. You have ${actualNootBalance} NOOT`);
+          setIsMultiSwapLoading(false);
+          return;
+        }
+        
+        // Check contract token balance
+        const contractOutputBalanceStr = contractTokenBalances[selectedToken] || "0";
+        const contractOutputBalance = parseFloat(contractOutputBalanceStr);
+        if (contractOutputBalance < swapAmount) {
+          toast.error(`Contract has insufficient ${selectedToken} liquidity. Available: ${contractOutputBalance}`);
+          setIsMultiSwapLoading(false);
+          return;
+        }
+        
+        // Step 1: Approve NOOT spending
+        toast.loading("Approving NOOT transfer...", { id: "direct-swap-toast" });
+        
+        try {
+          const currentAllowance = await nootContract.allowance(walletAddress, farmSwapAddress);
+          if (currentAllowance < amount) {
+            const approveTx = await nootContract.approve(farmSwapAddress, amount * BigInt(2));
+            console.log("Approval transaction submitted:", approveTx.hash);
+            await approveTx.wait();
+            console.log("Approval confirmed");
+          } else {
+            console.log("Sufficient allowance already exists");
+          }
+          
+          // Step 2: Execute the swap directly through the contract
+          toast.loading("Processing swap...", { id: "direct-swap-toast" });
+          
+          console.log("Executing swapNOOTForToken with params:", {
+            tokenAddress: selectedTokenAddress,
+            amount: amount.toString()
+          });
+          
+          // FIXED: Use the correct contract function call matching the NooterSwap.sol contract
+          const swapTx = await swapContract.swapNOOTForToken(
+            selectedTokenAddress, // toTokenAddress
+            amount, // amount
+            { 
+              gasLimit: 2000000,
+              gasPrice: ethersProvider.getFeeData ? (await ethersProvider.getFeeData()).gasPrice : undefined
+            }
+          );
+          
+          console.log("Swap transaction submitted:", swapTx.hash);
+          setCurrentTx({
+            hash: swapTx.hash,
+            status: "pending"
+          });
+          setShowTxDetails(true);
+          
+          const receipt = await swapTx.wait();
+          toast.dismiss("direct-swap-toast");
+          
+          console.log("Transaction receipt:", receipt);
+          
+          setCurrentTx(prev => ({
+            ...prev,
+            status: receipt && receipt.status === 1 ? "success" : "failed"
+          }));
+          
+          if (receipt && receipt.status === 1) {
+            toast.success(`Successfully swapped ${swapAmount} NOOT for ${swapAmount} ${selectedToken}`);
+            
+            // Refresh balances
+            await fetchNootBalance(walletAddress);
+            await handleManualRefresh();
+          } else {
+            throw new Error("Swap transaction failed");
+          }
+        } catch (error) {
+          console.error("Direct swap error:", error);
+          toast.dismiss("direct-swap-toast");
+          
+          const errorStr = String(error).toLowerCase();
+          if (errorStr.includes("insufficient")) {
+            if (errorStr.includes("liquidity")) {
+              toast.error(`Swap failed: The contract doesn't have enough ${selectedToken} tokens.`);
+            } else if (errorStr.includes("allowance")) {
+              toast.error("Swap failed: Not enough allowance. Try approving more tokens.");
+            } else if (errorStr.includes("balance")) {
+              toast.error("Swap failed: Not enough NOOT tokens in your wallet.");
+            } else {
+              toast.error("Swap failed: Insufficient funds or gas.");
+            }
+          } else if (errorStr.includes("user denied")) {
+            toast.error("Transaction was rejected in your wallet.");
+          } else if (errorStr.includes("not supported")) {
+            toast.error(`Swap failed: ${selectedToken} is not supported in the contract.`);
+            toast.error(
+              <div className="space-y-1">
+                <p>The token needs to be registered in the contract first.</p>
+                <p className="text-xs">Try using the "Add Token" function from the admin settings.</p>
+              </div>
+            );
+          } else {
+            toast.error("Swap failed. Please see console for details: " + String(error));
+          }
+          
+          setCurrentTx(prev => ({
+            ...prev,
+            status: "failed"
+          }));
+        }
+      } else {
+        // TOKEN TO NOOT SWAP
+        // Check user token balance
+        const tokenBalance = tokenBalances[selectedToken] || "0";
+        if (parseFloat(tokenBalance) < swapAmount) {
+          toast.error(`Not enough ${selectedToken} tokens. You have ${tokenBalance} ${selectedToken}`);
+          setIsMultiSwapLoading(false);
+          return;
+        }
+        
+        // Check contract NOOT balance
+        const contractNootBalanceStr = contractTokenBalances.NOOT || "0";
+        const contractNootBalance = parseFloat(contractNootBalanceStr);
+        if (contractNootBalance < swapAmount) {
+          toast.error(`Contract has insufficient NOOT liquidity. Available: ${contractNootBalance}`);
+          setIsMultiSwapLoading(false);
+          return;
+        }
+        
+        try {
+          // Step 1: Approve token spending
+          toast.loading(`Approving ${selectedToken} transfer...`, { id: "direct-swap-toast" });
+          
+          const currentAllowance = await tokenContract.allowance(walletAddress, farmSwapAddress);
+          if (currentAllowance < amount) {
+            const approveTx = await tokenContract.approve(farmSwapAddress, amount * BigInt(2));
+            console.log("Approval transaction submitted:", approveTx.hash);
+            await approveTx.wait();
+            console.log("Approval confirmed");
+          } else {
+            console.log("Sufficient allowance already exists");
+          }
+          
+          // Step 2: Execute the swap directly through the contract
+          toast.loading("Processing swap...", { id: "direct-swap-toast" });
+          
+          console.log("Executing swapTokenForNOOT with params:", {
+            tokenAddress: selectedTokenAddress,
+            amount: amount.toString()
+          });
+          
+          // FIXED: Make sure we're correctly calling the contract function
+          const swapTx = await swapContract.swapTokenForNOOT(
+            selectedTokenAddress, // fromTokenAddress
+            amount, // amount
+            { 
+              gasLimit: 2000000,
+              gasPrice: ethersProvider.getFeeData ? (await ethersProvider.getFeeData()).gasPrice : undefined
+            }
+          );
+          
+          console.log("Swap transaction submitted:", swapTx.hash);
+          setCurrentTx({
+            hash: swapTx.hash,
+            status: "pending"
+          });
+          setShowTxDetails(true);
+          
+          const receipt = await swapTx.wait();
+          toast.dismiss("direct-swap-toast");
+          
+          console.log("Transaction receipt:", receipt);
+          
+          setCurrentTx(prev => ({
+            ...prev,
+            status: receipt && receipt.status === 1 ? "success" : "failed"
+          }));
+          
+          if (receipt && receipt.status === 1) {
+            toast.success(`Successfully swapped ${swapAmount} ${selectedToken} for ${swapAmount} NOOT`);
+            
+            // Refresh balances
+            await fetchNootBalance(walletAddress);
+            await handleManualRefresh();
+          } else {
+            throw new Error("Swap transaction failed");
+          }
+        } catch (error) {
+          console.error("Direct swap error:", error);
+          toast.dismiss("direct-swap-toast");
+          
+          const errorStr = String(error).toLowerCase();
+          if (errorStr.includes("insufficient")) {
+            if (errorStr.includes("liquidity")) {
+              toast.error("Swap failed: The contract doesn't have enough NOOT tokens.");
+            } else if (errorStr.includes("allowance")) {
+              toast.error(`Swap failed: Not enough allowance. Try approving more ${selectedToken} tokens.`);
+            } else if (errorStr.includes("balance")) {
+              toast.error(`Swap failed: Not enough ${selectedToken} tokens in your wallet.`);
+            } else {
+              toast.error("Swap failed: Insufficient funds or gas.");
+            }
+          } else if (errorStr.includes("user denied")) {
+            toast.error("Transaction was rejected in your wallet.");
+          } else if (errorStr.includes("not supported")) {
+            toast.error(`Swap failed: ${selectedToken} is not supported in the contract.`);
+            toast.error(
+              <div className="space-y-1">
+                <p>The token needs to be registered in the contract first.</p>
+                <p className="text-xs">Try using the "Add Token" function from the admin settings.</p>
+              </div>
+            );
+          } else {
+            toast.error("Swap failed. Please see console for details: " + String(error));
+          }
+          
+          setCurrentTx(prev => ({
+            ...prev,
+            status: "failed"
+          }));
+        }
+      }
+    } catch (error) {
+      console.error("Direct swap process error:", error);
+      toast.dismiss("direct-swap-toast");
+      toast.error("Swap process failed. Please try again later.");
+    } finally {
+      setIsMultiSwapLoading(false);
+    }
+  };
+  
+  // Update the multi-token swap UI to add the direct swap option
+  const renderSwapButtons = () => (
+    <div className="flex flex-col space-y-2">
+      <button
+        onClick={swapDirection === 'noot-to-token' ? swapNootForToken : swapTokenForNOOT}
+        disabled={isMultiSwapLoading || swapAmount <= 0 || !isWalletConnected}
+        className="w-full py-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 rounded-md font-medium transition"
+      >
+        {isMultiSwapLoading ? (
+          <div className="flex items-center justify-center">
+            <Loader className="h-5 w-5 mr-2 animate-spin" />
+            <span>Swapping...</span>
+          </div>
+        ) : (
+          <span>
+            Swap {swapAmount > 0 ? swapAmount : '0'} {swapDirection === 'noot-to-token' ? 'NOOT' : selectedToken} for {expectedOutputAmount ? expectedOutputAmount.toFixed(4) : '0'} {swapDirection === 'noot-to-token' ? selectedToken : 'NOOT'}
+          </span>
+        )}
+      </button>
+      
+      <button
+        onClick={directSwapWithTransfers}
+        disabled={isMultiSwapLoading || swapAmount <= 0 || !isWalletConnected}
+        className="w-full py-2 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 rounded-md font-medium transition text-sm"
+      >
+        {isMultiSwapLoading ? (
+          <div className="flex items-center justify-center">
+            <Loader className="h-4 w-4 mr-2 animate-spin" />
+            <span>Processing...</span>
+          </div>
+        ) : (
+          <span>
+            Try Direct 1:1 Swap (Emergency Mode)
+          </span>
+        )}
+      </button>
+    </div>
+  );
 
   return (
     <div className="noot-swap-container noot-text">
@@ -4193,6 +4685,10 @@ export const TokenSwap = () => {
             </div>
           </div>
         )}
+      </div>
+      <AdminSettings />
+      <div className="mt-4">
+        {renderSwapButtons()}
       </div>
     </div>
   );

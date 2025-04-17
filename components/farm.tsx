@@ -7,7 +7,7 @@ import { SeedSelector } from "@/components/seed-selector";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import toast from "react-hot-toast";
+import toast, { Toast, DefaultToastOptions } from "react-hot-toast";
 import { 
   Cloud, 
   CloudRain, 
@@ -47,6 +47,8 @@ import DynamicWrapper from '@/components/dynamic-wrapper';
 
 // Import the ClientWrapper instead of FarmGame directly
 import ClientWrapper from './farm-game/ClientWrapper';
+// Import CrashoutGame
+import { CrashoutGame } from './crashout-game'; // Assuming it's in the components folder
 
 // Use the actual Plot interface from game-context
 interface Plot {
@@ -134,7 +136,8 @@ declare global {
   interface Window {
     Phaser: any;
     game: any;
-    _defendGameFixInterval?: number;
+    // Allow Timeout type from setInterval
+    _defendGameFixInterval?: number | NodeJS.Timeout; 
   }
 }
 
@@ -200,7 +203,8 @@ export function Farm() {
     console.log("All seeds:", seeds);
   }, [currentSeason, seeds]);
   
-  const [activeTab, setActiveTab] = useState<"farm" | "quests" | "market" | "swap" | "social" | "profile" | "animals" | "crafting" | "boosters" | "defend">("farm");
+  // Update activeTab state type to include 'crashout'
+  const [activeTab, setActiveTab] = useState<"farm" | "quests" | "market" | "swap" | "social" | "profile" | "animals" | "crafting" | "boosters" | "defend" | "crashout">("farm");
   const [showParticles, setShowParticles] = useState(false);
   const [harvestAnimation, setHarvestAnimation] = useState<{
     plotIndex: number;
@@ -1549,7 +1553,8 @@ export function Farm() {
               if (typeof Defense.prototype.createProjectile === 'function') {
                 const originalCreateProjectile = Defense.prototype.createProjectile;
                 
-                Defense.prototype.createProjectile = function(enemy) {
+                // Add type annotation for enemy
+                Defense.prototype.createProjectile = function(enemy: any) { 
                   try {
                     // Ensure scene and enemy exist
                     if (!this.scene || !this.scene.add || !enemy) return null;
@@ -1588,7 +1593,8 @@ export function Farm() {
                     this.scene.projectiles.push(projectile);
                     
                     // Update function
-                    projectile.update = function(delta) {
+                    // Add type annotation for delta
+                    projectile.update = function(delta: number) { 
                       delta = delta || 1/60;
                       
                       // Move projectile
@@ -1637,7 +1643,8 @@ export function Farm() {
               if (typeof Defense.prototype.update === 'function') {
                 const originalUpdate = Defense.prototype.update;
                 
-                Defense.prototype.update = function(delta) {
+                // Add type annotation for delta
+                Defense.prototype.update = function(delta: number) { 
                   // Force activation for mages
                   if (this.type === 'mage') {
                     this.active = true;
@@ -1668,12 +1675,13 @@ export function Farm() {
           const game = window.game || (window.Phaser.Game && window.Phaser.Game.instance);
           if (!game || !game.scene) return;
           
-          game.scene.scenes.forEach(scene => {
+          game.scene.scenes.forEach((scene: any) => {
             if (!scene || !scene.children || !scene.children.list) return;
             
             // Find highest depth
             let maxDepth = 10;
-            scene.children.list.forEach(child => {
+            // Add type annotation for child
+            scene.children.list.forEach((child: any) => {
               if (child.depth > maxDepth) maxDepth = child.depth;
             });
             
@@ -1681,7 +1689,8 @@ export function Farm() {
             const uiDepth = maxDepth + 1000;
             
             // Fix all texts
-            scene.children.list.forEach(child => {
+            // Add type annotation for child
+            scene.children.list.forEach((child: any) => {
               if (child.type === 'Text' && typeof child.setDepth === 'function') {
                 if (child.text && (
                     child.text.includes('GAME OVER') || 
@@ -1870,7 +1879,8 @@ export function Farm() {
     // Clear any fix intervals
     if (typeof window !== 'undefined' && window._defendGameFixInterval) {
       clearInterval(window._defendGameFixInterval);
-      window._defendGameFixInterval = null;
+      // Assign undefined instead of null
+      window._defendGameFixInterval = undefined;
     }
 
     // Update state to end the game
@@ -1898,7 +1908,9 @@ export function Farm() {
         // Update the daily task
         updateDailyTask('coinsEarned', defendGameState.farmCoinsEarned);
         
-        toast.info(`Game over! You earned ${defendGameState.farmCoinsEarned} coins.`);
+        // Replace toast.info with toast or toast.success/error if appropriate
+        // Using a standard toast here as 'info' isn't standard
+        toast(`Game over! You earned ${defendGameState.farmCoinsEarned} coins.`); 
       } else {
         toast.error('Game over! Better luck next time.');
       }
@@ -2107,6 +2119,15 @@ export function Farm() {
           >
             <Shield className="h-3 w-3 sm:h-4 sm:w-4" />
             Defend Farm
+          </button>
+          {/* Add Crashout Tab Button */}
+          <button 
+            onClick={() => setActiveTab("crashout")}
+            className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${activeTab === "crashout" ? "bg-white text-black" : "text-white/80"}`}
+          >
+            {/* You might want a better icon here */}
+            <Rocket className="h-3 w-3 sm:h-4 sm:w-4" /> 
+            Crashout
           </button>
         </div>
         
@@ -3460,6 +3481,16 @@ export function Farm() {
                 </div>
               )}
             </div>
+          </div>
+        )}
+        
+        {/* Crashout Tab */}
+        {activeTab === "crashout" && (
+          <div className="animate-fadeIn">
+            <h2 className="text-xl font-semibold text-white border-b border-white/10 pb-2 mb-4">
+              Crashout Game
+            </h2>
+            <CrashoutGame />
           </div>
         )}
       </div>
