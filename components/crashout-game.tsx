@@ -8,6 +8,8 @@ declare global {
     _audioInstances?: {[key: string]: HTMLAudioElement};
     _crashoutAudioInitialized?: boolean;
     _ethereumPropertyProtected?: boolean;
+    _propertyAccessAttempts?: {[key: string]: number};
+    _propertyValues?: {[key: string]: any};
   }
 }
 
@@ -15,16 +17,73 @@ declare global {
 // This runs as soon as the file is parsed, before any components mount
 if (typeof window !== 'undefined' && !window._ethereumPropertyProtected) {
   try {
+    // Initialize property access counter and values store
+    window._propertyAccessAttempts = window._propertyAccessAttempts || {};
+    window._propertyValues = window._propertyValues || {};
+    
     const protectProperty = (propName: string) => {
-      if (!Object.getOwnPropertyDescriptor(window, propName)) {
+      try {
+        // Get current descriptor (if any)
+        const descriptor = Object.getOwnPropertyDescriptor(window, propName);
+        
+        // Store current value before we modify anything
+        let currentValue = undefined;
         try {
+          // Only try to get value if possible without errors
+          if (!descriptor || (descriptor.get && !descriptor.set) || descriptor.value !== undefined) {
+            currentValue = (window as any)[propName];
+          }
+        } catch (err) {
+          console.log(`Could not read current value of ${propName}`);
+        }
+        
+        // Initialize value store
+        window._propertyValues![propName] = currentValue;
+        
+        if (!descriptor) {
+          // Property doesn't exist yet - define it in a way extensions can modify
           Object.defineProperty(window, propName, {
             configurable: true,
-            get: () => undefined
+            enumerable: true,
+            get: () => window._propertyValues![propName],
+            set: (newValue) => {
+              // Allow setting the property value
+              window._propertyValues![propName] = newValue;
+              
+              // Track access attempts for debugging
+              window._propertyAccessAttempts![propName] = 
+                (window._propertyAccessAttempts![propName] || 0) + 1;
+            }
           });
-        } catch (err) {
-          // Silent fail if property is protected
+          
+          console.log(`Protected window.${propName} with configurable wrapper`);
+        } else if (descriptor.configurable) {
+          // Property exists and is configurable - redefine it to allow setting
+          try {
+            Object.defineProperty(window, propName, {
+              configurable: true,
+              enumerable: descriptor.enumerable !== undefined ? descriptor.enumerable : true,
+              get: () => window._propertyValues![propName],
+              set: (newValue) => {
+                // Allow setting the property value
+                window._propertyValues![propName] = newValue;
+                
+                // Track access attempts for debugging
+                window._propertyAccessAttempts![propName] = 
+                  (window._propertyAccessAttempts![propName] || 0) + 1;
+              }
+            });
+            console.log(`Redefined configurable property ${propName}`);
+          } catch (redefineErr) {
+            console.warn(`Could not redefine property ${propName}:`, redefineErr);
+          }
+        } else {
+          // Property exists and is not configurable - can't modify it
+          console.log(`Property ${propName} is not configurable, can't protect`);
         }
+      } catch (err) {
+        // Silent fail if property is protected
+        console.warn(`Error protecting property ${propName}:`, err);
       }
     };
     
@@ -32,7 +91,8 @@ if (typeof window !== 'undefined' && !window._ethereumPropertyProtected) {
     ['ethereum', 'isZerion', 'web3', 'solana'].forEach(protectProperty);
     window._ethereumPropertyProtected = true;
   } catch (e) {
-    // Silent fail for any errors
+    // Log any errors
+    console.warn("Error setting up ethereum property protection:", e);
   }
 }
 

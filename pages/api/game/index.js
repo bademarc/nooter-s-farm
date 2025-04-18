@@ -85,7 +85,42 @@ const getGameState = async (redis) => {
       await redis.set('crashout:gameState', JSON.stringify(initialState));
       return initialState;
     }
-    return JSON.parse(gameStateRaw);
+    
+    // Add safer JSON parsing with error handling
+    try {
+      return JSON.parse(gameStateRaw);
+    } catch (parseError) {
+      console.error('Error parsing game state JSON:', parseError);
+      console.error('Raw game state:', gameStateRaw);
+      
+      // Log the first few characters for debugging
+      const sample = gameStateRaw.slice(0, 50) + (gameStateRaw.length > 50 ? '...' : '');
+      console.error('Game state sample:', sample);
+      
+      // Create a fallback game state
+      const fallbackState = {
+        state: GAME_STATE.INACTIVE,
+        multiplier: 1.0,
+        countdown: 10,
+        nextGameTime: Date.now() + 5000,
+        playersInGame: 0,
+        onlinePlayers: 0,
+        crashPoint: 0,
+        joinWindowTimeLeft: 0,
+        lastUpdate: Date.now(),
+        parseError: parseError.message,
+      };
+      
+      // Attempt to repair the game state in Redis
+      try {
+        console.log('Attempting to repair corrupted game state in Redis');
+        await redis.set('crashout:gameState', JSON.stringify(fallbackState));
+      } catch (repairError) {
+        console.error('Error repairing game state:', repairError);
+      }
+      
+      return fallbackState;
+    }
   } catch (error) {
     console.error('Error getting game state:', error);
     throw error;
@@ -112,7 +147,33 @@ const getPlayerData = async (redis, username) => {
     if (!playerDataRaw) {
       return { betAmount: 0, autoCashout: 2.0, joined: false, cashedOut: false };
     }
-    return JSON.parse(playerDataRaw);
+    
+    // Add safer JSON parsing with error handling
+    try {
+      return JSON.parse(playerDataRaw);
+    } catch (parseError) {
+      console.error(`Error parsing player data JSON for ${username}:`, parseError);
+      console.error('Raw player data:', playerDataRaw);
+      
+      // Create a fallback player state
+      const fallbackData = { 
+        betAmount: 0, 
+        autoCashout: 2.0, 
+        joined: false, 
+        cashedOut: false,
+        parseError: parseError.message
+      };
+      
+      // Attempt to repair the player data in Redis
+      try {
+        console.log(`Attempting to repair corrupted player data for ${username}`);
+        await redis.set(`crashout:player:${username}`, JSON.stringify(fallbackData));
+      } catch (repairError) {
+        console.error('Error repairing player data:', repairError);
+      }
+      
+      return fallbackData;
+    }
   } catch (error) {
     console.error('Error getting player data:', error);
     throw error;
@@ -136,10 +197,27 @@ const updatePlayerData = async (redis, username, updates) => {
 const getGameHistory = async (redis) => {
   try {
     const historyRaw = await redis.lrange('crashout:history', 0, 50);
-    return historyRaw.map(item => JSON.parse(item));
+    
+    // Parse each history item safely
+    return historyRaw.map(item => {
+      try {
+        return JSON.parse(item);
+      } catch (parseError) {
+        console.error('Error parsing history item JSON:', parseError);
+        console.error('Raw history item:', item);
+        
+        // Return a fallback history item
+        return {
+          crashPoint: 1.0,
+          timestamp: Date.now(),
+          color: "red",
+          parseError: parseError.message
+        };
+      }
+    });
   } catch (error) {
     console.error('Error getting game history:', error);
-    throw error;
+    return []; // Return empty array instead of throwing
   }
 };
 
@@ -164,10 +242,28 @@ const addGameToHistory = async (redis, crashPoint) => {
 const getRecentCashouts = async (redis) => {
   try {
     const cashoutsRaw = await redis.lrange('crashout:cashouts', 0, 15);
-    return cashoutsRaw.map(item => JSON.parse(item));
+    
+    // Parse each cashout safely
+    return cashoutsRaw.map(item => {
+      try {
+        return JSON.parse(item);
+      } catch (parseError) {
+        console.error('Error parsing cashout JSON:', parseError);
+        console.error('Raw cashout item:', item);
+        
+        // Return a fallback cashout item
+        return {
+          username: "unknown",
+          multiplier: 1.0,
+          winning: 0,
+          timestamp: Date.now(),
+          parseError: parseError.message
+        };
+      }
+    });
   } catch (error) {
     console.error('Error getting recent cashouts:', error);
-    throw error;
+    return []; // Return empty array instead of throwing
   }
 };
 
@@ -543,42 +639,83 @@ export default async function handler(req, res) {
       await redis.ping();
       
       // Fetch current game state
-      const gameState = await getGameState(redis);
-      
-      // Update the game state based on time elapsed
-      const updatedState = await progressGameState(redis);
+      let gameState;
+      try {
+        gameState = await getGameState(redis);
+        // Update the game state based on time elapsed
+        gameState = await progressGameState(redis);
+      } catch (stateError) {
+        console.error('Error fetching or processing game state:', stateError);
+        gameState = {
+          state: GAME_STATE.INACTIVE,
+          multiplier: 1.0,
+          countdown: 10,
+          error: stateError.message
+        };
+      }
       
       // Get game history
-      const history = await getGameHistory(redis);
+      let history = [];
+      try {
+        history = await getGameHistory(redis);
+      } catch (historyError) {
+        console.error('Error fetching game history:', historyError);
+      }
       
       // Get recent cashouts
-      const cashouts = await getRecentCashouts(redis);
+      let cashouts = [];
+      try {
+        cashouts = await getRecentCashouts(redis);
+      } catch (cashoutError) {
+        console.error('Error fetching recent cashouts:', cashoutError);
+      }
       
       // Count online players
-      const onlinePlayers = await countActivePlayers(redis);
+      let onlinePlayers = 0;
+      try {
+        onlinePlayers = await countActivePlayers(redis);
+      } catch (playersError) {
+        console.error('Error counting active players:', playersError);
+      }
       
-      redis.disconnect();
+      if (redis) redis.disconnect();
       
       return res.status(200).json({ 
         success: true, 
         message: 'Game API is running', 
         timestamp: Date.now(),
         redis: 'connected',
-        gameState: updatedState,
+        gameState,
         history,
         cashouts,
         onlinePlayers
       });
     } catch (redisError) {
       console.error('Redis connection error during health check:', redisError);
-      if (redis) redis.disconnect();
+      if (redis) {
+        try {
+          redis.disconnect();
+        } catch (disconnectError) {
+          console.error('Error disconnecting Redis client:', disconnectError);
+        }
+      }
       
+      // Return a more detailed error response
       return res.status(200).json({
         success: false,
         message: 'Game API is running but Redis is not connected',
         error: redisError.message,
+        errorType: redisError.name,
         timestamp: Date.now(),
-        redis: 'disconnected'
+        redis: 'disconnected',
+        gameState: {
+          state: GAME_STATE.INACTIVE,
+          multiplier: 1.0,
+          countdown: 10
+        },
+        history: [],
+        cashouts: [],
+        onlinePlayers: 0
       });
     }
   }
@@ -612,26 +749,63 @@ export default async function handler(req, res) {
     switch (action) {
       case 'sync': {
         // Get latest game state
-        let gameState = await getGameState(redis);
-        
-        // Progress the game state based on elapsed time
-        // This replaces the cron job for most common state transitions
-        gameState = await progressGameState(redis);
+        let gameState = null;
+        try {
+          gameState = await getGameState(redis);
+          
+          // Progress the game state based on elapsed time
+          // This replaces the cron job for most common state transitions
+          gameState = await progressGameState(redis);
+        } catch (stateError) {
+          console.error('Error fetching or processing game state during sync:', stateError);
+          gameState = {
+            state: GAME_STATE.INACTIVE,
+            multiplier: 1.0,
+            countdown: 10,
+            error: stateError.message
+          };
+        }
         
         // Get game history
-        const history = await getGameHistory(redis);
+        let history = [];
+        try {
+          history = await getGameHistory(redis);
+        } catch (historyError) {
+          console.error('Error fetching game history during sync:', historyError);
+        }
         
         // Get recent cashouts
-        const cashouts = await getRecentCashouts(redis);
+        let cashouts = [];
+        try {
+          cashouts = await getRecentCashouts(redis);
+        } catch (cashoutError) {
+          console.error('Error fetching recent cashouts during sync:', cashoutError);
+        }
         
         // Get player-specific data if a username was provided
         let playerData = null;
         if (username) {
-          playerData = await getPlayerData(redis, username);
+          try {
+            playerData = await getPlayerData(redis, username);
+          } catch (playerError) {
+            console.error(`Error fetching player data for ${username} during sync:`, playerError);
+            playerData = { 
+              betAmount: 0, 
+              autoCashout: 2.0, 
+              joined: false, 
+              cashedOut: false,
+              error: playerError.message 
+            };
+          }
         }
         
         // Count online players
-        const onlinePlayers = await countActivePlayers(redis);
+        let onlinePlayers = 0;
+        try {
+          onlinePlayers = await countActivePlayers(redis);
+        } catch (playersError) {
+          console.error('Error counting active players during sync:', playersError);
+        }
         
         return res.status(200).json({
           success: true,
