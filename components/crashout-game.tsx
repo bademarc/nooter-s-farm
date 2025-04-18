@@ -201,12 +201,54 @@ export function CrashoutGame() {
   // Utility function for fetching game data
   const getCurrentGameData = useCallback(async () => {
     try {
+      console.log('Fetching current game data...');
       const response = await axios.get('/api/game', {
         headers: { 'Cache-Control': 'no-cache' }
       });
+      
+      console.log('Game data response status:', response.status);
+      
+      // Make sure we have data
+      if (!response.data) {
+        console.error('API returned empty data');
+        return null;
+      }
+      
+      // If the response contains a message but no game state data, 
+      // let's create a default state to avoid undefined errors
+      if (response.data.message && response.data.message === "Game API is running" && !response.data.state) {
+        console.warn('API returned connection message without game state, creating default state');
+        
+        // Create a basic default state
+        return {
+          state: GAME_STATE.INACTIVE,
+          multiplier: 1.0,
+          countdown: 0,
+          redis: "connected",
+          message: "Game API is running",
+          // Add any other default fields we need
+          players: [],
+          onlinePlayers: 0,
+          recentCashouts: []
+        };
+      }
+      
       return response.data;
-    } catch (error) {
+    } catch (error: any) { // Type assertion to handle axios error properties
       console.error('Error fetching game data:', error);
+      
+      // Provide detailed error information
+      if (error.response) {
+        // Server responded with non-2xx status
+        console.error('Server error response:', error.response.status, error.response.data);
+      } else if (error.request) {
+        // Request was made but no response received
+        console.error('No response received from server');
+      } else {
+        // Something happened in setting up the request
+        console.error('Request setup error:', error.message);
+      }
+      
       return null;
     }
   }, []);
@@ -636,6 +678,9 @@ export function CrashoutGame() {
           return;
         }
         
+        // Debug log the full data structure to understand what the server is returning
+        console.log('Server response data:', JSON.stringify(data, null, 2));
+        
         // Check if we have a connection issue
         if (data.status === 'error' || data.redis === 'disconnected') {
           console.error('Redis connection issue during polling:', data.error || 'Unknown error');
@@ -652,18 +697,54 @@ export function CrashoutGame() {
         const dataChanged = JSON.stringify(data) !== JSON.stringify(currentGameData.current);
         currentGameData.current = data;
         
+        // Check if state is undefined and provide a fallback
+        if (data.state === undefined) {
+          console.warn('Server returned undefined game state, using INACTIVE as fallback');
+          data.state = GAME_STATE.INACTIVE;
+        }
+        
         // Always update these critical fields regardless of change detection
         // to ensure consistency across all clients
         if (data.state) {
-          setGameState(data.state);
+          console.log(`Setting game state to: ${data.state}`);
+          
+          // Ensure we're using the correct state mapping
+          let mappedState;
+          
+          // Map string state to GameState enum
+          switch(data.state) {
+            case GAME_STATE.ACTIVE:
+              mappedState = GameState.RUNNING;
+              break;
+            case GAME_STATE.COUNTDOWN:
+              mappedState = GameState.WAITING;
+              break;
+            case GAME_STATE.CRASHED:
+              mappedState = GameState.CRASHED;
+              break;
+            case GAME_STATE.INACTIVE:
+            default:
+              mappedState = GameState.INACTIVE;
+              break;
+          }
+          
+          console.log(`Mapped state from ${data.state} to enum value: ${mappedState}`);
+          setGameState(mappedState);
         }
         
         if (data.multiplier !== undefined) {
           setMultiplier(data.multiplier);
+        } else if (data.state === GAME_STATE.ACTIVE) {
+          // If in active state but no multiplier provided, use a default
+          console.warn('No multiplier provided but game is active, using 1.0 as fallback');
+          setMultiplier(1.0);
         }
         
         if (data.countdown !== undefined) {
           setCountdown(data.countdown);
+        } else if (data.timeLeft !== undefined) {
+          // Support alternative property name
+          setCountdown(data.timeLeft);
         }
         
         // If significant data changed, process all state updates
