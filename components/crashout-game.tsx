@@ -1,8 +1,9 @@
 /// components/crashout-game.tsx
 "use client";
 
+// Wrap the global declarations in a proper module declaration to fix TypeScript errors
 // Add TypeScript declaration for window._loggedUrls
-declare global {
+declare module global {
   interface Window {
     _loggedUrls?: {[key: string]: boolean};
     _audioInstances?: {[key: string]: HTMLAudioElement};
@@ -10,67 +11,90 @@ declare global {
     _ethereumPropertyProtected?: boolean;
     _propertyAccessAttempts?: {[key: string]: number};
     _propertyValues?: {[key: string]: any};
+    _earlyWalletInjectionAttempts?: {[key: string]: number};
+    _hiddenDescriptors?: {[key: string]: PropertyDescriptor | null};
   }
 }
 
+// Use alias for window with proper typing
+const typedWindow = typeof window !== 'undefined' ? (window as any) : undefined;
+
 // Add immediate protection for ethereum properties before imports
 // This runs as soon as the file is parsed, before any components mount
-if (typeof window !== 'undefined' && !window._ethereumPropertyProtected) {
+if (typeof window !== 'undefined' && !typedWindow._ethereumPropertyProtected) {
   try {
-    // Initialize property access counter and values store
-    window._propertyAccessAttempts = window._propertyAccessAttempts || {};
-    window._propertyValues = window._propertyValues || {};
+    // Initialize tracking objects
+    typedWindow._propertyAccessAttempts = typedWindow._propertyAccessAttempts || {};
+    typedWindow._propertyValues = typedWindow._propertyValues || {};
+    typedWindow._earlyWalletInjectionAttempts = typedWindow._earlyWalletInjectionAttempts || {};
+    typedWindow._hiddenDescriptors = typedWindow._hiddenDescriptors || {};
     
     const protectProperty = (propName: string) => {
       try {
         // Get current descriptor (if any)
         const descriptor = Object.getOwnPropertyDescriptor(window, propName);
         
+        // Store the original descriptor for potential future restoration
+        typedWindow._hiddenDescriptors[propName] = descriptor;
+        
         // Store current value before we modify anything
         let currentValue = undefined;
         try {
           // Only try to get value if possible without errors
           if (!descriptor || (descriptor.get && !descriptor.set) || descriptor.value !== undefined) {
-            currentValue = (window as any)[propName];
+            currentValue = typedWindow[propName];
           }
         } catch (err) {
           console.log(`Could not read current value of ${propName}`);
         }
         
         // Initialize value store
-        window._propertyValues![propName] = currentValue;
+        typedWindow._propertyValues[propName] = currentValue;
         
         if (!descriptor) {
-          // Property doesn't exist yet - define it in a way extensions can modify
-          Object.defineProperty(window, propName, {
-            configurable: true,
-            enumerable: true,
-            get: () => window._propertyValues![propName],
-            set: (newValue) => {
-              // Allow setting the property value
-              window._propertyValues![propName] = newValue;
-              
-              // Track access attempts for debugging
-              window._propertyAccessAttempts![propName] = 
-                (window._propertyAccessAttempts![propName] || 0) + 1;
-            }
-          });
-          
-          console.log(`Protected window.${propName} with configurable wrapper`);
+          // Property doesn't exist yet - define it in a way extensions can modify our storage
+          // instead of directly modifying the window property
+          try {
+            Object.defineProperty(window, propName, {
+              configurable: true,
+              enumerable: true,
+              get: () => typedWindow._propertyValues[propName],
+              set: (newValue) => {
+                // Track wallet injection attempts
+                typedWindow._earlyWalletInjectionAttempts[propName] = 
+                  (typedWindow._earlyWalletInjectionAttempts[propName] || 0) + 1;
+                
+                // Allow setting the property value in our storage
+                typedWindow._propertyValues[propName] = newValue;
+                
+                // Track access attempts for debugging
+                typedWindow._propertyAccessAttempts[propName] = 
+                  (typedWindow._propertyAccessAttempts[propName] || 0) + 1;
+              }
+            });
+            
+            console.log(`Protected window.${propName} with configurable wrapper`);
+          } catch (defineError) {
+            console.log(`Failed to define property ${propName}: ${(defineError as Error).message}`);
+          }
         } else if (descriptor.configurable) {
           // Property exists and is configurable - redefine it to allow setting
           try {
             Object.defineProperty(window, propName, {
               configurable: true,
               enumerable: descriptor.enumerable !== undefined ? descriptor.enumerable : true,
-              get: () => window._propertyValues![propName],
+              get: () => typedWindow._propertyValues[propName],
               set: (newValue) => {
-                // Allow setting the property value
-                window._propertyValues![propName] = newValue;
+                // Track wallet injection attempts
+                typedWindow._earlyWalletInjectionAttempts[propName] = 
+                  (typedWindow._earlyWalletInjectionAttempts[propName] || 0) + 1;
+                
+                // Allow setting the property value in our storage
+                typedWindow._propertyValues[propName] = newValue;
                 
                 // Track access attempts for debugging
-                window._propertyAccessAttempts![propName] = 
-                  (window._propertyAccessAttempts![propName] || 0) + 1;
+                typedWindow._propertyAccessAttempts[propName] = 
+                  (typedWindow._propertyAccessAttempts[propName] || 0) + 1;
               }
             });
             console.log(`Redefined configurable property ${propName}`);
@@ -78,8 +102,21 @@ if (typeof window !== 'undefined' && !window._ethereumPropertyProtected) {
             console.warn(`Could not redefine property ${propName}:`, redefineErr);
           }
         } else {
-          // Property exists and is not configurable - can't modify it
+          // Property exists and is not configurable - we can't modify it directly
+          // Log this case, but don't break anything
           console.log(`Property ${propName} is not configurable, can't protect`);
+          
+          // For non-configurable properties, we need to intercept at a different level
+          try {
+            // Store the current value so extensions can still find it
+            typedWindow._propertyValues[propName] = currentValue;
+            
+            // Track attempts to access this locked property
+            typedWindow._propertyAccessAttempts[propName] = 
+              (typedWindow._propertyAccessAttempts[propName] || 0) + 1;
+          } catch (err) {
+            console.warn(`Error handling non-configurable property ${propName}:`, err);
+          }
         }
       } catch (err) {
         // Silent fail if property is protected
@@ -88,8 +125,23 @@ if (typeof window !== 'undefined' && !window._ethereumPropertyProtected) {
     };
     
     // Protect common properties that cause conflicts with browser extensions
-    ['ethereum', 'isZerion', 'web3', 'solana'].forEach(protectProperty);
-    window._ethereumPropertyProtected = true;
+    // This expanded list covers most crypto wallet injections
+    [
+      'ethereum', 'isZerion', 'web3', 'solana', 'solflare', 'phantom',
+      'keplr', 'xdefi', 'leap', 'cosmostation', 'terraWallets', 'evmProvider'
+    ].forEach(protectProperty);
+    
+    typedWindow._ethereumPropertyProtected = true;
+    
+    // Add error handler for extension security policy access errors
+    window.addEventListener('error', function(event) {
+      if (event.error && event.error.message && 
+          (event.error.message.includes('storage is not allowed') || 
+           event.error.message.includes('security policy violations'))) {
+        // Suppress console errors for extension content security policy violations
+        event.preventDefault();
+      }
+    });
   } catch (e) {
     // Log any errors
     console.warn("Error setting up ethereum property protection:", e);
@@ -169,15 +221,16 @@ const DemoModeSwitch = ({ enabled, onChange }: { enabled: boolean; onChange: (en
 // Add a utility function to get or create shared audio instances
 const getAudioInstance = (key: string, src: string): HTMLAudioElement => {
   if (typeof window === 'undefined') return null as unknown as HTMLAudioElement;
+  const typedWindow = window as any;
   
   // Initialize the audio instances cache if it doesn't exist
-  if (!window._audioInstances) {
-    window._audioInstances = {};
+  if (!typedWindow._audioInstances) {
+    typedWindow._audioInstances = {};
   }
   
   // Return the existing instance if it exists
-  if (window._audioInstances[key]) {
-    return window._audioInstances[key];
+  if (typedWindow._audioInstances[key]) {
+    return typedWindow._audioInstances[key];
   }
   
   // Log creation of a new audio instance to help with debugging
@@ -192,7 +245,7 @@ const getAudioInstance = (key: string, src: string): HTMLAudioElement => {
   });
   
   // Store in global cache
-  window._audioInstances[key] = audio;
+  typedWindow._audioInstances[key] = audio;
   return audio;
 };
 
@@ -286,7 +339,7 @@ export function CrashoutGame() {
     apiError.current = value;
   }, []);
 
-  // Utility function for fetching game data
+  // Modify the getCurrentGameData function to use the auto-repair endpoint on JSON parsing errors
   const getCurrentGameData = useCallback(async () => {
     try {
       console.log('Fetching current game data...');
@@ -305,6 +358,31 @@ export function CrashoutGame() {
               return JSON.parse(data);
             } catch (err: any) {
               console.warn('JSON parse error in response:', err.message);
+              
+              // Track JSON parsing errors for diagnostic purposes
+              const jsonErrorData = {
+                message: err.message,
+                sample: data.slice(0, 100),
+                timestamp: Date.now()
+              };
+              
+              // Trigger auto-repair when JSON errors are detected
+              if (err.message.includes('JSON')) {
+                console.log('Triggering auto-repair due to JSON parse error');
+                // Send the request to auto-repair endpoint asynchronously 
+                // We don't await this to avoid delaying the current operation
+                axios.post('/api/game/auto-repair', {
+                  errorData: jsonErrorData
+                }).then(repairResult => {
+                  console.log('Auto-repair completed:', repairResult.data);
+                  if (repairResult.data.repaired) {
+                    toast.success('Game data has been automatically repaired');
+                  }
+                }).catch(repairErr => {
+                  console.error('Auto-repair failed:', repairErr);
+                });
+              }
+              
               // Try to clean the response
               if (data.startsWith('{') && data.includes('error')) {
                 try {
@@ -318,7 +396,9 @@ export function CrashoutGame() {
                     message: 'Error parsing game data',
                     error: errorMsg,
                     redis: 'disconnected',
-                    timestamp: Date.now()
+                    timestamp: Date.now(),
+                    jsonError: true,
+                    autoRepairTriggered: true
                   };
                 } catch (e) {
                   // Last resort fallback
@@ -326,7 +406,9 @@ export function CrashoutGame() {
                     success: false,
                     message: 'Invalid JSON from API',
                     error: String(err),
-                    redis: 'disconnected'
+                    redis: 'disconnected',
+                    jsonError: true,
+                    autoRepairTriggered: true
                   };
                 }
               }
@@ -336,7 +418,9 @@ export function CrashoutGame() {
                 success: false,
                 message: 'API returned invalid data',
                 error: String(err),
-                redis: 'disconnected'
+                redis: 'disconnected',
+                jsonError: true,
+                autoRepairTriggered: true
               };
             }
           }
@@ -355,6 +439,18 @@ export function CrashoutGame() {
       if (response.data && typeof response.data === 'object' && response.data.error && 
           response.data.error.includes("JSON")) {
         console.warn('JSON parse error detected from API response:', response.data.error);
+        
+        // If auto-repair wasn't already triggered, do it now
+        if (!response.data.autoRepairTriggered) {
+          console.log('Triggering delayed auto-repair for JSON error');
+          axios.post('/api/game/auto-repair', {
+            errorData: {
+              message: response.data.error,
+              timestamp: Date.now()
+            }
+          }).catch(err => console.error('Error calling auto-repair:', err));
+        }
+        
         // Return a safe fallback object
         return {
           state: GAME_STATE.INACTIVE,
@@ -412,6 +508,16 @@ export function CrashoutGame() {
         const errorData = error.response.data;
         if (typeof errorData === 'string' && errorData.includes('JSON')) {
           console.warn('Possible JSON parse error in response');
+          
+          // Trigger auto-repair
+          axios.post('/api/game/auto-repair', {
+            errorData: {
+              message: 'Error in response data: ' + (error.response.statusText || 'Unknown error'),
+              sample: typeof errorData === 'string' ? errorData.slice(0, 100) : 'Non-string data',
+              status: error.response.status,
+              timestamp: Date.now()
+            }
+          }).catch(repairErr => console.error('Auto-repair request failed:', repairErr));
         }
       } else if (error.request) {
         // Request was made but no response received
@@ -475,17 +581,18 @@ export function CrashoutGame() {
   // Initialize audio with shared instances to avoid too many media players
   const initializeAudio = useCallback(() => {
     if (typeof window === 'undefined') return;
+    const typedWindow = window as any;
     
     // Only initialize once to prevent multiple instances
-    if (window._crashoutAudioInitialized) {
+    if (typedWindow._crashoutAudioInitialized) {
       console.info('Audio already initialized, reusing instances');
       
       // Update references to existing audio instances
-      if (window._audioInstances) {
-        audioRefs.current.crash = window._audioInstances['crashout_crash'] || null;
-        audioRefs.current.cashout = window._audioInstances['crashout_cashout'] || null;
-        audioRefs.current.win = window._audioInstances['crashout_win'] || null;
-        audioRefs.current.backgroundMusic = window._audioInstances['crashout_bgm'] || null;
+      if (typedWindow._audioInstances) {
+        audioRefs.current.crash = typedWindow._audioInstances['crashout_crash'] || null;
+        audioRefs.current.cashout = typedWindow._audioInstances['crashout_cashout'] || null;
+        audioRefs.current.win = typedWindow._audioInstances['crashout_win'] || null;
+        audioRefs.current.backgroundMusic = typedWindow._audioInstances['crashout_bgm'] || null;
         
         // Update volume settings on existing instances
         if (audioRefs.current.backgroundMusic) {
@@ -496,7 +603,7 @@ export function CrashoutGame() {
     }
     
     console.info('Initializing audio for Crashout game');
-    window._crashoutAudioInitialized = true;
+    typedWindow._crashoutAudioInitialized = true;
     
     // Preload all audio files with a single instance each
     audioRefs.current.crash = getAudioInstance('crashout_crash', '/sounds/crash.mp3');
