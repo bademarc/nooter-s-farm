@@ -1818,49 +1818,89 @@ export function CrashoutGame() {
 
     setIsPlayDisabled(true);
     toast.info("Placing bet...");
+    
+    // Create a function that we can retry
+    const attemptPlaceBet = async (retryCount = 0): Promise<boolean> => {
+      try {
+        console.log(`Sending bet to server (attempt ${retryCount + 1}):`, {
+          username,
+          betAmount: bet,
+          autoCashout: cashoutTarget
+        });
 
-    try {
-      console.log("Sending bet to server:", {
-        username,
-        betAmount: bet,
-        autoCashout: cashoutTarget
-      });
+        const response = await axios.post('/api/game', {
+          action: 'placeBet',
+          username: username || 'Guest' + Math.floor(Math.random() * 1000),
+          betAmount: bet,
+          autoCashout: cashoutTarget
+        });
 
-      const response = await axios.post('/api/game', {
-        action: 'placeBet',
-        username: username || 'Guest' + Math.floor(Math.random() * 1000),
-        betAmount: bet,
-        autoCashout: cashoutTarget
-      });
+        console.log("Bet response:", response.data);
 
-      console.log("Bet response:", response.data);
-
-      if (response.data.success) {
-        setPlayerJoined(true);
-        setIsPlayDisabled(true);
-        setIsCashoutDisabled(false);
-        toast.success("Bet placed successfully!");
-      } else {
+        if (response.data.success) {
+          setPlayerJoined(true);
+          setIsPlayDisabled(true);
+          setIsCashoutDisabled(false);
+          toast.success("Bet placed successfully!");
+          return true;
+        } else {
+          console.warn(`Bet failed: ${response.data.message}`);
+          
+          // Check if this is a timing issue we can retry
+          if (response.data.message?.includes("Game is not in join phase") && retryCount < 2) {
+            console.log("This appears to be a timing issue, will retry in 500ms");
+            return false; // Signal for retry
+          } else {
+            // Other error that we can't auto-retry
+            setIsPlayDisabled(false);
+            toast.error(response.data.message || "Failed to place bet");
+            return true; // We're done trying
+          }
+        }
+      } catch (error) {
+        console.error('Error placing bet:', error);
+        
+        // Check if we should retry
+        if (retryCount < 2) {
+          console.log(`Network error placing bet, will retry (attempt ${retryCount + 1})`);
+          return false; // Signal for retry
+        }
+        
         setIsPlayDisabled(false);
-        toast.error(response.data.message || "Failed to place bet");
+        
+        // Show more detailed error message
+        if (axios.isAxiosError(error) && error.response?.data?.message) {
+          toast.error(`Error: ${error.response.data.message}`);
+        } else {
+          toast.error("Error communicating with server. Please try again.");
+        }
+        return true; // We're done trying
       }
-    } catch (error) {
-      console.error('Error placing bet:', error);
+    };
+    
+    // Try to place the bet with retries
+    let attempt = 0;
+    let done = false;
+    
+    while (!done && attempt < 3) {
+      done = await attemptPlaceBet(attempt);
+      if (!done) {
+        // Wait before retry
+        await new Promise(resolve => setTimeout(resolve, 500));
+        attempt++;
+      }
+    }
+    
+    if (!done) {
+      // If we exhausted all retries
       setIsPlayDisabled(false);
-      
-      // Show more detailed error message
-      // Use proper TypeScript type checking
-      if (axios.isAxiosError(error) && error.response?.data?.message) {
-        toast.error(`Error: ${error.response.data.message}`);
-      } else {
-        toast.error("Error communicating with server. Please try again.");
-      }
+      toast.error("Unable to place bet after multiple attempts. Please try again.");
     }
   }, [
     canPlaceBet, isConnected, betAmount, autoCashout, joinWindowTimeLeft, isPlayDisabled, offlineMode, gameState, username
   ]);
 
-  // Handle cashing out
+  // Handle cashing out with retry capability
   const handleCashout = useCallback(async () => {
     if (offlineMode) {
       // Handle offline cashout as before
@@ -1900,39 +1940,81 @@ export function CrashoutGame() {
     setIsCashoutDisabled(true);
     toast.info("Cashing out...");
 
-    try {
-      const response = await axios.post('/api/game', {
-        action: 'cashout',
-        username
-      });
-
-      console.log("Cashout response:", response.data);
-
-      if (response.data.success) {
-        setCashedOutAt(response.data.multiplier);
-        playSound('win');
+    // Create a function that we can retry
+    const attemptCashout = async (retryCount = 0): Promise<boolean> => {
+      try {
+        console.log(`Sending cashout to server (attempt ${retryCount + 1}) for ${username} at multiplier ${multiplier.toFixed(2)}`);
         
-        if (response.data.winAmount) {
-          // Use the correct number of arguments
-          addFarmCoins(response.data.winAmount);
-          toast.success(`Cashed out at ${response.data.multiplier.toFixed(2)}x! Won ${response.data.winAmount.toFixed(2)} coins!`);
+        const response = await axios.post('/api/game', {
+          action: 'cashout',
+          username
+        });
+
+        console.log("Cashout response:", response.data);
+
+        if (response.data.success) {
+          setCashedOutAt(response.data.multiplier);
+          playSound('win');
+          
+          if (response.data.winAmount) {
+            addFarmCoins(response.data.winAmount);
+            toast.success(`Cashed out at ${response.data.multiplier.toFixed(2)}x! Won ${response.data.winAmount.toFixed(2)} coins!`);
+          } else {
+            toast.success(`Cashed out at ${response.data.multiplier.toFixed(2)}x!`);
+          }
+          return true;
         } else {
-          toast.success(`Cashed out at ${response.data.multiplier.toFixed(2)}x!`);
+          console.warn(`Cashout failed: ${response.data.message}`);
+          
+          // Check if this is a timing issue we can retry
+          if (response.data.message === "Cannot cash out - game is not active." && retryCount < 2) {
+            console.log("This appears to be a timing issue, will retry cashout in 200ms");
+            return false; // Signal for retry
+          } else {
+            // Other error that we can't auto-retry
+            setIsCashoutDisabled(!playerJoined);
+            toast.error(response.data.message || "Failed to cash out");
+            return true; // We're done trying
+          }
         }
-      } else {
+      } catch (error) {
+        console.error('Error cashing out:', error);
+        
+        // Check if we should retry
+        if (retryCount < 2) {
+          console.log(`Network error cashing out, will retry (attempt ${retryCount + 1})`);
+          return false; // Signal for retry
+        }
+        
         setIsCashoutDisabled(!playerJoined);
-        toast.error(response.data.message || "Failed to cash out");
+        
+        // Use proper TypeScript type checking
+        if (axios.isAxiosError(error) && error.response?.data?.message) {
+          toast.error(`Error: ${error.response.data.message}`);
+        } else {
+          toast.error("Error communicating with server. Please try again.");
+        }
+        return true; // We're done trying
       }
-    } catch (error) {
-      console.error('Error cashing out:', error);
+    };
+    
+    // Try to cashout with retries
+    let attempt = 0;
+    let done = false;
+    
+    while (!done && attempt < 3) {
+      done = await attemptCashout(attempt);
+      if (!done) {
+        // Wait before retry - shorter wait for cashout since timing is more critical
+        await new Promise(resolve => setTimeout(resolve, 200));
+        attempt++;
+      }
+    }
+    
+    if (!done) {
+      // If we exhausted all retries
       setIsCashoutDisabled(!playerJoined);
-      
-      // Use proper TypeScript type checking
-      if (axios.isAxiosError(error) && error.response?.data?.message) {
-        toast.error(`Error: ${error.response.data.message}`);
-      } else {
-        toast.error("Error communicating with server. Please try again.");
-      }
+      toast.error("Unable to cash out after multiple attempts. Please try again.");
     }
   }, [
     playerJoined, gameState, isConnected, isCashoutDisabled, cashedOutAt, offlineMode, multiplier, betAmount, addFarmCoins, playSound, username

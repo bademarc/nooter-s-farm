@@ -360,11 +360,20 @@ const placeBet = async (redis, username, betAmount, autoCashout) => {
     const gameState = await getGameState(redis);
     console.log('Current game state:', gameState);
     
-    // Always allow bets during countdown regardless of joinWindowTimeLeft
-    // This fixes the bug where the join window is showing but bets aren't accepted
+    // Allow bets during countdown and with a small grace period at the start of active state
+    // This fixes race conditions where the game transitions while the bet is being processed
     if (gameState.state !== GAME_STATE.COUNTDOWN) {
-      console.log(`Cannot place bet: Game not in countdown state (current: ${gameState.state})`);
-      return { success: false, message: "Cannot place bet now. Game is not in join phase." };
+      // Allow a grace period of 3 seconds after transition to active state
+      const isInGracePeriod = gameState.state === GAME_STATE.ACTIVE && 
+                              gameState.startTime && 
+                              (Date.now() - gameState.startTime < 3000);
+      
+      if (!isInGracePeriod) {
+        console.log(`Cannot place bet: Game not in countdown state or grace period (current: ${gameState.state})`);
+        return { success: false, message: "Cannot place bet now. Game is not in join phase." };
+      } else {
+        console.log(`Bet allowed in grace period (${Math.floor((Date.now() - gameState.startTime)/1000)}s after game start)`);
+      }
     }
     
     // Check if player has already joined this round
@@ -408,24 +417,32 @@ const placeBet = async (redis, username, betAmount, autoCashout) => {
 // Process player's cashout
 const processCashout = async (redis, username) => {
   try {
+    console.log(`Processing cashout for ${username}`);
     const gameState = await getGameState(redis);
+    console.log(`Current game state for cashout: ${gameState.state}, multiplier: ${gameState.multiplier}`);
     
     // Check if game is active
     if (gameState.state !== GAME_STATE.ACTIVE) {
+      console.log(`Cashout rejected: Game not active (current state: ${gameState.state})`);
       return { success: false, message: "Cannot cash out - game is not active." };
     }
     
     // Check if player has joined and not already cashed out
     const playerData = await getPlayerData(redis, username);
+    console.log(`Player data for cashout:`, playerData);
+    
     if (!playerData.joined) {
+      console.log(`Cashout rejected: Player ${username} hasn't joined this game`);
       return { success: false, message: "You haven't joined this game." };
     }
     if (playerData.cashedOut) {
+      console.log(`Cashout rejected: Player ${username} already cashed out`);
       return { success: false, message: "Already cashed out." };
     }
     
     // Calculate winnings
     const winAmount = playerData.betAmount * gameState.multiplier;
+    console.log(`Cashout successful: ${username} won ${winAmount} at multiplier ${gameState.multiplier}`);
     
     // Update player data
     await updatePlayerData(redis, username, {
@@ -907,21 +924,98 @@ export default async function handler(req, res) {
       
       case 'placeBet': {
         const { betAmount, autoCashout } = req.body;
+        
+        // Log detailed request info for debugging
+        console.log('placeBet request:', {
+          username: username || 'not provided',
+          betAmount: betAmount || 'not provided',
+          autoCashout: autoCashout || 'not provided',
+          timestamp: new Date().toISOString()
+        });
+        
         if (!username) {
-          return res.status(400).json({ success: false, message: 'Username is required' });
+          console.log('Bet rejected: No username provided');
+          return res.status(400).json({ 
+            success: false, 
+            message: 'Username is required',
+            error: 'missing_username' 
+          });
         }
         
-        const result = await placeBet(redis, username, parseFloat(betAmount), parseFloat(autoCashout));
-        return res.status(result.success ? 200 : 400).json(result);
+        if (!betAmount || isNaN(parseFloat(betAmount)) || parseFloat(betAmount) <= 0) {
+          console.log(`Bet rejected: Invalid bet amount: ${betAmount}`);
+          return res.status(400).json({ 
+            success: false, 
+            message: 'Valid bet amount is required',
+            error: 'invalid_bet_amount'
+          });
+        }
+        
+        if (!autoCashout || isNaN(parseFloat(autoCashout)) || parseFloat(autoCashout) < 1.01) {
+          console.log(`Bet rejected: Invalid auto cashout: ${autoCashout}`);
+          return res.status(400).json({ 
+            success: false, 
+            message: 'Valid auto cashout (>= 1.01) is required',
+            error: 'invalid_auto_cashout'
+          });
+        }
+        
+        try {
+          const result = await placeBet(redis, username, parseFloat(betAmount), parseFloat(autoCashout));
+          
+          // Log success or failure
+          if (result.success) {
+            console.log(`Bet successfully placed for ${username} with amount ${betAmount}`);
+          } else {
+            console.log(`Bet failed for ${username}: ${result.message}`);
+          }
+          
+          return res.status(result.success ? 200 : 400).json(result);
+        } catch (error) {
+          console.error(`Unexpected error in placeBet for ${username}:`, error);
+          return res.status(500).json({
+            success: false,
+            message: 'Server error processing bet',
+            error: 'server_error'
+          });
+        }
       }
       
       case 'cashout': {
+        // Log detailed request info for debugging
+        console.log('cashout request:', {
+          username: username || 'not provided',
+          timestamp: new Date().toISOString()
+        });
+        
         if (!username) {
-          return res.status(400).json({ success: false, message: 'Username is required' });
+          console.log('Cashout rejected: No username provided');
+          return res.status(400).json({ 
+            success: false, 
+            message: 'Username is required',
+            error: 'missing_username'
+          });
         }
         
-        const result = await processCashout(redis, username);
-        return res.status(result.success ? 200 : 400).json(result);
+        try {
+          const result = await processCashout(redis, username);
+          
+          // Log success or failure
+          if (result.success) {
+            console.log(`Cashout successful for ${username} with multiplier ${result.multiplier} and winnings ${result.winAmount}`);
+          } else {
+            console.log(`Cashout failed for ${username}: ${result.message}`);
+          }
+          
+          return res.status(result.success ? 200 : 400).json(result);
+        } catch (error) {
+          console.error(`Unexpected error in cashout for ${username}:`, error);
+          return res.status(500).json({
+            success: false,
+            message: 'Server error processing cashout',
+            error: 'server_error'
+          });
+        }
       }
       
       case 'playerActivity': {
