@@ -15,6 +15,7 @@ import { useTheme } from 'next-themes';
 import './crashout/crashout-styles.css';
 import { FiVolume2, FiVolumeX } from 'react-icons/fi';
 import { Client, Room } from 'colyseus.js';
+import axios from 'axios';
 
 // Constants for game states (same as server)
 const GAME_STATE = {
@@ -422,6 +423,9 @@ export function CrashoutGame() {
         break;
       case 'game-crashed-final':
            playSound('crash');
+           if (message && message.crashPoint) {
+             logGameResult(message.crashPoint);
+           }
            break;
        case 'username-update-success':
            toast.success("Username updated successfully!");
@@ -432,7 +436,7 @@ export function CrashoutGame() {
       default:
         console.warn(`Unhandled Colyseus message type: ${type}`);
     }
-  }, [playSound, addFarmCoins]);
+  }, [playSound, addFarmCoins, logGameResult]);
 
   // Demo mode functions
   const startDemoMode = () => {
@@ -622,6 +626,9 @@ export function CrashoutGame() {
       setConnectionStatus("connected");
       toast.success("Connected to game server!");
 
+      // Add this line to sync with Redis after connecting
+      syncWithRedis();
+
       room.onStateChange((state: any) => {
         // Use the ref to check if it's the first state update
         if (latestGameStateRef.current === null) {
@@ -703,8 +710,24 @@ export function CrashoutGame() {
     }
   }, [
       username, isConnected, connectionStatus,
-      handleColyseusStateChange, handleColyseusMessage, startDemoMode
+      handleColyseusStateChange, handleColyseusMessage, startDemoMode,
+      syncWithRedis
   ]);
+
+  // Add an effect to sync with Redis periodically
+  useEffect(() => {
+    if (!offlineMode && isConnected) {
+      // Log player activity when they join or leave a game
+      logPlayerActivity();
+      
+      // Set up periodic sync (every 30 seconds)
+      const syncInterval = setInterval(() => {
+        syncWithRedis();
+      }, 30000);
+      
+      return () => clearInterval(syncInterval);
+    }
+  }, [offlineMode, isConnected, logPlayerActivity, syncWithRedis]);
 
   // Main setup effect
   useEffect(() => {
@@ -868,6 +891,80 @@ export function CrashoutGame() {
     colyseusRoomRef.current.send("update-username", { newUsername: trimmedUsername });
 
   }, [isConnected, username, offlineMode]);
+
+  // Add these new functions for Redis integration
+  const syncWithRedis = useCallback(async () => {
+    if (offlineMode) return;
+    
+    try {
+      // Get current game state from Redis
+      const response = await axios.get('/api/redis?action=getGameState');
+      if (response.data.success && response.data.gameState) {
+        console.log('Synced with Redis game state:', response.data.gameState);
+        
+        // Update local state based on Redis data
+        if (response.data.gameState.state) {
+          setGameState(response.data.gameState.state);
+        }
+        
+        if (response.data.gameState.nextGameTime) {
+          setNextGameStartTime(response.data.gameState.nextGameTime);
+        }
+      }
+      
+      // Get game history
+      const historyResponse = await axios.get('/api/redis?action=getHistory');
+      if (historyResponse.data.success && historyResponse.data.history) {
+        // Convert Redis history format to game history format
+        const formattedHistory = historyResponse.data.history.map(item => ({
+          value: item.crashPoint.toFixed(2),
+          color: parseFloat(item.crashPoint) >= 2.0 ? "green" : "red",
+          timestamp: item.timestamp
+        }));
+        
+        updateGameHistory(formattedHistory);
+      }
+    } catch (error) {
+      console.error('Error syncing with Redis:', error);
+    }
+  }, [offlineMode, updateGameHistory]);
+
+  // Function to log player activity to Redis
+  const logPlayerActivity = useCallback(async () => {
+    if (offlineMode) return;
+    
+    try {
+      await axios.post('/api/redis', {
+        action: 'updatePlayer',
+        data: {
+          playerId: username,
+          lastBet: parseFloat(betAmount) || 0,
+          autoCashout: parseFloat(autoCashout) || 2.0,
+          lastGameResult: cashedOutAt ? 'win' : (playerJoined && gameState === GAME_STATE.CRASHED ? 'loss' : null)
+        }
+      });
+    } catch (error) {
+      console.error('Error logging player activity:', error);
+    }
+  }, [offlineMode, username, betAmount, autoCashout, cashedOutAt, playerJoined, gameState]);
+
+  // Function to log game results to Redis
+  const logGameResult = useCallback(async (crashPoint) => {
+    if (offlineMode) return;
+    
+    try {
+      await axios.post('/api/redis', {
+        action: 'logGameResult',
+        data: {
+          crashPoint: crashPoint,
+          playerCount: playersInGame,
+          activePlayerCount: onlinePlayersCount
+        }
+      });
+    } catch (error) {
+      console.error('Error logging game result:', error);
+    }
+  }, [offlineMode, playersInGame, onlinePlayersCount]);
 
   return (
     <div className="space-y-4">

@@ -8,5 +8,11 @@
   "rewrites": [
     { "source": "/guide", "destination": "/guide.html" },
     { "source": "/(.*)", "destination": "/index.html" }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron",
+      "schedule": "*/5 * * * *"
+    }
   ]
 } 
