@@ -63,7 +63,7 @@ const GAME_STATE = {
 
 // Constants
 const MAX_RETRY_ATTEMPTS = 3;
-const API_TIMEOUT_MS = 10000; // 10 seconds
+const API_TIMEOUT_MS = 15000; // 15 seconds - increased from 10 seconds
 
 // Helper components
 const DemoModeSwitch = ({ enabled, onChange }: { enabled: boolean; onChange: (enabled: boolean) => void }) => {
@@ -343,52 +343,70 @@ export function CrashoutGame() {
   const checkApiAvailability = useCallback(async () => {
     try {
       console.log('Checking API availability...');
+      apiRetryCountRef.current = 0; // Reset retry count
       
-      // Create a promise that rejects after timeout
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('API check timeout')), API_TIMEOUT_MS);
-      });
-      
-      // First try the health endpoint which has more detailed diagnostics
+      // Try the game endpoint first with axios (better TypeScript compatibility)
       try {
-        const healthCheckPromise = fetch('/api/health', { 
-          method: 'GET',
+        console.log('Checking game API endpoint...');
+        
+        // Set a timeout for axios requests
+        const axiosInstance = axios.create({
+          timeout: API_TIMEOUT_MS
+        });
+        
+        const gameResponse = await axiosInstance.get('/api/game', {
           headers: { 'Cache-Control': 'no-cache' }
-        })
-        .then(res => res.json());
+        });
         
-        // Race against timeout
-        const healthData = await Promise.race([healthCheckPromise, timeoutPromise]);
-        console.log('API health endpoint response:', healthData);
+        console.log('API game endpoint response:', gameResponse.data);
         
-        if (healthData.redis?.status !== 'connected') {
-          const errorMsg = healthData.redis?.error || 'Unknown Redis error';
-          console.error('Redis not connected in health check:', errorMsg);
-          toast.error(`Redis connection error: ${errorMsg}`);
+        if (gameResponse.data.redis === 'disconnected' || gameResponse.data.status === 'error') {
+          const errorMsg = gameResponse.data.error || 'Unknown Redis error';
+          console.error('Redis error in game check:', errorMsg);
+          toast.error(`Game connection error: ${errorMsg}`);
           return false;
         }
         
         return true;
-      } catch (healthError) {
-        console.warn('Health endpoint not available, falling back to game endpoint:', healthError);
+      } catch (gameError) {
+        console.warn('Game endpoint check failed, trying health endpoint:', gameError);
+        
+        // If the game endpoint fails, try the health endpoint
+        try {
+          const healthResponse = await axios.get('/api/health', {
+            timeout: API_TIMEOUT_MS,
+            headers: { 'Cache-Control': 'no-cache' }
+          });
+          
+          console.log('API health endpoint response:', healthResponse.data);
+          
+          if (healthResponse.data.redis?.status !== 'connected') {
+            const errorMsg = healthResponse.data.redis?.error || 'Unknown Redis error';
+            console.error('Redis not connected in health check:', errorMsg);
+            toast.error(`Redis connection error: ${errorMsg}`);
+            return false;
+          }
+          
+          return true;
+        } catch (healthError) {
+          console.error('Health endpoint check failed:', healthError);
+          
+          // Final retry attempt - try with longer timeout
+          try {
+            console.log('Final attempt - trying game endpoint with longer timeout');
+            const finalResponse = await axios.get('/api/game', {
+              timeout: API_TIMEOUT_MS * 2,
+              headers: { 'Cache-Control': 'no-cache' }
+            });
+            
+            return finalResponse.status === 200;
+          } catch (finalError) {
+            console.error('All API check attempts failed:', finalError);
+            toast.error('Could not connect to game server. Starting in demo mode.');
+            return false;
+          }
+        }
       }
-      
-      // Fall back to the game endpoint with timeout
-      const gameCheckPromise = fetch('/api/game', { 
-        method: 'GET',
-        headers: { 'Cache-Control': 'no-cache' }
-      })
-      .then(res => res.json());
-      
-      const data = await Promise.race([gameCheckPromise, timeoutPromise]);
-      console.log('API game endpoint response:', data);
-      
-      if (data.redis === 'disconnected' || data.status === 'error') {
-        toast.error(`Redis connection error: ${data.error || 'Unknown error'}`);
-        return false;
-      }
-      
-      return true;
     } catch (error) {
       console.error('API availability check failed:', error);
       toast.error(`API availability check failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -541,7 +559,6 @@ export function CrashoutGame() {
 
   // Set up polling for game state - Define this function here
   const setupPolling = useCallback(() => {
-    // Polling setup logic...
     console.log("Setting up polling for game state");
     
     // Clear any existing polling interval
@@ -550,13 +567,204 @@ export function CrashoutGame() {
       pollingIntervalRef.current = null;
     }
     
-    // Start polling
-    pollingIntervalRef.current = setInterval(() => {
-      // Actual implementation would call fetchGameState() here
-      console.log("Polling for game state");
-    }, 1000);
-  }, []);
-  
+    // Set initial state
+    setIsConnected(true);
+    setConnectionStatus('Connected');
+    setOfflineMode(false);
+    
+    // Helper function to update game history (avoid using updateGameHistory before declared)
+    const addToGameHistory = (newEntries: GameHistoryEntry[]) => {
+      setGameHistory(prev => [...newEntries, ...prev.slice(0, 49)]);
+    };
+    
+    // Function to fetch and update game state
+    const fetchGameState = async () => {
+      try {
+        if (apiError.current) {
+          // If we had an API error, try to reconnect
+          console.log("Attempting to reconnect to API after error");
+          const isAvailable = await checkApiAvailability();
+          if (!isAvailable) {
+            if (!offlineMode) {
+              console.log("API still unavailable, switching to demo mode");
+              startDemoMode();
+            }
+            return;
+          }
+          setApiError(false);
+        }
+        
+        const data = await getCurrentGameData();
+        if (!data) {
+          console.warn('No game data received during polling');
+          return;
+        }
+        
+        // Check if we have a connection issue
+        if (data.status === 'error' || data.redis === 'disconnected') {
+          console.error('Redis connection issue during polling:', data.error || 'Unknown error');
+          setApiError(true);
+          return;
+        }
+        
+        // Check if the state has changed
+        if (JSON.stringify(data) !== JSON.stringify(currentGameData.current)) {
+          currentGameData.current = data;
+          
+          // Update game state
+          if (data.state) {
+            setGameState(data.state);
+          }
+          
+          // Handle game state specific logic
+          switch (data.state) {
+            case GAME_STATE.COUNTDOWN:
+              if (data.timeLeft) {
+                setCountdown(data.timeLeft);
+              }
+              
+              if (data.joinWindow && !joinWindowRef.current) {
+                startJoinWindowTimer(data.joinWindow);
+              }
+              
+              if (data.players) {
+                setPlayersInGame(data.players.length);
+                setPlayers(data.players);
+              }
+              
+              setCanPlaceBet(true);
+              setIsCashoutDisabled(true);
+              break;
+              
+            case GAME_STATE.ACTIVE:
+              if (data.multiplier) {
+                setMultiplier(data.multiplier);
+              }
+              
+              // Show game started animation if we just transitioned to running
+              if (currentGameData.current?.prevState === GAME_STATE.COUNTDOWN) {
+                setShowGameStartedImage(true);
+                setTimeout(() => setShowGameStartedImage(false), 2000);
+              }
+              
+              setIsCashoutDisabled(!playerJoined || cashedOutAt !== null);
+              break;
+              
+            case GAME_STATE.CRASHED:
+              // Handle game crash
+              if (data.crashPoint) {
+                playSound('crash');
+                
+                // Create a new history entry
+                const newEntry: GameHistoryEntry = {
+                  value: data.crashPoint.toString(),
+                  color: parseFloat(data.crashPoint) >= 2.0 ? 'green' : 'red',
+                  timestamp: Date.now(),
+                  crashPoint: data.crashPoint
+                };
+                
+                // Add to history
+                addToGameHistory([newEntry]);
+              }
+              
+              // Check if player lost
+              if (playerJoined && cashedOutAt === null) {
+                toast.error(`Game crashed at ${data.crashPoint}x. You lost ${betAmount} Farm Coins.`);
+                // Show loss animation
+                setShowLossImage(true);
+                setTimeout(() => setShowLossImage(false), 3000);
+              }
+              
+              setCanPlaceBet(false);
+              setIsCashoutDisabled(true);
+              break;
+              
+            case GAME_STATE.INACTIVE:
+              // Game is inactive, waiting for next round
+              if (data.nextGameStart) {
+                setNextGameStartTime(data.nextGameStart);
+              }
+              
+              setPlayerJoined(false);
+              setCashedOutAt(null);
+              setCanPlaceBet(false);
+              setIsCashoutDisabled(true);
+              break;
+          }
+          
+          // Update online players
+          if (data.onlinePlayers) {
+            setOnlinePlayersCount(data.onlinePlayers);
+          }
+          
+          // Update recent cashouts
+          if (data.recentCashouts) {
+            setRecentCashouts(data.recentCashouts);
+          }
+        }
+      } catch (error) {
+        console.error('Error in polling loop:', error);
+        setApiError(true);
+        
+        // Check if we need to switch to demo mode after multiple errors
+        if (apiRetryCountRef.current < MAX_RETRY_ATTEMPTS) {
+          apiRetryCountRef.current++;
+          console.log(`API error, retry attempt ${apiRetryCountRef.current}/${MAX_RETRY_ATTEMPTS}`);
+        } else {
+          console.log(`Max API retry attempts (${MAX_RETRY_ATTEMPTS}) reached, switching to demo mode`);
+          if (!offlineMode) {
+            startDemoMode();
+          }
+        }
+      }
+    };
+    
+    // Do an initial fetch right away
+    fetchGameState().catch(err => {
+      console.error('Initial game state fetch failed:', err);
+    });
+    
+    // Start polling at the specified rate
+    pollingIntervalRef.current = setInterval(fetchGameState, pollingRateRef.current);
+    
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+    };
+  }, [
+    checkApiAvailability,
+    getCurrentGameData, 
+    offlineMode, 
+    setApiError, 
+    startDemoMode, 
+    gameHistory,
+    playerJoined, 
+    cashedOutAt, 
+    betAmount, 
+    playSound, 
+    startJoinWindowTimer,
+    setIsConnected,
+    setConnectionStatus,
+    setOfflineMode,
+    setGameState,
+    setCountdown,
+    setPlayersInGame,
+    setPlayers,
+    setCanPlaceBet,
+    setIsCashoutDisabled,
+    setMultiplier,
+    setShowGameStartedImage,
+    setGameHistory,
+    setShowLossImage,
+    setNextGameStartTime,
+    setPlayerJoined,
+    setCashedOutAt,
+    setOnlinePlayersCount,
+    setRecentCashouts
+  ]);
+
   // Use a more stable structure for dependency arrays in useEffect
   useEffect(() => {
     console.log('CrashoutGame component mounted - Running setup effect');
@@ -604,12 +812,6 @@ export function CrashoutGame() {
     return () => {
       console.log('CrashoutGame setup cleanup running.');
       clearJoinWindowTimer();
-      
-      // Clear polling interval
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-        pollingIntervalRef.current = null;
-      }
       
       // Clean up local timers and intervals
       if (demoIntervalRef.current) clearInterval(demoIntervalRef.current);
@@ -714,6 +916,40 @@ export function CrashoutGame() {
       });
     }
   }, [volume]);
+
+  // Add protection against ethereum-related window errors
+  useEffect(() => {
+    // This helps prevent the ethereum property errors in the error logs
+    if (typeof window !== 'undefined') {
+      try {
+        // Create a simple getter for ethereum if it doesn't exist to prevent errors
+        if (!window.hasOwnProperty('ethereum') && !Object.getOwnPropertyDescriptor(window, 'ethereum')) {
+          console.log('Adding safeguard for ethereum property');
+          Object.defineProperty(window, 'ethereum', {
+            configurable: true,
+            get: () => undefined
+          });
+        }
+        
+        // Add similar protection for other properties causing errors
+        ['isZerion'].forEach(prop => {
+          try {
+            // Only add if doesn't exist and no descriptor already defined
+            if (!window.hasOwnProperty(prop) && !Object.getOwnPropertyDescriptor(window, prop)) {
+              Object.defineProperty(window, prop, {
+                configurable: true,
+                get: () => undefined
+              });
+            }
+          } catch (err) {
+            console.warn(`Could not add safeguard for ${prop}:`, err);
+          }
+        });
+      } catch (error) {
+        console.warn('Could not add ethereum property safeguards:', error);
+      }
+    }
+  }, []);
 
   // Store muted state in localStorage when it changes
   useEffect(() => {
