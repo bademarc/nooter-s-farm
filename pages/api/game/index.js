@@ -291,17 +291,39 @@ const getGameHistory = async (redis) => {
 // Add a game result to history
 const addGameToHistory = async (redis, crashPoint) => {
   try {
-    const gameResult = {
-      crashPoint,
-      timestamp: Date.now(),
-      color: crashPoint >= 2.0 ? "green" : "red" 
+    console.log(`Adding game to history with crash point: ${crashPoint}`);
+    
+    // Fix the value to avoid 0.00 entries
+    const validCrashPoint = crashPoint > 1 ? crashPoint : 1.01;
+    
+    // Get the current timestamp
+    const timestamp = Date.now();
+    
+    // Color based on whether it was a high multiplier (>= 2.0)
+    const color = validCrashPoint >= 2.0 ? 'green' : 'red';
+    
+    // Create the history entry
+    const historyEntry = {
+      value: validCrashPoint.toFixed(2),
+      color,
+      timestamp,
+      crashPoint: validCrashPoint
     };
-    await redis.lpush('crashout:history', JSON.stringify(gameResult));
-    await redis.ltrim('crashout:history', 0, 49); // Keep only 50 most recent games
-    return gameResult;
+    
+    // Convert to a string for storage (JSON serialized)
+    const historyEntryStr = JSON.stringify(historyEntry);
+    
+    // Add to the history list
+    await redis.lpush('crashout:history', historyEntryStr);
+    
+    // Keep only the last 50 entries
+    await redis.ltrim('crashout:history', 0, 49);
+    
+    console.log(`Successfully added crash point ${validCrashPoint} to history`);
+    return true;
   } catch (error) {
     console.error('Error adding game to history:', error);
-    throw error;
+    return false;
   }
 };
 
@@ -500,28 +522,34 @@ const processAutoCashouts = async (redis, currentMultiplier) => {
 // Process game crash - handle players who didn't cash out
 const processGameCrash = async (redis, crashPoint) => {
   try {
-    // Get all player keys
+    console.log(`Processing game crash at multiplier: ${crashPoint}`);
+    
+    // Get all players
     const playerKeys = await redis.keys('crashout:player:*');
     
-    // Add the crash to history
-    await addGameToHistory(redis, crashPoint);
-    
+    // Process each player
     for (const key of playerKeys) {
       const username = key.split(':')[2];
       const playerData = await getPlayerData(redis, username);
       
-      // Mark uncashed players as losers
+      // Only process active players who haven't cashed out
       if (playerData.joined && !playerData.cashedOut) {
+        console.log(`Player ${username} lost their bet of ${playerData.betAmount}`);
+        
+        // Mark player as lost
         await updatePlayerData(redis, username, {
-          cashedOut: false,
           lost: true,
+          cashedOut: false,
+          cashedOutAt: null,
           winAmount: 0
         });
       }
     }
     
-    // Clear all player data for next round
-    await resetAllPlayersForNewRound(redis);
+    // Add the game to history
+    await addGameToHistory(redis, crashPoint);
+    
+    return true;
   } catch (error) {
     console.error('Error processing game crash:', error);
     throw error;
@@ -582,7 +610,7 @@ const progressGameState = async (redis) => {
   try {
     const gameState = await getGameState(redis);
     const now = Date.now();
-    console.log('progressGameState - current state:', gameState.state, 'countdown:', gameState.countdown);
+    console.log('progressGameState - current state:', gameState.state, 'countdown:', gameState.countdown, 'multiplier:', gameState.multiplier);
     
     // Get active player count
     const activePlayers = await countActivePlayers(redis);
@@ -648,13 +676,19 @@ const progressGameState = async (redis) => {
       const growthRate = 0.05; // Adjust for faster/slower growth
       const currentMultiplier = parseFloat((1.0 * Math.exp(growthRate * secondsActive)).toFixed(2));
       
+      // Make sure multiplier hasn't decreased (can happen with timing issues)
+      const finalMultiplier = Math.max(currentMultiplier, gameState.multiplier || 1.0);
+      
+      // Log multiplier calculation for debugging
+      console.log(`Calculated multiplier: ${currentMultiplier} (using ${secondsActive}s), final: ${finalMultiplier}`);
+      
       // Process auto-cashouts at current multiplier
-      await processAutoCashouts(redis, currentMultiplier);
+      await processAutoCashouts(redis, finalMultiplier);
       
       // Check if we've reached crash point
-      if (currentMultiplier >= gameState.crashPoint) {
+      if (finalMultiplier >= gameState.crashPoint) {
         // Game crashed
-        console.log(`Game crashed at multiplier ${currentMultiplier}, crash point: ${gameState.crashPoint}`);
+        console.log(`Game crashed at multiplier ${finalMultiplier}, crash point: ${gameState.crashPoint}`);
         await updateGameState(redis, {
           state: GAME_STATE.CRASHED,
           multiplier: gameState.crashPoint,
@@ -671,7 +705,7 @@ const progressGameState = async (redis) => {
       } else {
         // Game still running, update multiplier
         await updateGameState(redis, {
-          multiplier: currentMultiplier,
+          multiplier: finalMultiplier,
           onlinePlayers: activePlayers
         });
       }

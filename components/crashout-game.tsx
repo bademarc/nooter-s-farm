@@ -31,11 +31,13 @@ if (typeof window !== 'undefined' && !typedWindow._ethereumPropertyProtected) {
     
     const protectProperty = (propName: string) => {
       try {
-        // Get current descriptor (if any)
+        // Silently skip if the property is already non-configurable
+        // This prevents console errors in the browser
         const descriptor = Object.getOwnPropertyDescriptor(window, propName);
-        
-        // Store the original descriptor for potential future restoration
-        typedWindow._hiddenDescriptors[propName] = descriptor;
+        if (descriptor && !descriptor.configurable) {
+          console.log(`Property ${propName} is not configurable, skipping protection`);
+          return;
+        }
         
         // Store current value before we modify anything
         let currentValue = undefined;
@@ -45,25 +47,20 @@ if (typeof window !== 'undefined' && !typedWindow._ethereumPropertyProtected) {
             currentValue = typedWindow[propName];
           }
         } catch (err) {
-          console.log(`Could not read current value of ${propName}`);
+          // Silently ignore errors when reading current value
         }
         
         // Initialize value store
         typedWindow._propertyValues[propName] = currentValue;
         
-        if (!descriptor) {
-          // Property doesn't exist yet - define it in a way extensions can modify our storage
-          // instead of directly modifying the window property
+        // Only try to redefine properties that don't exist yet or are configurable
+        if (!descriptor || descriptor.configurable) {
           try {
             Object.defineProperty(window, propName, {
               configurable: true,
               enumerable: true,
               get: () => typedWindow._propertyValues[propName],
               set: (newValue) => {
-                // Track wallet injection attempts
-                typedWindow._earlyWalletInjectionAttempts[propName] = 
-                  (typedWindow._earlyWalletInjectionAttempts[propName] || 0) + 1;
-                
                 // Allow setting the property value in our storage
                 typedWindow._propertyValues[propName] = newValue;
                 
@@ -72,64 +69,28 @@ if (typeof window !== 'undefined' && !typedWindow._ethereumPropertyProtected) {
                   (typedWindow._propertyAccessAttempts[propName] || 0) + 1;
               }
             });
-            
-            console.log(`Protected window.${propName} with configurable wrapper`);
           } catch (defineError) {
-            console.log(`Failed to define property ${propName}: ${(defineError as Error).message}`);
-          }
-        } else if (descriptor.configurable) {
-          // Property exists and is configurable - redefine it to allow setting
-          try {
-            Object.defineProperty(window, propName, {
-              configurable: true,
-              enumerable: descriptor.enumerable !== undefined ? descriptor.enumerable : true,
-              get: () => typedWindow._propertyValues[propName],
-              set: (newValue) => {
-                // Track wallet injection attempts
-                typedWindow._earlyWalletInjectionAttempts[propName] = 
-                  (typedWindow._earlyWalletInjectionAttempts[propName] || 0) + 1;
-                
-                // Allow setting the property value in our storage
-                typedWindow._propertyValues[propName] = newValue;
-                
-                // Track access attempts for debugging
-                typedWindow._propertyAccessAttempts[propName] = 
-                  (typedWindow._propertyAccessAttempts[propName] || 0) + 1;
-              }
-            });
-            console.log(`Redefined configurable property ${propName}`);
-          } catch (redefineErr) {
-            console.warn(`Could not redefine property ${propName}:`, redefineErr);
-          }
-        } else {
-          // Property exists and is not configurable - we can't modify it directly
-          // Log this case, but don't break anything
-          console.log(`Property ${propName} is not configurable, can't protect`);
-          
-          // For non-configurable properties, we need to intercept at a different level
-          try {
-            // Store the current value so extensions can still find it
-            typedWindow._propertyValues[propName] = currentValue;
-            
-            // Track attempts to access this locked property
-            typedWindow._propertyAccessAttempts[propName] = 
-              (typedWindow._propertyAccessAttempts[propName] || 0) + 1;
-          } catch (err) {
-            console.warn(`Error handling non-configurable property ${propName}:`, err);
+            // Silently ignore errors when defining properties
           }
         }
       } catch (err) {
         // Silent fail if property is protected
-        console.warn(`Error protecting property ${propName}:`, err);
       }
     };
     
     // Protect common properties that cause conflicts with browser extensions
     // This expanded list covers most crypto wallet injections
+    // Try to protect each property, ignoring any errors
     [
-      'ethereum', 'isZerion', 'web3', 'solana', 'solflare', 'phantom',
+      'web3', 'solana', 'solflare', 'phantom',
       'keplr', 'xdefi', 'leap', 'cosmostation', 'terraWallets', 'evmProvider'
-    ].forEach(protectProperty);
+    ].forEach(propName => {
+      try {
+        protectProperty(propName);
+      } catch (err) {
+        // Ignore errors for individual properties
+      }
+    });
     
     typedWindow._ethereumPropertyProtected = true;
     
@@ -144,7 +105,7 @@ if (typeof window !== 'undefined' && !typedWindow._ethereumPropertyProtected) {
     });
   } catch (e) {
     // Log any errors
-    console.warn("Error setting up ethereum property protection:", e);
+    console.warn("Error setting up property protection:", e);
   }
 }
 
@@ -967,9 +928,45 @@ export function CrashoutGame() {
     }
   }, []);
   
-  // Helper function to update game history (avoid using updateGameHistory before declared)
+  // Helper function to update game history with proper validation
   const addToGameHistory = (newEntries: GameHistoryEntry[]) => {
-    setGameHistory(prev => [...newEntries, ...prev.slice(0, 49)]);
+    console.log('Adding new entries to game history:', newEntries);
+    
+    // Filter out invalid entries
+    const validEntries = newEntries.filter(entry => {
+      // Ensure we have a valid value
+      const value = typeof entry.value === 'string' ? 
+        parseFloat(entry.value) : 
+        (typeof entry.crashPoint === 'number' ? entry.crashPoint : 0);
+      
+      // Log invalid entries for debugging
+      if (isNaN(value) || value <= 0) {
+        console.warn('Filtering out invalid history entry:', entry);
+        return false;
+      }
+      
+      // Entry is valid
+      return true;
+    });
+    
+    // Format entries consistently
+    const formattedEntries = validEntries.map(entry => {
+      const value = typeof entry.value === 'string' ? 
+        parseFloat(entry.value) : 
+        (typeof entry.crashPoint === 'number' ? entry.crashPoint : 1.01);
+      
+      return {
+        ...entry,
+        value: value.toFixed(2),
+        color: value >= 2.0 ? 'green' : 'red',
+        timestamp: entry.timestamp || Date.now()
+      };
+    });
+    
+    // Only update if we have valid entries
+    if (formattedEntries.length > 0) {
+      setGameHistory(prev => [...formattedEntries, ...prev.slice(0, 49-formattedEntries.length)]);
+    }
   };
   
   // More reliable fetch with retries
@@ -1221,7 +1218,7 @@ export function CrashoutGame() {
         
         // Always update game history from server to ensure consistency across devices
         if (data.history && Array.isArray(data.history) && data.history.length > 0) {
-          setGameHistory(data.history);
+          addToGameHistory(data.history);
         }
         
         // Check if the state has changed - store previous state for comparison
@@ -1702,39 +1699,30 @@ export function CrashoutGame() {
   const updateMultiplierDOMElements = (value: number) => {
     if (!multiplierTextRef.current) return;
     
-    // Skip update if multiplier is basically the same (reduce rounding noise)
-    const currentValue = parseFloat(multiplierTextRef.current.textContent?.replace('x', '') || '1.00');
-    if (Math.abs(currentValue - value) < 0.03) return;
-    
-    // Format once
+    // Always update text content with current value
     const valueFormatted = `${value.toFixed(2)}x`;
+    multiplierTextRef.current.textContent = valueFormatted;
     
-    // Update text content only if it has changed
-    if (multiplierTextRef.current.textContent !== valueFormatted) {
-      multiplierTextRef.current.textContent = valueFormatted;
-    }
-      
+    // Log to ensure updates are happening
+    console.log(`Updating UI multiplier to ${valueFormatted}`);
+    
     // Simplified color logic - just three colors to reduce calculations
     const textColor = 
-      gameState === GAME_STATE.CASHED_OUT ? (value < 5 ? "#88ddff" : "#ffaa00") :
+      gameState === GameState.CRASHED ? "#ff0000" : // Red when crashed
       value < 2 ? "#0f0" : // Green
       value < 10 ? "#ffff00" : // Yellow
       "#ff8800"; // Orange
-      
-    // Only update color if it's different
-    if (multiplierTextRef.current.style.color !== textColor) {
-      multiplierTextRef.current.style.color = textColor;
-    }
-      
+    
+    // Update color
+    multiplierTextRef.current.style.color = textColor;
+    
     // Even more drastically simplified size logic - only 3 size steps
     const baseSize = 6;
     const sizeClass = value < 3 ? `${baseSize}rem` : 
                      value < 10 ? `${baseSize * 1.4}rem` : 
                      `${baseSize * 1.8}rem`;
     
-    if (multiplierTextRef.current.style.fontSize !== sizeClass) {
-      multiplierTextRef.current.style.fontSize = sizeClass;
-    }
+    multiplierTextRef.current.style.fontSize = sizeClass;
   };
   
   const updateMultiplierDisplay = (value: number) => {
@@ -2079,6 +2067,51 @@ export function CrashoutGame() {
     }
   }, [isConnected, username, offlineMode, betAmount, autoCashout]);
 
+  // Fix the multiplier display updating when game is running
+  useEffect(() => {
+    // Skip if offline
+    if (offlineMode) return;
+    
+    // Only handle multiplier update logic when in RUNNING state
+    if (gameState !== GameState.RUNNING) return;
+    
+    console.log('Setting up multiplier update interval for active game');
+    
+    // Set up interval to update multiplier locally between server updates
+    // This provides smoother animation than waiting for API polling
+    const multiplierInterval = setInterval(() => {
+      if (gameState !== GameState.RUNNING) {
+        // Clear if no longer in running state
+        clearInterval(multiplierInterval);
+        return;
+      }
+      
+      // Calculate time since game started
+      const startTime = currentGameData.current?.gameState?.startTime || 0;
+      if (!startTime) return;
+      
+      const elapsedSeconds = (Date.now() - startTime) / 1000;
+      
+      // Calculate multiplier using the same formula as the backend
+      const growthRate = 0.05;
+      const currentMultiplier = parseFloat((1.0 * Math.exp(growthRate * elapsedSeconds)).toFixed(2));
+      
+      console.log(`Local multiplier update: ${currentMultiplier.toFixed(2)}x (elapsed: ${elapsedSeconds.toFixed(1)}s)`);
+      
+      // Update multiplier
+      setMultiplier(currentMultiplier);
+      
+      // Update UI display - call this directly to ensure it updates
+      if (multiplierTextRef.current) {
+        updateMultiplierDisplay(currentMultiplier);
+      }
+    }, 100); // Update every 100ms for smooth animation
+    
+    return () => {
+      clearInterval(multiplierInterval);
+    };
+  }, [gameState, offlineMode, updateMultiplierDisplay]);
+
   return (
     <div className="space-y-4">
       <h2 className="text-xl font-semibold text-white border-b border-white/10 pb-2 flex justify-between">
@@ -2284,8 +2317,15 @@ export function CrashoutGame() {
               <div className="flex space-x-3 overflow-x-auto py-2 scrollbar-hide history-scroll" 
                    style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                 {gameHistory.map((entry, index) => {
+                  // Ensure we always have a valid numeric value
                   const valueString = typeof entry.value === 'string' ? entry.value : String(entry.value ?? '0');
                   const value = parseFloat(valueString) || 0;
+                  
+                  // Log the entry for debugging
+                  if (index === 0) {
+                    console.log('Latest history entry:', entry);
+                  }
+                  
                   const isHigh = value >= 2.0;
                   const isVeryHigh = value >= 5.0;
                   
@@ -2303,7 +2343,8 @@ export function CrashoutGame() {
                         className={`
                           w-full h-full
                           flex items-center justify-center text-center font-bold text-lg
-                          ${entry.color === "green" 
+                          ${value <= 0 ? "bg-gray-700" : // Use gray for invalid values 
+                            entry.color === "green" 
                             ? "bg-gradient-to-br from-emerald-400 to-green-600" 
                             : "bg-gradient-to-br from-red-400 to-red-700"}
                         `}
@@ -2312,7 +2353,7 @@ export function CrashoutGame() {
                           textShadow: "1px 1px 2px rgba(0,0,0,0.5)"
                         }}
                       >
-                        {value.toFixed(2)}x
+                        {value <= 0 ? "N/A" : value.toFixed(2) + "x"}
                         {index === 0 && (
                           <div className="absolute top-0 right-0 bg-blue-600 text-xs px-1 rounded-bl-md">
                             Latest
