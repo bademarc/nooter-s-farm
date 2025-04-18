@@ -128,6 +128,14 @@ enum GameState {
 interface PlayerData {
   username: string;
   betAmount: number;
+  // Add tracking for gambling-focused enhancements
+  winStreak: number;
+  lossStreak: number;
+  previousBets: number[];
+  useMartingale: boolean;
+  highestWin: number;
+  totalWon: number;
+  totalLost: number;
 }
 
 interface CashoutData {
@@ -227,6 +235,41 @@ const getAudioInstance = (key: string, src: string): HTMLAudioElement => {
   return audio;
 };
 
+// Add new sound function types
+const playWinSound = (multiplier: number) => {
+  // Play different win sounds based on multiplier amount
+  if (multiplier >= 5.0) {
+    return 'bigWin'; // Big win sound
+  } else if (multiplier >= 2.0) {
+    return 'win'; // Normal win
+  } else {
+    return 'smallWin'; // Small win
+  }
+};
+
+const playLoseSound = (betAmount: number) => {
+  // Play different lose sounds based on bet amount
+  if (betAmount >= 100) {
+    return 'bigLoss'; // Big loss sound
+  } else {
+    return 'crash'; // Normal crash sound
+  }
+};
+
+// Calculate next bet using martingale strategy
+const calculateMartingaleBet = (previousBets: number[], baseBet: number, maxBet: number = 1000): number => {
+  if (!previousBets || previousBets.length === 0) {
+    return baseBet;
+  }
+  
+  // Doubling after a loss is the core martingale strategy
+  const lastBet = previousBets[previousBets.length - 1];
+  const suggestedBet = lastBet * 2;
+  
+  // Cap at max bet to prevent catastrophic losses
+  return Math.min(suggestedBet, maxBet);
+};
+
 export function CrashoutGame() {
   // Existing local state
   const { farmCoins, addFarmCoins } = useContext(GameContext);
@@ -255,7 +298,10 @@ export function CrashoutGame() {
     crash: null,
     cashout: null,
     win: null,
-    backgroundMusic: null
+    backgroundMusic: null,
+    bigWin: null,
+    smallWin: null,
+    bigLoss: null
   });
   
   // Audio control state
@@ -312,6 +358,17 @@ export function CrashoutGame() {
   const apiError = useRef<boolean>(false);
   const jsonErrorCountRef = useRef<number>(0);
   const [redisJsonErrorPersistent, setRedisJsonErrorPersistent] = useState<boolean>(false);
+
+  // Enhanced player state for gambling features
+  const [winStreak, setWinStreak] = useState<number>(0);
+  const [lossStreak, setLossStreak] = useState<number>(0);
+  const [previousBets, setPreviousBets] = useState<number[]>([]);
+  const [useMartingale, setUseMartingale] = useState<boolean>(false);
+  const [highestWin, setHighestWin] = useState<number>(0);
+  const [totalWon, setTotalWon] = useState<number>(0);
+  const [totalLost, setTotalLost] = useState<number>(0);
+  const [showHotStreak, setShowHotStreak] = useState<boolean>(false);
+  const [streakEffect, setStreakEffect] = useState<string>('');
 
   const setApiError = useCallback((value: boolean) => {
     apiError.current = value;
@@ -571,6 +628,10 @@ export function CrashoutGame() {
         audioRefs.current.cashout = typedWindow._audioInstances['crashout_cashout'] || null;
         audioRefs.current.win = typedWindow._audioInstances['crashout_win'] || null;
         audioRefs.current.backgroundMusic = typedWindow._audioInstances['crashout_bgm'] || null;
+        // Add new gambling-focused sound effects
+        audioRefs.current.bigWin = typedWindow._audioInstances['crashout_bigwin'] || null;
+        audioRefs.current.smallWin = typedWindow._audioInstances['crashout_smallwin'] || null;
+        audioRefs.current.bigLoss = typedWindow._audioInstances['crashout_bigloss'] || null;
         
         // Update volume settings on existing instances
         if (audioRefs.current.backgroundMusic) {
@@ -587,6 +648,10 @@ export function CrashoutGame() {
     audioRefs.current.crash = getAudioInstance('crashout_crash', '/sounds/crash.mp3');
     audioRefs.current.cashout = getAudioInstance('crashout_cashout', '/sounds/cashout.mp3');
     audioRefs.current.win = getAudioInstance('crashout_win', '/sounds/win.mp3');
+    // Add new gambling-focused sound effects
+    audioRefs.current.bigWin = getAudioInstance('crashout_bigwin', '/sounds/bigwin.mp3');
+    audioRefs.current.smallWin = getAudioInstance('crashout_smallwin', '/sounds/smallwin.mp3');
+    audioRefs.current.bigLoss = getAudioInstance('crashout_bigloss', '/sounds/bigloss.mp3');
     
     const bgMusic = getAudioInstance('crashout_bgm', '/sounds/background_music.mp3');
     bgMusic.loop = true;
@@ -1757,21 +1822,36 @@ export function CrashoutGame() {
     setGameHistory(limitedHistory);
   };
   
-  // Handle placing a bet
+  // Handle placing a bet with martingale system support
   const handlePlay = useCallback(async () => {
     if (offlineMode) {
-      // Handle offline bet as before
+      // Handle offline bet with martingale option
       if (!canPlaceBet || isPlayDisabled) {
         toast.warning("Cannot place demo bet now.");
         return;
       }
-      const bet = parseFloat(betAmount);
-      if (isNaN(bet) || bet <= 0) { toast.error("Invalid bet amount."); return; }
+      
+      // Calculate bet amount based on martingale system if enabled
+      let bet = parseFloat(betAmount);
+      if (useMartingale && lossStreak > 0 && previousBets.length > 0) {
+        // Calculate martingale bet
+        bet = calculateMartingaleBet(previousBets, bet);
+        // Update UI to match the calculated bet
+        setBetAmount(bet.toString());
+      }
+      
+      if (isNaN(bet) || bet <= 0) { 
+        toast.error("Invalid bet amount."); 
+        return; 
+      }
+      
+      // Store the bet for martingale tracking
+      setPreviousBets(prev => [...prev, bet]);
 
       setPlayerJoined(true);
       setIsPlayDisabled(true);
       setIsCashoutDisabled(false);
-      toast.info("Demo bet placed!");
+      toast.info(`Demo bet placed: ${bet} coins${useMartingale ? ' (Martingale active)' : ''}`);
       return;
     }
 
@@ -1790,7 +1870,10 @@ export function CrashoutGame() {
       joinWindowTimeLeft,
       gameState,
       isPlayDisabled,
-      username: username || 'not set'
+      username: username || 'not set',
+      useMartingale,
+      lossStreak,
+      previousBets
     });
 
     if (!canPlaceBet || !isConnected || isPlayDisabled) {
@@ -1798,14 +1881,23 @@ export function CrashoutGame() {
       return;
     }
 
-    const bet = parseFloat(betAmount);
+    // Calculate bet amount with martingale if enabled
+    let bet = parseFloat(betAmount);
+    if (useMartingale && lossStreak > 0 && previousBets.length > 0) {
+      // Calculate martingale bet and update UI
+      bet = calculateMartingaleBet(previousBets, parseFloat(betAmount));
+      setBetAmount(bet.toString());
+    }
+    
     const cashoutTarget = parseFloat(autoCashout);
 
     if (isNaN(bet) || bet <= 0) { toast.error("Invalid bet amount."); return; }
     if (isNaN(cashoutTarget) || cashoutTarget < 1.01) { toast.error("Invalid auto cashout multiplier (must be >= 1.01)."); return; }
 
+    // Store the bet for martingale tracking
+    setPreviousBets(prev => [...prev, bet]);
     setIsPlayDisabled(true);
-    toast.info("Placing bet...");
+    toast.info(`Placing bet: ${bet} coins${useMartingale ? ' (Martingale active)' : ''}`);
     
     // Create a function that we can retry
     const attemptPlaceBet = async (retryCount = 0): Promise<boolean> => {
@@ -1885,13 +1977,15 @@ export function CrashoutGame() {
       toast.error("Unable to place bet after multiple attempts. Please try again.");
     }
   }, [
-    canPlaceBet, isConnected, betAmount, autoCashout, joinWindowTimeLeft, isPlayDisabled, offlineMode, gameState, username
+    canPlaceBet, isConnected, betAmount, autoCashout, joinWindowTimeLeft, isPlayDisabled, offlineMode, gameState, username,
+    // Add dependencies for gambling enhancements
+    useMartingale, lossStreak, previousBets, setPreviousBets, setBetAmount
   ]);
 
-  // Handle cashing out with retry capability
+  // Handle cashing out with enhanced gambling features
   const handleCashout = useCallback(async () => {
     if (offlineMode) {
-      // Handle offline cashout as before
+      // Handle offline cashout with streak tracking
       if (!playerJoined || gameState !== GameState.RUNNING || isCashoutDisabled || cashedOutAt !== null) {
           toast.warning("Cannot cashout demo game now.");
           return;
@@ -1899,7 +1993,30 @@ export function CrashoutGame() {
       const winAmount = parseFloat(betAmount) * multiplier;
       setCashedOutAt(multiplier);
       setIsCashoutDisabled(true);
-      playSound('win');
+      
+      // Play appropriate win sound based on multiplier
+      const soundType = playWinSound(multiplier);
+      playSound(soundType);
+      
+      // Update win streak and reset loss streak
+      setWinStreak(prev => prev + 1);
+      setLossStreak(0);
+      
+      // Update highest win if applicable
+      if (winAmount > highestWin) {
+        setHighestWin(winAmount);
+      }
+      
+      // Update total won
+      setTotalWon(prev => prev + winAmount);
+      
+      // Show streak effect for hot streaks
+      if (winStreak >= 2) {
+        setShowHotStreak(true);
+        setStreakEffect('win');
+        setTimeout(() => setShowHotStreak(false), 3000);
+      }
+      
       // Use the correct number of arguments
       addFarmCoins(winAmount);
       toast.success(`Demo Cashout at ${multiplier.toFixed(2)}x! Won ${winAmount.toFixed(2)} coins!`);
@@ -1917,7 +2034,9 @@ export function CrashoutGame() {
       isConnected,
       isCashoutDisabled,
       cashedOutAt,
-      multiplier
+      multiplier,
+      winStreak,
+      lossStreak
     });
 
     if (!playerJoined || gameState !== GameState.RUNNING || !isConnected || isCashoutDisabled || cashedOutAt !== null) {
@@ -1942,9 +2061,29 @@ export function CrashoutGame() {
 
         if (response.data.success) {
           setCashedOutAt(response.data.multiplier);
-          playSound('win');
+          
+          // Play win sound based on multiplier
+          const soundType = playWinSound(response.data.multiplier);
+          playSound(soundType);
+          
+          // Update win streak and reset loss streak
+          setWinStreak(prev => prev + 1);
+          setLossStreak(0);
           
           if (response.data.winAmount) {
+            // Update stats
+            if (response.data.winAmount > highestWin) {
+              setHighestWin(response.data.winAmount);
+            }
+            setTotalWon(prev => prev + response.data.winAmount);
+            
+            // Show hot streak effect
+            if (winStreak >= 2) {
+              setShowHotStreak(true);
+              setStreakEffect('win');
+              setTimeout(() => setShowHotStreak(false), 3000);
+            }
+            
             addFarmCoins(response.data.winAmount);
             toast.success(`Cashed out at ${response.data.multiplier.toFixed(2)}x! Won ${response.data.winAmount.toFixed(2)} coins!`);
           } else {
@@ -2005,7 +2144,9 @@ export function CrashoutGame() {
       toast.error("Unable to cash out after multiple attempts. Please try again.");
     }
   }, [
-    playerJoined, gameState, isConnected, isCashoutDisabled, cashedOutAt, offlineMode, multiplier, betAmount, addFarmCoins, playSound, username
+    playerJoined, gameState, isConnected, isCashoutDisabled, cashedOutAt, offlineMode, multiplier, betAmount, addFarmCoins, playSound, username,
+    // Add dependencies for gambling enhancements
+    winStreak, setWinStreak, lossStreak, setLossStreak, highestWin, setHighestWin, setTotalWon, setShowHotStreak, setStreakEffect
   ]);
 
   // Handle changing username
@@ -2112,6 +2253,33 @@ export function CrashoutGame() {
     };
   }, [gameState, offlineMode, updateMultiplierDisplay]);
 
+  // Update game loss handling to include streak tracking
+  useEffect(() => {
+    // Handle game crash events
+    if (gameState === GameState.CRASHED && playerJoined && cashedOutAt === null) {
+      // Player lost their bet
+      const lostAmount = parseFloat(betAmount);
+      
+      // Play appropriate loss sound
+      const soundType = playLoseSound(lostAmount);
+      playSound(soundType);
+      
+      // Update loss streak and reset win streak
+      setLossStreak(prev => prev + 1);
+      setWinStreak(0);
+      
+      // Update total lost
+      setTotalLost(prev => prev + lostAmount);
+      
+      // Show cold streak effect
+      if (lossStreak >= 2) {
+        setShowHotStreak(true);
+        setStreakEffect('loss');
+        setTimeout(() => setShowHotStreak(false), 3000);
+      }
+    }
+  }, [gameState, playerJoined, cashedOutAt, betAmount, playSound]);
+
   return (
     <div className="space-y-4">
       <h2 className="text-xl font-semibold text-white border-b border-white/10 pb-2 flex justify-between">
@@ -2205,6 +2373,34 @@ export function CrashoutGame() {
               </div>
             )}
             
+            {/* Add streak indicator */}
+            {(winStreak > 0 || lossStreak > 0) && (
+              <div className={`absolute top-16 left-0 right-0 px-3 py-1 text-center font-semibold text-xs z-10
+                ${winStreak > 0 ? 'bg-green-700' : 'bg-red-700'} transition-colors duration-300`}>
+                {winStreak > 0 ? 
+                  `🔥 Win Streak: ${winStreak} ${winStreak >= 3 ? '- HOT! 🔥' : ''}` : 
+                  `❄️ Loss Streak: ${lossStreak} ${lossStreak >= 3 ? '- DUE FOR A WIN? 🍀' : ''}`}
+              </div>
+            )}
+            
+            {/* Hot/cold streak effect overlay */}
+            {showHotStreak && (
+              <div className={`absolute inset-0 z-20 bg-gradient-to-br ${
+                streakEffect === 'win' ? 'from-green-500/30 to-yellow-500/30' : 'from-red-500/30 to-purple-500/30'
+              } animate-pulse`}>
+                {streakEffect === 'win' && winStreak >= 3 && (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="text-yellow-300 text-4xl font-bold animate-bounce">HOT STREAK! 🔥</div>
+                  </div>
+                )}
+                {streakEffect === 'loss' && lossStreak >= 3 && (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="text-red-300 text-4xl font-bold animate-pulse">COLD STREAK! ❄️</div>
+                  </div>
+                )}
+              </div>
+            )}
+            
             <div ref={multiplierTextRef} className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-6xl font-bold text-white z-50 multiplier-text">1.00x</div>
             
             <video 
@@ -2253,6 +2449,24 @@ export function CrashoutGame() {
                 step="1"
                 disabled={!canPlaceBet || (!offlineMode && !isConnected) || (!offlineMode && joinWindowTimeLeft <= 0) || isPlayDisabled}
               />
+              {/* Add Martingale system toggle */}
+              <div className="flex items-center mt-2 text-white text-sm">
+                <input
+                  type="checkbox"
+                  id="martingale"
+                  checked={useMartingale}
+                  onChange={() => setUseMartingale(!useMartingale)}
+                  className="mr-2"
+                />
+                <label htmlFor="martingale" className="cursor-pointer">
+                  Use Martingale System (Double after loss)
+                </label>
+                {useMartingale && lossStreak > 0 && (
+                  <span className="ml-2 text-yellow-400">
+                    Next bet will be: {calculateMartingaleBet(previousBets, parseFloat(betAmount)).toFixed(0)}
+                  </span>
+                )}
+              </div>
             </div>
             
             <div className="auto-cashout-section">
@@ -2268,6 +2482,21 @@ export function CrashoutGame() {
                 step="0.01"
                 disabled={!canPlaceBet || (!offlineMode && !isConnected) || isPlayDisabled}
               />
+              {/* Add stats display */}
+              <div className="mt-2 text-xs text-gray-300">
+                <div className="flex justify-between">
+                  <span>Highest Win:</span>
+                  <span className="text-green-400">{highestWin.toFixed(2)} coins</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Total Won:</span>
+                  <span className="text-green-400">{totalWon.toFixed(2)} coins</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Total Lost:</span>
+                  <span className="text-red-400">{totalLost.toFixed(2)} coins</span>
+                </div>
+              </div>
             </div>
           </div>
           
@@ -2292,6 +2521,9 @@ export function CrashoutGame() {
               {offlineMode ? (canPlaceBet ? "Place Demo Bet" : "Demo Wait") :
               gameState === GameState.WAITING ? (joinWindowTimeLeft > 0 ? `Place Bet (${joinWindowTimeLeft}s)` : "Join Window Closed") :
               (canPlaceBet ? "Place Bet" : "Wait for Next Round")}
+              {useMartingale && lossStreak > 0 && canPlaceBet && (
+                <span className="block text-xs">Martingale: {calculateMartingaleBet(previousBets, parseFloat(betAmount)).toFixed(0)} coins</span>
+              )}
             </button>
             
             <button 
