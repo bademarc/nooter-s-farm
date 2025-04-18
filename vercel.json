@@ -6,9 +6,9 @@
       "maxDuration": 10
     }
   },
-  "buildCommand": "npm install --legacy-peer-deps && next build",
+  "buildCommand": "pnpm install && pnpm build",
   "devCommand": null,
-  "installCommand": "npm install --legacy-peer-deps",
+  "installCommand": "pnpm install",
   "framework": "nextjs",
   "outputDirectory": "out",
   "rewrites": [
