@@ -825,37 +825,6 @@ export function CrashoutGame() {
     setRecentCashouts
   ]);
 
-  // Add an effect to force check for connection status periodically
-  useEffect(() => {
-    // Don't run if already in offline mode
-    if (offlineMode) return;
-    
-    console.log('Setting up connection verification interval');
-    
-    // Check connection status every 30 seconds
-    const verificationInterval = setInterval(async () => {
-      console.log('Verifying connection status...');
-      
-      try {
-        const isAvailable = await checkApiAvailability();
-        
-        if (isAvailable && offlineMode) {
-          console.log('API now available, switching to online mode');
-          setupPolling();
-        } else if (!isAvailable && !offlineMode) {
-          console.log('API no longer available, switching to demo mode');
-          startDemoMode();
-        }
-      } catch (error) {
-        console.error('Connection verification failed:', error);
-      }
-    }, 30000); // Check every 30 seconds
-    
-    return () => {
-      clearInterval(verificationInterval);
-    };
-  }, [offlineMode, checkApiAvailability, setupPolling, startDemoMode]);
-
   // Use a more stable structure for dependency arrays in useEffect
   useEffect(() => {
     console.log('CrashoutGame component mounted - Running setup effect');
@@ -878,13 +847,19 @@ export function CrashoutGame() {
     // VERCEL_ENV is automatically available in Vercel deployments
     const isVercelPreview = typeof window !== 'undefined' && window.location.hostname.includes('vercel.app');
     
-    const shouldStartInDemoMode = envDemoMode || localStorageDemoMode || isVercelPreview || forceDemoMode;
+    // Never force demo mode in this case since we want to check Redis connection first
+    const shouldStartInDemoMode = false; // Changed to always check connection first
 
     if (!shouldStartInDemoMode) {
       // Try to connect to server and check API availability first
       checkApiAvailability().then(isAvailable => {
         if (isAvailable) {
           console.log("API available, starting online mode");
+          // Make sure offline mode is false before setting up polling
+          setOfflineMode(false);
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('crashoutDemoMode');
+          }
           setupPolling();
         } else {
           console.log("API not available, starting in demo mode");
@@ -904,6 +879,12 @@ export function CrashoutGame() {
       console.log('CrashoutGame setup cleanup running.');
       clearJoinWindowTimer();
       
+      // Clear polling interval
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+      
       // Clean up local timers and intervals
       if (demoIntervalRef.current) clearInterval(demoIntervalRef.current);
       if (demoTimerRef.current) clearTimeout(demoTimerRef.current);
@@ -914,6 +895,52 @@ export function CrashoutGame() {
       }
     };
   }, []); // Empty dependency array as this should only run once
+
+  // Add a separate effect to force check connection on load and reconnect if needed
+  useEffect(() => {
+    // Don't run if already in online mode
+    if (!offlineMode) return;
+    
+    // Give the app a moment to stabilize, then check if we can go online
+    const reconnectTimer = setTimeout(async () => {
+      console.log('Attempting to reconnect to online mode...');
+      
+      try {
+        const isAvailable = await checkApiAvailability();
+        
+        if (isAvailable) {
+          console.log('API is available, forcing switch to online mode');
+          
+          // Remove demo mode markers
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('crashoutDemoMode');
+          }
+          
+          // Stop all demo activities
+          if (demoIntervalRef.current) {
+            clearInterval(demoIntervalRef.current);
+            demoIntervalRef.current = null;
+          }
+          
+          if (demoTimerRef.current) {
+            clearTimeout(demoTimerRef.current);
+            demoTimerRef.current = null;
+          }
+          
+          // Force transition to online mode
+          setOfflineMode(false);
+          setupPolling();
+          toast.success('Connected to game server! Switching to online mode.');
+        }
+      } catch (error) {
+        console.error('Reconnection attempt failed:', error);
+      }
+    }, 5000); // Try after 5 seconds
+    
+    return () => {
+      clearTimeout(reconnectTimer);
+    };
+  }, [offlineMode, checkApiAvailability, setupPolling]);
 
   // Handle background music based on game state with proper dependency tracking
   useEffect(() => {
@@ -1324,19 +1351,6 @@ export function CrashoutGame() {
       toast.error("Failed to update username on server.");
     }
   }, [isConnected, username, offlineMode, betAmount, autoCashout]);
-
-  useEffect(() => {
-    // When the component first mounts, check if API is reachable at all
-    // If not, don't even try POST requests and go straight to demo mode
-    if (!offlineMode) {
-      checkApiAvailability().then(isAvailable => {
-        if (!isAvailable) {
-          toast.error("Game server API not available. Starting in demo mode.");
-          startDemoMode();
-        }
-      });
-    }
-  }, [checkApiAvailability, offlineMode, startDemoMode]);
 
   return (
     <div className="space-y-4">
