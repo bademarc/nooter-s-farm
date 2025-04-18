@@ -199,6 +199,21 @@ const GAME_STATE = {
   CASHED_OUT: "cashed_out",
 };
 
+// Map backend states to frontend GameState enum for better type safety
+const mapBackendStateToFrontend = (backendState: string): GameState => {
+  switch(backendState) {
+    case GAME_STATE.ACTIVE:
+      return GameState.RUNNING;
+    case GAME_STATE.COUNTDOWN:
+      return GameState.WAITING;
+    case GAME_STATE.CRASHED:
+      return GameState.CRASHED;
+    case GAME_STATE.INACTIVE:
+    default:
+      return GameState.INACTIVE;
+  }
+};
+
 // Constants
 const MAX_RETRY_ATTEMPTS = 3;
 const API_TIMEOUT_MS = 15000; // 15 seconds - increased from 10 seconds
@@ -1231,25 +1246,8 @@ export function CrashoutGame() {
         if (gameStateData.state) {
           console.log(`Setting game state to: ${gameStateData.state}`);
           
-          // Ensure we're using the correct state mapping
-          let mappedState;
-          
-          // Map string state to GameState enum
-          switch(gameStateData.state) {
-            case GAME_STATE.ACTIVE:
-              mappedState = GameState.RUNNING;
-              break;
-            case GAME_STATE.COUNTDOWN:
-              mappedState = GameState.WAITING;
-              break;
-            case GAME_STATE.CRASHED:
-              mappedState = GameState.CRASHED;
-              break;
-            case GAME_STATE.INACTIVE:
-            default:
-              mappedState = GameState.INACTIVE;
-              break;
-          }
+          // Use the mapping function for consistency
+          const mappedState = mapBackendStateToFrontend(gameStateData.state);
           
           // Only update if state has changed to avoid unnecessary re-renders
           if (gameState !== mappedState) {
@@ -1310,7 +1308,9 @@ export function CrashoutGame() {
                 setPlayers(gameStateData.players);
               }
               
+              // Always allow placing bets during countdown state
               setCanPlaceBet(true);
+              setIsPlayDisabled(false);
               setIsCashoutDisabled(true);
               
               // Ensure join window is open
@@ -1487,6 +1487,16 @@ export function CrashoutGame() {
       return;
     }
     didMountRef.current = true;
+    
+    // Set default username from localStorage or generate a new one
+    const storedUsername = localStorage.getItem('crashoutUsername');
+    if (!storedUsername) {
+      const randomUsername = 'Player' + Math.floor(Math.random() * 10000);
+      localStorage.setItem('crashoutUsername', randomUsername);
+      setUsername(randomUsername);
+    } else {
+      setUsername(storedUsername);
+    }
     
     // Initialize audio with shared instances
     initializeAudio();
@@ -1777,8 +1787,26 @@ export function CrashoutGame() {
       return;
     }
 
-    if (!canPlaceBet || !isConnected || (joinWindowTimeLeft <= 0 && gameState === GameState.WAITING) || isPlayDisabled) {
-      toast.warning("Cannot place bet now. Ensure you are connected and the join window is open.");
+    // Ensure user has a username
+    if (!username || username.trim() === '') {
+      const randomUsername = 'Player' + Math.floor(Math.random() * 10000);
+      setUsername(randomUsername);
+      localStorage.setItem('crashoutUsername', randomUsername);
+      toast.info(`Using random username: ${randomUsername}`);
+    }
+
+    // Log the values for debugging
+    console.log("Attempting to place bet with:", {
+      canPlaceBet,
+      isConnected,
+      joinWindowTimeLeft,
+      gameState,
+      isPlayDisabled,
+      username: username || 'not set'
+    });
+
+    if (!canPlaceBet || !isConnected || isPlayDisabled) {
+      toast.warning("Cannot place bet now. Ensure you are connected.");
       return;
     }
 
@@ -1792,12 +1820,20 @@ export function CrashoutGame() {
     toast.info("Placing bet...");
 
     try {
-      const response = await axios.post('/api/game', {
-        action: 'placeBet',
+      console.log("Sending bet to server:", {
         username,
         betAmount: bet,
         autoCashout: cashoutTarget
       });
+
+      const response = await axios.post('/api/game', {
+        action: 'placeBet',
+        username: username || 'Guest' + Math.floor(Math.random() * 1000),
+        betAmount: bet,
+        autoCashout: cashoutTarget
+      });
+
+      console.log("Bet response:", response.data);
 
       if (response.data.success) {
         setPlayerJoined(true);
@@ -1811,7 +1847,14 @@ export function CrashoutGame() {
     } catch (error) {
       console.error('Error placing bet:', error);
       setIsPlayDisabled(false);
-      toast.error("Error communicating with server. Please try again.");
+      
+      // Show more detailed error message
+      // Use proper TypeScript type checking
+      if (axios.isAxiosError(error) && error.response?.data?.message) {
+        toast.error(`Error: ${error.response.data.message}`);
+      } else {
+        toast.error("Error communicating with server. Please try again.");
+      }
     }
   }, [
     canPlaceBet, isConnected, betAmount, autoCashout, joinWindowTimeLeft, isPlayDisabled, offlineMode, gameState, username
@@ -1821,7 +1864,7 @@ export function CrashoutGame() {
   const handleCashout = useCallback(async () => {
     if (offlineMode) {
       // Handle offline cashout as before
-      if (!playerJoined || gameState !== GAME_STATE.ACTIVE || isCashoutDisabled || cashedOutAt !== null) {
+      if (!playerJoined || gameState !== GameState.RUNNING || isCashoutDisabled || cashedOutAt !== null) {
           toast.warning("Cannot cashout demo game now.");
           return;
       }
@@ -1829,6 +1872,7 @@ export function CrashoutGame() {
       setCashedOutAt(multiplier);
       setIsCashoutDisabled(true);
       playSound('win');
+      // Use the correct number of arguments
       addFarmCoins(winAmount);
       toast.success(`Demo Cashout at ${multiplier.toFixed(2)}x! Won ${winAmount.toFixed(2)} coins!`);
 
@@ -1839,7 +1883,16 @@ export function CrashoutGame() {
       return;
     }
 
-    if (!playerJoined || gameState !== GAME_STATE.ACTIVE || !isConnected || isCashoutDisabled || cashedOutAt !== null) {
+    console.log("Cashout requested with state:", {
+      playerJoined,
+      gameState,
+      isConnected,
+      isCashoutDisabled,
+      cashedOutAt,
+      multiplier
+    });
+
+    if (!playerJoined || gameState !== GameState.RUNNING || !isConnected || isCashoutDisabled || cashedOutAt !== null) {
       toast.warning("Cannot cash out now.");
       return;
     }
@@ -1853,11 +1906,14 @@ export function CrashoutGame() {
         username
       });
 
+      console.log("Cashout response:", response.data);
+
       if (response.data.success) {
         setCashedOutAt(response.data.multiplier);
         playSound('win');
         
         if (response.data.winAmount) {
+          // Use the correct number of arguments
           addFarmCoins(response.data.winAmount);
           toast.success(`Cashed out at ${response.data.multiplier.toFixed(2)}x! Won ${response.data.winAmount.toFixed(2)} coins!`);
         } else {
@@ -1870,10 +1926,16 @@ export function CrashoutGame() {
     } catch (error) {
       console.error('Error cashing out:', error);
       setIsCashoutDisabled(!playerJoined);
-      toast.error("Error communicating with server. Please try again.");
+      
+      // Use proper TypeScript type checking
+      if (axios.isAxiosError(error) && error.response?.data?.message) {
+        toast.error(`Error: ${error.response.data.message}`);
+      } else {
+        toast.error("Error communicating with server. Please try again.");
+      }
     }
   }, [
-    playerJoined, gameState, isConnected, isCashoutDisabled, cashedOutAt, offlineMode, multiplier, betAmount, addFarmCoins, playSound
+    playerJoined, gameState, isConnected, isCashoutDisabled, cashedOutAt, offlineMode, multiplier, betAmount, addFarmCoins, playSound, username
   ]);
 
   // Handle changing username
@@ -2101,15 +2163,19 @@ export function CrashoutGame() {
           <div className="game-buttons mt-4 grid grid-cols-2 gap-4">
             <button 
               onClick={handlePlay}
-              disabled={isPlayDisabled || !canPlaceBet || (!offlineMode && !isConnected) || (!offlineMode && joinWindowTimeLeft <= 0)}
+              disabled={
+                isPlayDisabled || 
+                !canPlaceBet || 
+                (!offlineMode && !isConnected)
+              }
               className={`py-3 text-lg font-bold rounded transition-all duration-300 ${
-                isPlayDisabled || !canPlaceBet || (!offlineMode && !isConnected) || (!offlineMode && joinWindowTimeLeft <= 0)
+                isPlayDisabled || !canPlaceBet || (!offlineMode && !isConnected)
                   ? "bg-green-800 opacity-50 cursor-not-allowed" 
                   : "bg-green-600 hover:bg-green-700 hover:scale-[1.02]"
               }`}
             >
               {offlineMode ? (canPlaceBet ? "Place Demo Bet" : "Demo Wait") :
-              gameState === GAME_STATE.COUNTDOWN ? (joinWindowTimeLeft > 0 ? `Place Bet (${joinWindowTimeLeft}s)` : "Join Window Closed") :
+              gameState === GameState.WAITING ? (joinWindowTimeLeft > 0 ? `Place Bet (${joinWindowTimeLeft}s)` : "Join Window Closed") :
               (canPlaceBet ? "Place Bet" : "Wait for Next Round")}
             </button>
             

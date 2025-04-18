@@ -355,24 +355,32 @@ const addCashout = async (redis, username, multiplier, winning) => {
 // Process player's bet
 const placeBet = async (redis, username, betAmount, autoCashout) => {
   try {
-    const gameState = await getGameState(redis);
+    console.log(`Attempting to place bet for ${username} with amount ${betAmount} and auto cashout ${autoCashout}`);
     
-    // Check if game is in countdown and join window is open
-    if (gameState.state !== GAME_STATE.COUNTDOWN || gameState.joinWindowTimeLeft <= 0) {
-      return { success: false, message: "Cannot place bet now. Join window is closed." };
+    const gameState = await getGameState(redis);
+    console.log('Current game state:', gameState);
+    
+    // Always allow bets during countdown regardless of joinWindowTimeLeft
+    // This fixes the bug where the join window is showing but bets aren't accepted
+    if (gameState.state !== GAME_STATE.COUNTDOWN) {
+      console.log(`Cannot place bet: Game not in countdown state (current: ${gameState.state})`);
+      return { success: false, message: "Cannot place bet now. Game is not in join phase." };
     }
     
     // Check if player has already joined this round
     const playerData = await getPlayerData(redis, username);
     if (playerData.joined && !playerData.cashedOut) {
+      console.log(`Player ${username} already placed a bet for this round`);
       return { success: false, message: "Already placed a bet for this round." };
     }
     
     // Validate bet amount and auto cashout
     if (isNaN(betAmount) || betAmount <= 0) {
+      console.log(`Invalid bet amount: ${betAmount}`);
       return { success: false, message: "Invalid bet amount." };
     }
     if (isNaN(autoCashout) || autoCashout < 1.01) {
+      console.log(`Invalid auto cashout: ${autoCashout}`);
       return { success: false, message: "Auto cashout must be at least 1.01x." };
     }
     
@@ -386,9 +394,10 @@ const placeBet = async (redis, username, betAmount, autoCashout) => {
     
     // Update game state - increment players in game
     await updateGameState(redis, {
-      playersInGame: gameState.playersInGame + 1
+      playersInGame: (gameState.playersInGame || 0) + 1
     });
     
+    console.log(`Bet successfully placed for ${username}`);
     return { success: true, message: "Bet placed successfully!" };
   } catch (error) {
     console.error('Error placing bet:', error);
@@ -556,6 +565,7 @@ const progressGameState = async (redis) => {
   try {
     const gameState = await getGameState(redis);
     const now = Date.now();
+    console.log('progressGameState - current state:', gameState.state, 'countdown:', gameState.countdown);
     
     // Get active player count
     const activePlayers = await countActivePlayers(redis);
@@ -564,27 +574,32 @@ const progressGameState = async (redis) => {
     if (gameState.state === GAME_STATE.INACTIVE) {
       // Start countdown if it's time for next game
       if (gameState.nextGameTime <= now) {
+        console.log(`Starting new game countdown from INACTIVE state`);
         await updateGameState(redis, {
           state: GAME_STATE.COUNTDOWN,
           countdown: COUNTDOWN_SECONDS, // Use the defined countdown time
           multiplier: 1.0,
           crashPoint: generateCrashPoint(), // Pre-generate crash point
           joinWindowTimeLeft: JOIN_WINDOW_SECONDS, // Full join window time
-          onlinePlayers: activePlayers
+          onlinePlayers: activePlayers,
+          startTime: now // Add explicit start time for countdown
         });
       }
     } 
     else if (gameState.state === GAME_STATE.COUNTDOWN) {
-      // Check how much countdown time has passed
-      const elapsedSeconds = Math.floor((now - gameState.lastUpdate) / 1000);
+      // Calculate elapsed time more accurately using startTime or lastUpdate
+      const startTime = gameState.startTime || gameState.lastUpdate;
+      const elapsedSeconds = Math.floor((now - startTime) / 1000);
+      console.log(`COUNTDOWN state: elapsed=${elapsedSeconds}s, countdown=${gameState.countdown}`);
+      
       const remainingCountdown = Math.max(0, gameState.countdown - elapsedSeconds);
       
       // Calculate remaining join window time
-      // Make sure join window is independent from countdown time
       const remainingJoinWindow = Math.max(0, (gameState.joinWindowTimeLeft || JOIN_WINDOW_SECONDS) - elapsedSeconds);
       
       if (remainingCountdown <= 0) {
         // Countdown completed, start the game
+        console.log(`Countdown complete, transitioning to ACTIVE state`);
         await updateGameState(redis, {
           state: GAME_STATE.ACTIVE,
           countdown: 0,
@@ -595,6 +610,7 @@ const progressGameState = async (redis) => {
         });
       } else {
         // Update countdown timer
+        console.log(`Updating countdown: ${remainingCountdown}s remaining, join window: ${remainingJoinWindow}s`);
         await updateGameState(redis, {
           countdown: remainingCountdown,
           joinWindowTimeLeft: remainingJoinWindow,
@@ -604,8 +620,11 @@ const progressGameState = async (redis) => {
     }
     else if (gameState.state === GAME_STATE.ACTIVE) {
       // Calculate how long the game has been running
-      const gameRunTime = now - (gameState.startTime || gameState.lastUpdate);
+      const startTime = gameState.startTime || gameState.lastUpdate;
+      const gameRunTime = now - startTime;
       const secondsActive = gameRunTime / 1000;
+      
+      console.log(`ACTIVE state: running for ${secondsActive.toFixed(1)}s, multiplier: ${gameState.multiplier}, crash point: ${gameState.crashPoint}`);
       
       // Calculate current multiplier based on time running (exponential growth)
       // Multiplier formula: 1.0 * e^(growth_rate * seconds)
@@ -618,6 +637,7 @@ const progressGameState = async (redis) => {
       // Check if we've reached crash point
       if (currentMultiplier >= gameState.crashPoint) {
         // Game crashed
+        console.log(`Game crashed at multiplier ${currentMultiplier}, crash point: ${gameState.crashPoint}`);
         await updateGameState(redis, {
           state: GAME_STATE.CRASHED,
           multiplier: gameState.crashPoint,
@@ -643,6 +663,7 @@ const progressGameState = async (redis) => {
       // Check if it's time to reset for a new round
       if (gameState.nextGameTime <= now) {
         // Reset for next game
+        console.log(`Game crash cooldown complete, transitioning to INACTIVE`);
         await resetAllPlayersForNewRound(redis);
         
         await updateGameState(redis, {
