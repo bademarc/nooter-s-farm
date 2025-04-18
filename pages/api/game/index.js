@@ -58,6 +58,10 @@ const GAME_STATE = {
   CASHED_OUT: "cashed_out",
 };
 
+// Constants for game timing
+const COUNTDOWN_SECONDS = 15; // 15 seconds for countdown
+const JOIN_WINDOW_SECONDS = 15; // 15 seconds for join window
+
 // Generate a crash point using a fair algorithm
 // Returns a value between 1.1 and 10
 const generateCrashPoint = () => {
@@ -560,13 +564,12 @@ const progressGameState = async (redis) => {
     if (gameState.state === GAME_STATE.INACTIVE) {
       // Start countdown if it's time for next game
       if (gameState.nextGameTime <= now) {
-        const countdownSeconds = 10; // Default countdown time
         await updateGameState(redis, {
           state: GAME_STATE.COUNTDOWN,
-          countdown: countdownSeconds,
+          countdown: COUNTDOWN_SECONDS, // Use the defined countdown time
           multiplier: 1.0,
           crashPoint: generateCrashPoint(), // Pre-generate crash point
-          joinWindowTimeLeft: Math.floor(countdownSeconds * 0.8), // 80% of countdown is join window
+          joinWindowTimeLeft: JOIN_WINDOW_SECONDS, // Full join window time
           onlinePlayers: activePlayers
         });
       }
@@ -577,7 +580,8 @@ const progressGameState = async (redis) => {
       const remainingCountdown = Math.max(0, gameState.countdown - elapsedSeconds);
       
       // Calculate remaining join window time
-      const remainingJoinWindow = Math.max(0, gameState.joinWindowTimeLeft - elapsedSeconds);
+      // Make sure join window is independent from countdown time
+      const remainingJoinWindow = Math.max(0, (gameState.joinWindowTimeLeft || JOIN_WINDOW_SECONDS) - elapsedSeconds);
       
       if (remainingCountdown <= 0) {
         // Countdown completed, start the game

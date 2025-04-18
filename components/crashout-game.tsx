@@ -202,6 +202,8 @@ const GAME_STATE = {
 // Constants
 const MAX_RETRY_ATTEMPTS = 3;
 const API_TIMEOUT_MS = 15000; // 15 seconds - increased from 10 seconds
+const JOIN_WINDOW_SECONDS = 15; // 15 seconds for join window
+const GAME_COUNTDOWN_SECONDS = 15; // 15 seconds for game countdown
 
 // Helper components
 const DemoModeSwitch = ({ enabled, onChange }: { enabled: boolean; onChange: (enabled: boolean) => void }) => {
@@ -1065,7 +1067,10 @@ export function CrashoutGame() {
       demoTimerRef.current = null;
     }
     
-    // Set initial state
+    // Track reconnection attempts to avoid flickering
+    const reconnectAttemptsRef = { count: 0 };
+    
+    // Set initial state immediately to avoid flickering
     setIsConnected(true);
     setConnectionStatus('Connected');
     setOfflineMode(false);
@@ -1077,102 +1082,13 @@ export function CrashoutGame() {
     
     console.log('Online mode activated - synchronizing with server');
     
-    // Helper function to update game history (avoid using updateGameHistory before declared)
-    const addToGameHistory = (newEntries: GameHistoryEntry[]) => {
-      setGameHistory(prev => [...newEntries, ...prev.slice(0, 49)]);
-    };
-    
-    // More reliable fetch with retries
-    const fetchGameStateWithRetry = async (retryCount = 0): Promise<any> => {
-      try {
-        const data = await getCurrentGameData();
-        if (data) {
-          // Check if we have a JSON parse error
-          if (data.error && typeof data.error === 'string' && data.error.includes('JSON')) {
-            console.warn(`JSON parse error in API response: ${data.error}`);
-            
-            // Increment issue counter for tracking persistent issues
-            jsonErrorCountRef.current++;
-            
-            // If we still have retries, try again
-            if (retryCount < 2) {
-              console.log(`JSON parse error, retry ${retryCount + 1}/3`);
-              await new Promise(resolve => setTimeout(resolve, 1000));
-              return fetchGameStateWithRetry(retryCount + 1);
-            }
-            
-            // Check if we're getting persistent JSON errors (5+ in a row)
-            if (jsonErrorCountRef.current > 5) {
-              console.warn('Persistent JSON parsing errors detected, considering fallback to demo mode');
-              
-              // First try the health endpoint to validate Redis status
-              try {
-                const healthResponse = await axios.get('/api/health', {
-                  headers: { 'Cache-Control': 'no-cache' }
-                });
-                
-                if (healthResponse.data && healthResponse.data.redis?.status === 'connected') {
-                  console.log('Redis is connected via health endpoint despite JSON errors');
-                  jsonErrorCountRef.current = 0; // Reset counter since Redis appears to be working
-                  // Use fallback data but don't switch to demo mode
-                  return data;
-                }
-              } catch (healthErr) {
-                console.error('Health endpoint also failed:', healthErr);
-              }
-              
-              // If health check also fails, consider switching to demo mode
-              setRedisJsonErrorPersistent(true);
-            }
-            
-            // If we're out of retries, use the fallback data
-            return data;
-          }
-          
-          // Reset error counters on successful request
-          if (apiError.current) {
-            console.log('API connection restored');
-            setApiError(false);
-          }
-          
-          // Reset JSON error counter on successful request without JSON errors
-          if (jsonErrorCountRef.current > 0) {
-            jsonErrorCountRef.current = 0;
-          }
-          
-          // Reset persistent JSON error flag if set
-          if (redisJsonErrorPersistent) {
-            setRedisJsonErrorPersistent(false);
-          }
-          
-          return data;
-        }
-        
-        // If we get an empty response but still have retries left
-        if (retryCount < 2) {
-          console.log(`Empty game data, retry ${retryCount + 1}/3`);
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          return fetchGameStateWithRetry(retryCount + 1);
-        }
-        
-        return null;
-      } catch (error) {
-        console.error('Error fetching game state:', error);
-        
-        // Retry a few times before giving up
-        if (retryCount < 2) {
-          console.log(`Request failed, retry ${retryCount + 1}/3`);
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          return fetchGameStateWithRetry(retryCount + 1);
-        }
-        
-        setApiError(true);
-        return null;
-      }
-    };
-    
     // Function to fetch and update game state
     const fetchGameState = async () => {
+      // If already in offline mode, don't attempt to reconnect
+      if (offlineMode) {
+        return;
+      }
+      
       try {
         // Check if we've detected persistent JSON errors and need to switch to demo mode
         if (redisJsonErrorPersistent) {
@@ -1183,33 +1099,83 @@ export function CrashoutGame() {
           return;
         }
         
+        // Only show reconnecting status after multiple consecutive failures
+        const handleConnectionIssue = () => {
+          reconnectAttemptsRef.count++;
+          
+          if (reconnectAttemptsRef.count === 1) {
+            // First failure - silently try to reconnect without UI change
+            console.log("Connection issue detected, silently attempting to reconnect");
+            // Don't update UI state yet
+          } else if (reconnectAttemptsRef.count < 5) {
+            // After second failure, show reconnecting status
+            console.log(`Connection issue persists (attempt ${reconnectAttemptsRef.count}), showing reconnecting status`);
+            setIsConnected(false);
+            setConnectionStatus('Reconnecting...');
+          } else {
+            // After multiple failures, switch to demo mode
+            console.log("Multiple reconnection attempts failed, switching to demo mode");
+            startDemoMode();
+          }
+        };
+        
+        // Handle successful connection
+        const handleSuccessfulConnection = () => {
+          if (reconnectAttemptsRef.count > 0) {
+            console.log("Connection restored after issues");
+          }
+          
+          // Reset reconnection counter
+          reconnectAttemptsRef.count = 0;
+          
+          // Update connection status if needed
+          if (!isConnected) {
+            setIsConnected(true);
+            setConnectionStatus('Connected');
+            toast.success("Connection restored! Back online.");
+          }
+        };
+        
         if (apiError.current) {
           // If we had an API error, try to reconnect
           console.log("Attempting to reconnect to API after error");
           const isAvailable = await checkApiAvailability();
+          
           if (!isAvailable) {
-            if (!offlineMode) {
-              console.log("API still unavailable, switching to demo mode");
-              startDemoMode();
-            }
+            handleConnectionIssue();
             return;
+          } else {
+            // Successfully reconnected
+            setApiError(false);
+            handleSuccessfulConnection();
           }
-          setApiError(false);
         }
         
-        const data = await fetchGameStateWithRetry();
-        if (!data) {
+        // Use the sync action to get comprehensive game data
+        const response = await axios.post('/api/game', {
+          action: 'sync',
+          username: username || 'guest'
+        }, {
+          headers: { 'Cache-Control': 'no-cache' }
+        });
+        
+        const data = response.data;
+        
+        if (!data || !data.gameState) {
           console.warn('No game data received during polling');
+          handleConnectionIssue();
           return;
         }
         
-        // Check if we have a connection issue
-        if (data.status === 'error' || data.redis === 'disconnected') {
-          const errorMsg = data.error || 'Unknown Redis error';
+        // We got data successfully - handle restored connection
+        handleSuccessfulConnection();
+        
+        // Check if we have a connection issue reported in the data
+        if (data.success === false || data.gameState.error) {
+          const errorMsg = data.gameState.error || 'Unknown Redis error';
           console.error('Redis connection issue during polling:', errorMsg);
           
           // Special handling for JSON parse errors - these might be recoverable
-          // so don't immediately switch to demo mode
           if (errorMsg.includes('JSON')) {
             console.warn('JSON parse error detected - will retry in next poll cycle');
             setApiError(true);
@@ -1225,6 +1191,8 @@ export function CrashoutGame() {
             if (healthResponse.data && healthResponse.data.redis && 
                 healthResponse.data.redis.status === 'connected') {
               console.log('Redis is actually connected via health endpoint - continuing');
+              // Reset connection status to connected if health check passes
+              handleSuccessfulConnection();
               return;
             }
           } catch (healthErr) {
@@ -1232,34 +1200,42 @@ export function CrashoutGame() {
           }
           
           setApiError(true);
+          handleConnectionIssue();
           return;
         }
         
         // Always update game history from server to ensure consistency across devices
-        if (data.gameHistory && Array.isArray(data.gameHistory) && data.gameHistory.length > 0) {
-          setGameHistory(data.gameHistory);
+        if (data.history && Array.isArray(data.history) && data.history.length > 0) {
+          setGameHistory(data.history);
         }
         
-        // Check if the state has changed
-        const dataChanged = JSON.stringify(data) !== JSON.stringify(currentGameData.current);
+        // Check if the state has changed - store previous state for comparison
+        const prevGameState = currentGameData.current?.gameState?.state;
+        const dataChanged = !currentGameData.current || 
+          JSON.stringify(data.gameState) !== JSON.stringify(currentGameData.current.gameState);
+        
+        // Update the current game data reference
         currentGameData.current = data;
         
+        // Extract the game state for easier access
+        const gameStateData = data.gameState;
+        
         // Check if state is undefined and provide a fallback
-        if (data.state === undefined) {
+        if (gameStateData.state === undefined) {
           console.warn('Server returned undefined game state, using INACTIVE as fallback');
-          data.state = GAME_STATE.INACTIVE;
+          gameStateData.state = GAME_STATE.INACTIVE;
         }
         
         // Always update these critical fields regardless of change detection
         // to ensure consistency across all clients
-        if (data.state) {
-          console.log(`Setting game state to: ${data.state}`);
+        if (gameStateData.state) {
+          console.log(`Setting game state to: ${gameStateData.state}`);
           
           // Ensure we're using the correct state mapping
           let mappedState;
           
           // Map string state to GameState enum
-          switch(data.state) {
+          switch(gameStateData.state) {
             case GAME_STATE.ACTIVE:
               mappedState = GameState.RUNNING;
               break;
@@ -1275,83 +1251,115 @@ export function CrashoutGame() {
               break;
           }
           
-          console.log(`Mapped state from ${data.state} to enum value: ${mappedState}`);
-          setGameState(mappedState);
+          // Only update if state has changed to avoid unnecessary re-renders
+          if (gameState !== mappedState) {
+            console.log(`Mapped state from ${gameStateData.state} to enum value: ${mappedState}`);
+            setGameState(mappedState);
+          }
         }
         
-        if (data.multiplier !== undefined) {
-          setMultiplier(data.multiplier);
-        } else if (data.state === GAME_STATE.ACTIVE) {
+        if (gameStateData.multiplier !== undefined) {
+          setMultiplier(gameStateData.multiplier);
+        } else if (gameStateData.state === GAME_STATE.ACTIVE) {
           // If in active state but no multiplier provided, use a default
           console.warn('No multiplier provided but game is active, using 1.0 as fallback');
           setMultiplier(1.0);
         }
         
-        if (data.countdown !== undefined) {
-          setCountdown(data.countdown);
-        } else if (data.timeLeft !== undefined) {
+        if (gameStateData.countdown !== undefined) {
+          setCountdown(gameStateData.countdown);
+        } else if (gameStateData.timeLeft !== undefined) {
           // Support alternative property name
-          setCountdown(data.timeLeft);
+          setCountdown(gameStateData.timeLeft);
+        }
+        
+        // If player data is available, update player state
+        if (data.playerData) {
+          // Check if player has joined the current game
+          if (data.playerData.joined && !playerJoined) {
+            setPlayerJoined(true);
+          }
+          
+          // Check if player has cashed out
+          if (data.playerData.cashedOut && data.playerData.cashedOutAt && !cashedOutAt) {
+            setCashedOutAt(data.playerData.cashedOutAt);
+          }
         }
         
         // If significant data changed, process all state updates
         if (dataChanged) {
-          console.log('Game state updated from server:', data.state);
+          console.log('Game state updated from server:', gameStateData.state);
           
           // Handle game state specific logic
-          switch (data.state) {
+          switch (gameStateData.state) {
             case GAME_STATE.COUNTDOWN:
-              if (data.timeLeft) {
-                setCountdown(data.timeLeft);
+              if (gameStateData.timeLeft) {
+                setCountdown(gameStateData.timeLeft);
               }
               
-              if (data.joinWindow && !joinWindowRef.current) {
-                startJoinWindowTimer(data.joinWindow);
+              // Use JOIN_WINDOW_SECONDS for join window with fallback to gameStateData.joinWindowTimeLeft
+              const joinWindowTime = gameStateData.joinWindowTimeLeft !== undefined ? 
+                gameStateData.joinWindowTimeLeft : JOIN_WINDOW_SECONDS;
+              
+              if (joinWindowTime && !joinWindowRef.current) {
+                startJoinWindowTimer(joinWindowTime);
               }
               
-              if (data.players) {
-                setPlayersInGame(data.players.length);
-                setPlayers(data.players);
+              if (gameStateData.players) {
+                setPlayersInGame(gameStateData.players.length);
+                setPlayers(gameStateData.players);
               }
               
               setCanPlaceBet(true);
               setIsCashoutDisabled(true);
+              
+              // Ensure join window is open
+              setJoinWindowTimeLeft(joinWindowTime);
               break;
               
             case GAME_STATE.ACTIVE:
-              if (data.multiplier) {
-                setMultiplier(data.multiplier);
+              if (gameStateData.multiplier) {
+                setMultiplier(gameStateData.multiplier);
               }
               
               // Show game started animation if we just transitioned to running
-              if (currentGameData.current?.prevState === GAME_STATE.COUNTDOWN) {
+              if (prevGameState === GAME_STATE.COUNTDOWN) {
                 setShowGameStartedImage(true);
                 setTimeout(() => setShowGameStartedImage(false), 2000);
               }
               
               setIsCashoutDisabled(!playerJoined || cashedOutAt !== null);
+              setCanPlaceBet(false); // Can't place bet during active game
               break;
               
             case GAME_STATE.CRASHED:
               // Handle game crash
-              if (data.crashPoint) {
+              if (gameStateData.crashPoint) {
                 playSound('crash');
                 
-                // Create a new history entry
-                const newEntry: GameHistoryEntry = {
-                  value: data.crashPoint.toString(),
-                  color: parseFloat(data.crashPoint) >= 2.0 ? 'green' : 'red',
-                  timestamp: Date.now(),
-                  crashPoint: data.crashPoint
-                };
+                // Create a new history entry if it doesn't exist already
+                const crashPointStr = gameStateData.crashPoint.toString();
+                const existingEntry = gameHistory.find(entry => 
+                  entry.value === crashPointStr && 
+                  Math.abs(entry.timestamp - Date.now()) < 5000
+                );
                 
-                // Add to history
-                addToGameHistory([newEntry]);
+                if (!existingEntry) {
+                  const newEntry: GameHistoryEntry = {
+                    value: crashPointStr,
+                    color: parseFloat(crashPointStr) >= 2.0 ? 'green' : 'red',
+                    timestamp: Date.now(),
+                    crashPoint: gameStateData.crashPoint
+                  };
+                  
+                  // Add to history
+                  addToGameHistory([newEntry]);
+                }
               }
               
               // Check if player lost
               if (playerJoined && cashedOutAt === null) {
-                toast.error(`Game crashed at ${data.crashPoint}x. You lost ${betAmount} Farm Coins.`);
+                toast.error(`Game crashed at ${gameStateData.crashPoint}x. You lost ${betAmount} Farm Coins.`);
                 // Show loss animation
                 setShowLossImage(true);
                 setTimeout(() => setShowLossImage(false), 3000);
@@ -1363,12 +1371,16 @@ export function CrashoutGame() {
               
             case GAME_STATE.INACTIVE:
               // Game is inactive, waiting for next round
-              if (data.nextGameStart) {
-                setNextGameStartTime(data.nextGameStart);
+              if (gameStateData.nextGameTime) {
+                setNextGameStartTime(gameStateData.nextGameTime);
               }
               
-              setPlayerJoined(false);
-              setCashedOutAt(null);
+              // Only reset player's game status if the game just ended
+              if (prevGameState === GAME_STATE.CRASHED || prevGameState === GAME_STATE.ACTIVE) {
+                setPlayerJoined(false);
+                setCashedOutAt(null);
+              }
+              
               setCanPlaceBet(false);
               setIsCashoutDisabled(true);
               break;
@@ -1380,20 +1392,22 @@ export function CrashoutGame() {
           }
           
           // Update recent cashouts
-          if (data.recentCashouts) {
-            setRecentCashouts(data.recentCashouts);
+          if (data.cashouts) {
+            setRecentCashouts(data.cashouts);
           }
         }
       } catch (error) {
         console.error('Error in polling loop:', error);
         setApiError(true);
         
-        // Check if we need to switch to demo mode after multiple errors
-        if (apiRetryCountRef.current < MAX_RETRY_ATTEMPTS) {
-          apiRetryCountRef.current++;
-          console.log(`API error, retry attempt ${apiRetryCountRef.current}/${MAX_RETRY_ATTEMPTS}`);
+        // Use the same reconnection handling for any errors
+        reconnectAttemptsRef.count++;
+        
+        if (reconnectAttemptsRef.count < 5) {
+          setIsConnected(false);
+          setConnectionStatus('Reconnecting...');
         } else {
-          console.log(`Max API retry attempts (${MAX_RETRY_ATTEMPTS}) reached, switching to demo mode`);
+          console.log(`Max reconnection attempts (${reconnectAttemptsRef.count}) reached, switching to demo mode`);
           if (!offlineMode) {
             startDemoMode();
           }
@@ -1406,10 +1420,14 @@ export function CrashoutGame() {
       toast.success('Connected to game server! Play with other players in real-time.');
     }).catch(err => {
       console.error('Initial game state fetch failed:', err);
+      // Show error toast but don't immediately go to demo mode - let the polling cycle handle reconnection
+      toast.error('Connection issue detected. Attempting to reconnect...');
+      setIsConnected(false);
+      setConnectionStatus('Reconnecting...');
     });
     
-    // Use a faster polling rate for better synchronization
-    const onlinePollingRate = 1000; // Poll every second for online mode
+    // Use a more reasonable polling rate to avoid constant reloading
+    const onlinePollingRate = 3000; // Poll every 3 seconds for online mode
     console.log(`Setting up polling at ${onlinePollingRate}ms intervals`);
     
     // Start polling at the specified rate
@@ -1427,12 +1445,13 @@ export function CrashoutGame() {
     offlineMode, 
     setApiError, 
     startDemoMode,
-    gameHistory,
+    addToGameHistory,
     playerJoined, 
     cashedOutAt, 
     betAmount, 
     playSound, 
     startJoinWindowTimer,
+    isConnected,
     setIsConnected,
     setConnectionStatus,
     setOfflineMode,
@@ -1452,7 +1471,10 @@ export function CrashoutGame() {
     setOnlinePlayersCount,
     setRecentCashouts,
     redisJsonErrorPersistent,
-    setRedisJsonErrorPersistent
+    setRedisJsonErrorPersistent,
+    gameState,
+    gameHistory,
+    username
   ]);
 
   // Add back the main setup effect after the reconnection effect
@@ -1755,7 +1777,7 @@ export function CrashoutGame() {
       return;
     }
 
-    if (!canPlaceBet || !isConnected || joinWindowTimeLeft <= 0 || isPlayDisabled) {
+    if (!canPlaceBet || !isConnected || (joinWindowTimeLeft <= 0 && gameState === GameState.WAITING) || isPlayDisabled) {
       toast.warning("Cannot place bet now. Ensure you are connected and the join window is open.");
       return;
     }
@@ -1792,7 +1814,7 @@ export function CrashoutGame() {
       toast.error("Error communicating with server. Please try again.");
     }
   }, [
-    canPlaceBet, isConnected, betAmount, autoCashout, joinWindowTimeLeft, isPlayDisabled, offlineMode
+    canPlaceBet, isConnected, betAmount, autoCashout, joinWindowTimeLeft, isPlayDisabled, offlineMode, gameState, username
   ]);
 
   // Handle cashing out
@@ -1947,24 +1969,18 @@ export function CrashoutGame() {
             </button>
           )}
           <span className={`text-sm ${
-            connectionStatus === 'connected' ? 'text-green-500' :
-            connectionStatus === 'connecting' ? 'text-yellow-500' :
-            connectionStatus === 'disconnected' ? 'text-gray-500' :
-            connectionStatus === 'demo' ? 'text-yellow-500' :
+            isConnected ? 'text-green-500' :
+            connectionStatus === 'Reconnecting...' ? 'text-yellow-500' :
+            connectionStatus === 'Disconnected' ? 'text-gray-500' :
+            offlineMode ? 'text-yellow-500' :
             'text-red-500'
           }`}>
-            {connectionStatus === 'connected' ? `Online (${onlinePlayersCount} players)` :
-             connectionStatus === 'connecting' ? 'Connecting...' :
-             connectionStatus === 'disconnected' ? 'Disconnected' :
-             connectionStatus === 'demo' ? 'Demo Mode' :
-             connectionStatus === 'error' ? 'Connection Error' :
-             'Offline'
+            {isConnected ? `Online (${onlinePlayersCount} players)` :
+             connectionStatus === 'Reconnecting...' ? 'Reconnecting...' :
+             connectionStatus === 'Disconnected' ? 'Disconnected' :
+             offlineMode ? 'Demo Mode' :
+             'Connection Error'
             }
-             {isConnected && connectionStatus !== 'connected' && !offlineMode && (
-                 <span className="ml-2 text-xs bg-yellow-600 text-white px-1 rounded">
-                     Reconnecting...
-                 </span>
-             )}
           </span>
         </div>
       </h2>
@@ -2007,7 +2023,7 @@ export function CrashoutGame() {
                 ${playerJoined ? 'bg-green-600' : 'bg-red-600'} transition-colors duration-300`}>
                 {playerJoined
                   ? `Playing ${cashedOutAt ? `(Cashed out at ${cashedOutAt.toFixed(2)}x)` : ''}`
-                  : "Not playing"}
+                  : (connectionStatus === 'Reconnecting...' ? "Reconnecting..." : "Not playing")}
                     {offlineMode && playerJoined && <span className="text-xs bg-yellow-500 px-1 rounded ml-1">Demo Bet</span>}
               </div>
             )}
