@@ -201,18 +201,81 @@ const getGameHistory = async (redis) => {
     // Parse each history item safely
     return historyRaw.map(item => {
       try {
+        // First try regular JSON parse
         return JSON.parse(item);
       } catch (parseError) {
         console.error('Error parsing history item JSON:', parseError);
         console.error('Raw history item:', item);
         
-        // Return a fallback history item
-        return {
-          crashPoint: 1.0,
-          timestamp: Date.now(),
-          color: "red",
-          parseError: parseError.message
-        };
+        try {
+          // Extract values directly using regex
+          const crashPointMatch = item.match(/crashPoint\\?:(\d+(\.\d+)?)/);
+          const timestampMatch = item.match(/timestamp\\?:(\d+)/);
+          const colorMatch = item.match(/color\\?:\\?(\w+)\\?/);
+          
+          console.log('Regex extraction values:', {
+            crashPoint: crashPointMatch ? crashPointMatch[1] : 'not found',
+            timestamp: timestampMatch ? timestampMatch[1] : 'not found',
+            color: colorMatch ? colorMatch[1] : 'not found'
+          });
+          
+          // Create a new object directly from the extracted values
+          if (crashPointMatch || timestampMatch || colorMatch) {
+            const crashPoint = crashPointMatch ? parseFloat(crashPointMatch[1]) : 1.0;
+            const timestamp = timestampMatch ? parseInt(timestampMatch[1]) : Date.now();
+            const color = colorMatch ? colorMatch[1] : "red";
+            
+            console.log('Created new object from extracted values:', { crashPoint, timestamp, color });
+            
+            return {
+              crashPoint,
+              timestamp,
+              color,
+              recovered: true
+            };
+          }
+          
+          // Manual parsing as fallback
+          if (item.includes('\\crashPoint\\:') && item.includes('\\timestamp\\:') && item.includes('\\color\\:')) {
+            console.log('Using direct string extraction method');
+            
+            // Example: {\crashPoint\:2.5,\timestamp\:1745000000000,\color\:\green\}
+            const crashPointStr = item.split('\\crashPoint\\:')[1]?.split(',')[0];
+            const timestampStr = item.split('\\timestamp\\:')[1]?.split(',')[0];
+            const colorStr = item.split('\\color\\:')[1]?.split('\\}')[0].replace('\\', '');
+            
+            console.log('Manual parsing results:', { crashPointStr, timestampStr, colorStr });
+            
+            // Create object directly with correct types
+            return {
+              crashPoint: crashPointStr ? parseFloat(crashPointStr) : 1.0,
+              timestamp: timestampStr ? parseInt(timestampStr) : Date.now(),
+              color: colorStr || "red",
+              recovered: true,
+              manuallyParsed: true
+            };
+          }
+          
+          // Fallback to basic default object as last resort
+          return {
+            crashPoint: 1.0,
+            timestamp: Date.now(),
+            color: "red",
+            recovered: true,
+            fallback: true
+          };
+        } catch (extractError) {
+          console.error('Error extracting data:', extractError);
+          
+          // Return a fallback history item as last resort
+          return {
+            crashPoint: 1.0,
+            timestamp: Date.now(),
+            color: "red",
+            parseError: parseError.message,
+            extractError: extractError.message
+          };
+        }
       }
     });
   } catch (error) {
