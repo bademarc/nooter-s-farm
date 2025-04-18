@@ -381,99 +381,129 @@ export function CrashoutGame() {
     }
   }, [muted, volume]);
   
-  // Helper method to detect API availability with timeout
+  // Modify the checkApiAvailability function to be more robust
   const checkApiAvailability = useCallback(async () => {
     try {
       console.log('Checking API availability...');
       apiRetryCountRef.current = 0; // Reset retry count
       
-      // Try the game endpoint first with axios (better TypeScript compatibility)
-      try {
-        console.log('Checking game API endpoint...');
+      // Try up to 5 retries with increasing timeout
+      for (let attempt = 1; attempt <= 5; attempt++) {
+        console.log(`API check attempt ${attempt}/5...`);
         
-        // Set a timeout for axios requests
-        const axiosInstance = axios.create({
-          timeout: API_TIMEOUT_MS
-        });
-        
-        const gameResponse = await axiosInstance.get('/api/game', {
-          headers: { 'Cache-Control': 'no-cache' }
-        });
-        
-        console.log('API game endpoint response:', gameResponse.data);
-        
-        if (gameResponse.data.redis === 'disconnected' || gameResponse.data.status === 'error') {
-          const errorMsg = gameResponse.data.error || 'Unknown Redis error';
-          console.error('Redis error in game check:', errorMsg);
-          toast.error(`Game connection error: ${errorMsg}`);
-          return false;
-        }
-        
-        // Explicitly check for "connected" status to ensure proper detection
-        if (gameResponse.data.redis === 'connected') {
-          console.log('Redis connected successfully');
-          
-          // Force remove any demo mode flags
-          if (typeof window !== 'undefined') {
-            localStorage.removeItem('crashoutDemoMode');
-          }
-          
-          return true;
-        }
-        
-        return true;
-      } catch (gameError) {
-        console.warn('Game endpoint check failed, trying health endpoint:', gameError);
-        
-        // If the game endpoint fails, try the health endpoint
         try {
-          const healthResponse = await axios.get('/api/health', {
-            timeout: API_TIMEOUT_MS,
-            headers: { 'Cache-Control': 'no-cache' }
+          // Set a timeout that increases with each retry
+          const timeout = API_TIMEOUT_MS * (1 + (attempt * 0.5));
+          console.log(`Using timeout of ${timeout}ms`);
+          
+          // Create axios instance with timeout
+          const axiosInstance = axios.create({
+            timeout: timeout
           });
           
-          console.log('API health endpoint response:', healthResponse.data);
+          // Add more debug info in the request headers
+          const response = await axiosInstance.get('/api/game', {
+            headers: { 
+              'Cache-Control': 'no-cache',
+              'X-Debug-Client': 'crashout-game-component',
+              'X-Debug-Timestamp': Date.now().toString(),
+              'X-Debug-Attempt': attempt.toString()
+            }
+          });
           
-          if (healthResponse.data.redis?.status !== 'connected') {
-            const errorMsg = healthResponse.data.redis?.error || 'Unknown Redis error';
-            console.error('Redis not connected in health check:', errorMsg);
-            toast.error(`Redis connection error: ${errorMsg}`);
-            return false;
+          console.log('API game endpoint response:', response.data);
+          
+          // Check if we got any response at all
+          if (!response.data) {
+            console.warn('Empty response from game API');
+            continue; // Try again
           }
           
-          return true;
-        } catch (healthError) {
-          console.error('Health endpoint check failed:', healthError);
-          
-          // Final retry attempt - try with longer timeout
-          try {
-            console.log('Final attempt - trying game endpoint with longer timeout');
-            const finalResponse = await axios.get('/api/game', {
-              timeout: API_TIMEOUT_MS * 2,
-              headers: { 'Cache-Control': 'no-cache' }
-            });
+          // Check if connected to Redis
+          if (response.data.redis === 'connected') {
+            console.log('Redis connected successfully');
             
-            // Make sure connected flag is properly checked
-            if (finalResponse.data?.redis === 'connected') {
-              console.log('Redis connected successfully on final attempt');
-              return true;
+            // Force remove any demo mode flags
+            if (typeof window !== 'undefined') {
+              localStorage.removeItem('crashoutDemoMode');
             }
             
-            return finalResponse.status === 200;
-          } catch (finalError) {
-            console.error('All API check attempts failed:', finalError);
-            toast.error('Could not connect to game server. Starting in demo mode.');
-            return false;
+            return true;
+          } else if (response.data.redis === 'disconnected' || response.data.status === 'error') {
+            const errorMsg = response.data.error || 'Unknown Redis error';
+            console.error('Redis error in game check:', errorMsg);
+            
+            // Don't show toast on every retry - only on final attempt
+            if (attempt === 5) {
+              toast.error(`Game connection error: ${errorMsg}`);
+            }
+            
+            // Try a direct call to health endpoint before giving up
+            if (attempt === 5) {
+              try {
+                const healthResponse = await axiosInstance.get('/api/health', {
+                  headers: { 'Cache-Control': 'no-cache' }
+                });
+                
+                console.log('Health check response:', healthResponse.data);
+                
+                if (healthResponse.data.redis?.status === 'connected') {
+                  console.log('Redis connected via health endpoint');
+                  return true;
+                }
+              } catch (healthErr) {
+                console.error('Health endpoint failed:', healthErr);
+              }
+            }
+            
+            continue; // Try again with next attempt
           }
+          
+          // If we got here with a valid response but no explicit redis status,
+          // let's try to infer connection from presence of game state data
+          if (response.data.state || response.data.gameHistory || response.data.onlinePlayers) {
+            console.log('Inferring Redis connection from valid game data');
+            return true;
+          }
+          
+          // Continue to next attempt if we're not sure
+          console.log('Ambiguous response, continuing to next attempt...');
+        } catch (attemptError) {
+          console.warn(`Attempt ${attempt} failed:`, attemptError);
+          
+          // Wait before next retry, with increasing backoff
+          const backoffMs = 1000 * attempt;
+          console.log(`Waiting ${backoffMs}ms before next attempt...`);
+          await new Promise(resolve => setTimeout(resolve, backoffMs));
         }
       }
+      
+      // One final direct check to really make sure
+      try {
+        console.log('Making final direct check to /api/redis-status endpoint...');
+        const finalCheck = await axios.get('/api/redis-status', {
+          timeout: API_TIMEOUT_MS * 2
+        });
+        
+        if (finalCheck.data && finalCheck.data.connected) {
+          console.log('Final redis check succeeded');
+          return true;
+        }
+      } catch (finalError) {
+        console.error('Final redis check failed:', finalError);
+      }
+      
+      // If we got here, all attempts failed
+      console.error('All API connection attempts failed after retries');
+      toast.error('Could not connect to game server. Starting in demo mode.');
+      return false;
     } catch (error) {
       console.error('API availability check failed:', error);
       toast.error(`API availability check failed: ${error instanceof Error ? error.message : String(error)}`);
       return false;
     }
   }, []);
-  
+
   // Modified startDemoMode function to prevent infinite loops
   const startDemoMode = useCallback(() => {
     console.log("Starting demo mode");
@@ -617,7 +647,20 @@ export function CrashoutGame() {
     toast.success("Started demo mode! You have 1000 Farm Coins to play with.");
   }, [playSound, betAmount, cashedOutAt, playerJoined, setOfflineMode, setIsConnected, setConnectionStatus, setUsername, setGameState, setMultiplier, setCountdown, setPlayers, setCashouts, setPlayerJoined, setCashedOutAt, setIsCashoutDisabled, setGameHistory, offlineMode]);
 
-  // Set up polling for game state - Define this function here
+  // Add a new endpoint check function
+  const checkEndpoint = useCallback(async (url: string, timeout: number = API_TIMEOUT_MS) => {
+    try {
+      const response = await axios.get(url, {
+        timeout: timeout,
+        headers: { 'Cache-Control': 'no-cache' }
+      });
+      return { success: true, data: response.data };
+    } catch (error) {
+      return { success: false, error };
+    }
+  }, []);
+  
+  // Modify setupPolling function to be more reliable
   const setupPolling = useCallback(() => {
     console.log("Setting up polling for game state");
     
@@ -655,6 +698,42 @@ export function CrashoutGame() {
       setGameHistory(prev => [...newEntries, ...prev.slice(0, 49)]);
     };
     
+    // More reliable fetch with retries
+    const fetchGameStateWithRetry = async (retryCount = 0): Promise<any> => {
+      try {
+        const data = await getCurrentGameData();
+        if (data) {
+          // Reset API error state on successful request
+          if (apiError.current) {
+            console.log('API connection restored');
+            setApiError(false);
+          }
+          return data;
+        }
+        
+        // If we get an empty response but still have retries left
+        if (retryCount < 2) {
+          console.log(`Empty game data, retry ${retryCount + 1}/3`);
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          return fetchGameStateWithRetry(retryCount + 1);
+        }
+        
+        return null;
+      } catch (error) {
+        console.error('Error fetching game state:', error);
+        
+        // Retry a few times before giving up
+        if (retryCount < 2) {
+          console.log(`Request failed, retry ${retryCount + 1}/3`);
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          return fetchGameStateWithRetry(retryCount + 1);
+        }
+        
+        setApiError(true);
+        return null;
+      }
+    };
+    
     // Function to fetch and update game state
     const fetchGameState = async () => {
       try {
@@ -672,14 +751,11 @@ export function CrashoutGame() {
           setApiError(false);
         }
         
-        const data = await getCurrentGameData();
+        const data = await fetchGameStateWithRetry();
         if (!data) {
           console.warn('No game data received during polling');
           return;
         }
-        
-        // Debug log the full data structure to understand what the server is returning
-        console.log('Server response data:', JSON.stringify(data, null, 2));
         
         // Check if we have a connection issue
         if (data.status === 'error' || data.redis === 'disconnected') {
@@ -906,7 +982,7 @@ export function CrashoutGame() {
     setRecentCashouts
   ]);
 
-  // Use a more stable structure for dependency arrays in useEffect
+  // Add back the main setup effect after the reconnection effect
   useEffect(() => {
     console.log('CrashoutGame component mounted - Running setup effect');
     
@@ -920,20 +996,20 @@ export function CrashoutGame() {
     // Initialize audio with shared instances
     initializeAudio();
 
-    // Check if environment explicitly sets demo mode
-    const envDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
-    const forceDemoMode = process.env.NEXT_PUBLIC_FORCE_DEMO_MODE === 'true';
-    // Check localStorage for user preference
-    const localStorageDemoMode = typeof window !== 'undefined' && localStorage.getItem('crashoutDemoMode') === 'true';
-    // VERCEL_ENV is automatically available in Vercel deployments
-    const isVercelPreview = typeof window !== 'undefined' && window.location.hostname.includes('vercel.app');
+    // Never force demo mode - always try online first
+    console.log("Always trying to connect to online mode first");
     
-    // Never force demo mode in this case since we want to check Redis connection first
-    const shouldStartInDemoMode = false; // Changed to always check connection first
-
-    if (!shouldStartInDemoMode) {
-      // Try to connect to server and check API availability first
-      checkApiAvailability().then(isAvailable => {
+    // Increase number of retries before falling back to demo mode
+    const MAX_CONNECTION_ATTEMPTS = 5;
+    let connectionAttempts = 0;
+    
+    const tryConnection = async () => {
+      connectionAttempts++;
+      console.log(`Connection attempt ${connectionAttempts}/${MAX_CONNECTION_ATTEMPTS}`);
+      
+      // Try to connect to server and check API availability
+      try {
+        const isAvailable = await checkApiAvailability();
         if (isAvailable) {
           console.log("API available, starting online mode");
           // Make sure offline mode is false before setting up polling
@@ -942,18 +1018,29 @@ export function CrashoutGame() {
             localStorage.removeItem('crashoutDemoMode');
           }
           setupPolling();
+        } else if (connectionAttempts < MAX_CONNECTION_ATTEMPTS) {
+          // Try again with exponential backoff
+          const delay = Math.min(2000 * Math.pow(1.5, connectionAttempts - 1), 10000);
+          console.log(`Retrying connection in ${Math.round(delay/1000)}s`);
+          setTimeout(tryConnection, delay);
         } else {
-          console.log("API not available, starting in demo mode");
+          console.log("Maximum connection attempts reached, starting demo mode");
           startDemoMode();
         }
-      }).catch(() => {
-        console.log("API check failed, starting in demo mode");
-        startDemoMode();
-      });
-    } else {
-      console.log("Initial setup: Starting in demo mode based on settings.");
-      startDemoMode();
-    }
+      } catch (error) {
+        console.error("API check error:", error);
+        if (connectionAttempts < MAX_CONNECTION_ATTEMPTS) {
+          const delay = Math.min(2000 * Math.pow(1.5, connectionAttempts - 1), 10000);
+          setTimeout(tryConnection, delay);
+        } else {
+          console.log("Maximum connection attempts reached after errors, starting demo mode");
+          startDemoMode();
+        }
+      }
+    };
+    
+    // Start connection attempts
+    tryConnection();
 
     // Cleanup function
     return () => {
@@ -976,52 +1063,6 @@ export function CrashoutGame() {
       }
     };
   }, []); // Empty dependency array as this should only run once
-
-  // Add a separate effect to force check connection on load and reconnect if needed
-  useEffect(() => {
-    // Don't run if already in online mode
-    if (!offlineMode) return;
-    
-    // Give the app a moment to stabilize, then check if we can go online
-    const reconnectTimer = setTimeout(async () => {
-      console.log('Attempting to reconnect to online mode...');
-      
-      try {
-        const isAvailable = await checkApiAvailability();
-        
-        if (isAvailable) {
-          console.log('API is available, forcing switch to online mode');
-          
-          // Remove demo mode markers
-          if (typeof window !== 'undefined') {
-            localStorage.removeItem('crashoutDemoMode');
-          }
-          
-          // Stop all demo activities
-          if (demoIntervalRef.current) {
-            clearInterval(demoIntervalRef.current);
-            demoIntervalRef.current = null;
-          }
-          
-          if (demoTimerRef.current) {
-            clearTimeout(demoTimerRef.current);
-            demoTimerRef.current = null;
-          }
-          
-          // Force transition to online mode
-          setOfflineMode(false);
-          setupPolling();
-          toast.success('Connected to game server! Switching to online mode.');
-        }
-      } catch (error) {
-        console.error('Reconnection attempt failed:', error);
-      }
-    }, 5000); // Try after 5 seconds
-    
-    return () => {
-      clearTimeout(reconnectTimer);
-    };
-  }, [offlineMode, checkApiAvailability, setupPolling]);
 
   // Handle background music based on game state with proper dependency tracking
   useEffect(() => {
