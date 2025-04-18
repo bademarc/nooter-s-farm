@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "cross-env NEXT_PAGES_DIR= next dev",
-    "build": "cross-env NEXT_PAGES_DIR= next build",
-    "start": "cross-env NEXT_PAGES_DIR= next start",
-    "lint": "cross-env NEXT_PAGES_DIR= next lint"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
   },
   "dependencies": {
     "@abstract-foundation/agw-client": "^1.6.2",

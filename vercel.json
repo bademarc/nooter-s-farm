@@ -6,7 +6,7 @@
       "maxDuration": 10
     }
   },
-  "buildCommand": "npm install --legacy-peer-deps && npm run build",
+  "buildCommand": "npm install --legacy-peer-deps && next build",
   "devCommand": null,
   "installCommand": "npm install --legacy-peer-deps",
   "framework": "nextjs",
