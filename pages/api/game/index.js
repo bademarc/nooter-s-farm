@@ -325,12 +325,9 @@ const resetAllPlayersForNewRound = async (redis) => {
   }
 };
 
-// Record player activity to track online users
-const recordPlayerActivity = async (redis, username) => {
+// Count active players (within last 2 minutes)
+const countActivePlayers = async (redis) => {
   try {
-    await redis.hset('crashout:active-players', username, Date.now());
-    
-    // Count active players (within last 2 minutes)
     const allPlayers = await redis.hgetall('crashout:active-players');
     const twoMinutesAgo = Date.now() - (2 * 60 * 1000);
     
@@ -341,106 +338,253 @@ const recordPlayerActivity = async (redis, username) => {
       }
     }
     
-    // Update online player count in game state
-    const gameState = await getGameState(redis);
-    await updateGameState(redis, {
-      onlinePlayers: activeCount
-    });
-    
     return activeCount;
   } catch (error) {
-    console.error('Error recording player activity:', error);
+    console.error('Error counting active players:', error);
     throw error;
+  }
+};
+
+// Progress the game state based on current state and time elapsed
+// This replaces the need for frequent cron jobs
+const progressGameState = async (redis) => {
+  try {
+    const gameState = await getGameState(redis);
+    const now = Date.now();
+    
+    // Get active player count
+    const activePlayers = await countActivePlayers(redis);
+    
+    // Game state transitions based on current state and timing
+    if (gameState.state === GAME_STATE.INACTIVE) {
+      // Start countdown if it's time for next game
+      if (gameState.nextGameTime <= now) {
+        const countdownSeconds = 10; // Default countdown time
+        await updateGameState(redis, {
+          state: GAME_STATE.COUNTDOWN,
+          countdown: countdownSeconds,
+          multiplier: 1.0,
+          crashPoint: generateCrashPoint(), // Pre-generate crash point
+          joinWindowTimeLeft: Math.floor(countdownSeconds * 0.8), // 80% of countdown is join window
+          onlinePlayers: activePlayers
+        });
+      }
+    } 
+    else if (gameState.state === GAME_STATE.COUNTDOWN) {
+      // Check how much countdown time has passed
+      const elapsedSeconds = Math.floor((now - gameState.lastUpdate) / 1000);
+      const remainingCountdown = Math.max(0, gameState.countdown - elapsedSeconds);
+      
+      // Calculate remaining join window time
+      const remainingJoinWindow = Math.max(0, gameState.joinWindowTimeLeft - elapsedSeconds);
+      
+      if (remainingCountdown <= 0) {
+        // Countdown completed, start the game
+        await updateGameState(redis, {
+          state: GAME_STATE.ACTIVE,
+          countdown: 0,
+          joinWindowTimeLeft: 0,
+          multiplier: 1.0,
+          startTime: now,
+          onlinePlayers: activePlayers
+        });
+      } else {
+        // Update countdown timer
+        await updateGameState(redis, {
+          countdown: remainingCountdown,
+          joinWindowTimeLeft: remainingJoinWindow,
+          onlinePlayers: activePlayers
+        });
+      }
+    }
+    else if (gameState.state === GAME_STATE.ACTIVE) {
+      // Calculate how long the game has been running
+      const gameRunTime = now - (gameState.startTime || gameState.lastUpdate);
+      const secondsActive = gameRunTime / 1000;
+      
+      // Calculate current multiplier based on time running (exponential growth)
+      // Multiplier formula: 1.0 * e^(growth_rate * seconds)
+      const growthRate = 0.05; // Adjust for faster/slower growth
+      const currentMultiplier = parseFloat((1.0 * Math.exp(growthRate * secondsActive)).toFixed(2));
+      
+      // Process auto-cashouts at current multiplier
+      await processAutoCashouts(redis, currentMultiplier);
+      
+      // Check if we've reached crash point
+      if (currentMultiplier >= gameState.crashPoint) {
+        // Game crashed
+        await updateGameState(redis, {
+          state: GAME_STATE.CRASHED,
+          multiplier: gameState.crashPoint,
+          onlinePlayers: activePlayers
+        });
+        
+        // Process game crash - mark losses, etc.
+        await processGameCrash(redis, gameState.crashPoint);
+        
+        // Schedule next game
+        await updateGameState(redis, {
+          nextGameTime: now + 5000 // 5 seconds after crash
+        });
+      } else {
+        // Game still running, update multiplier
+        await updateGameState(redis, {
+          multiplier: currentMultiplier,
+          onlinePlayers: activePlayers
+        });
+      }
+    }
+    else if (gameState.state === GAME_STATE.CRASHED) {
+      // Check if it's time to reset for a new round
+      if (gameState.nextGameTime <= now) {
+        // Reset for next game
+        await resetAllPlayersForNewRound(redis);
+        
+        await updateGameState(redis, {
+          state: GAME_STATE.INACTIVE,
+          nextGameTime: now + 2000, // Start next game in 2 seconds
+          multiplier: 1.0,
+          playersInGame: 0,
+          onlinePlayers: activePlayers
+        });
+      }
+    }
+    
+    return await getGameState(redis);
+  } catch (error) {
+    console.error('Error progressing game state:', error);
+    throw error;
+  }
+};
+
+// Record player activity for online player counting
+const recordPlayerActivity = async (redis, username) => {
+  try {
+    if (!username) return;
+    
+    // Update last activity timestamp for this player
+    await redis.hset('crashout:active-players', username, Date.now().toString());
+    
+    // Clean up old entries periodically
+    const shouldCleanup = Math.random() < 0.1; // 10% chance to perform cleanup on any request
+    if (shouldCleanup) {
+      // Get all player activity timestamps
+      const allPlayers = await redis.hgetall('crashout:active-players');
+      const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
+      
+      // Remove inactive players
+      for (const [player, timestamp] of Object.entries(allPlayers)) {
+        if (parseInt(timestamp) < fiveMinutesAgo) {
+          await redis.hdel('crashout:active-players', player);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error recording player activity:', error);
+    // Non-critical failure, so don't throw
   }
 };
 
 // Main API handler
 export default async function handler(req, res) {
+  // Process POST requests only
+  if (req.method !== 'POST') {
+    return res.status(405).json({ success: false, message: 'Method not allowed' });
+  }
+  
+  const { action, username } = req.body;
   const redis = getRedisClient();
   
   try {
-    // GET requests - fetch game state
-    if (req.method === 'GET') {
-      const gameState = await getGameState(redis);
-      const history = await getGameHistory(redis);
-      const cashouts = await getRecentCashouts(redis);
-      
-      return res.status(200).json({
-        success: true,
-        gameState,
-        history,
-        cashouts
-      });
-    }
+    // Record player activity for online count 
+    await recordPlayerActivity(redis, username);
     
-    // POST requests - handle actions
-    if (req.method === 'POST') {
-      const { action, username, betAmount, autoCashout } = req.body;
-      
-      // Record player activity regardless of action
-      if (username) {
-        await recordPlayerActivity(redis, username);
+    // Handle different API actions
+    switch (action) {
+      case 'sync': {
+        // Get latest game state
+        let gameState = await getGameState(redis);
+        
+        // Progress the game state based on elapsed time
+        // This replaces the cron job for most common state transitions
+        gameState = await progressGameState(redis);
+        
+        // Get game history
+        const history = await getGameHistory(redis);
+        
+        // Get recent cashouts
+        const cashouts = await getRecentCashouts(redis);
+        
+        // Get player-specific data if a username was provided
+        let playerData = null;
+        if (username) {
+          playerData = await getPlayerData(redis, username);
+        }
+        
+        return res.status(200).json({
+          success: true,
+          gameState,
+          history,
+          cashouts,
+          playerData
+        });
       }
       
-      switch (action) {
-        case 'placeBet':
-          const betResult = await placeBet(redis, username, parseFloat(betAmount), parseFloat(autoCashout));
-          return res.status(200).json(betResult);
-          
-        case 'cashout':
-          const cashoutResult = await processCashout(redis, username);
-          return res.status(200).json(cashoutResult);
-          
-        case 'sync':
-          const gameState = await getGameState(redis);
-          const history = await getGameHistory(redis);
-          const cashouts = await getRecentCashouts(redis);
-          
-          // If player is provided, get their status
-          let playerData = null;
-          if (username) {
-            playerData = await getPlayerData(redis, username);
-          }
-          
-          return res.status(200).json({
-            success: true,
-            gameState,
-            history,
-            cashouts,
-            playerData
-          });
-          
-        case 'playerActivity':
-          if (!username) {
-            return res.status(400).json({ success: false, message: 'Username required' });
-          }
-          
-          // Record player's bet preferences
+      case 'placeBet': {
+        const { betAmount, autoCashout } = req.body;
+        if (!username) {
+          return res.status(400).json({ success: false, message: 'Username is required' });
+        }
+        
+        const result = await placeBet(redis, username, parseFloat(betAmount), parseFloat(autoCashout));
+        return res.status(result.success ? 200 : 400).json(result);
+      }
+      
+      case 'cashout': {
+        if (!username) {
+          return res.status(400).json({ success: false, message: 'Username is required' });
+        }
+        
+        const result = await processCashout(redis, username);
+        return res.status(result.success ? 200 : 400).json(result);
+      }
+      
+      case 'playerActivity': {
+        const { oldUsername, betAmount, autoCashout } = req.body;
+        
+        // Handle username change if applicable
+        if (oldUsername && oldUsername !== username) {
+          // Copy any existing player data to new username
+          const oldPlayerData = await getPlayerData(redis, oldUsername);
           await updatePlayerData(redis, username, {
-            betAmount: parseFloat(betAmount) || 10,
-            autoCashout: parseFloat(autoCashout) || 2.0
+            ...oldPlayerData,
+            betAmount: parseFloat(betAmount) || oldPlayerData.betAmount,
+            autoCashout: parseFloat(autoCashout) || oldPlayerData.autoCashout
           });
           
-          const activeCount = await recordPlayerActivity(redis, username);
-          return res.status(200).json({ success: true, activeCount });
-          
-        case 'logCrash':
-          const { crashPoint } = req.body;
-          await addGameToHistory(redis, crashPoint);
-          return res.status(200).json({ success: true });
-          
-        default:
-          return res.status(400).json({ success: false, message: 'Unknown action' });
+          // Delete old player data if it exists
+          await redis.del(`crashout:player:${oldUsername}`);
+        } else {
+          // Update preferences if provided
+          if (betAmount || autoCashout) {
+            await updatePlayerData(redis, username, {
+              betAmount: parseFloat(betAmount) || undefined,
+              autoCashout: parseFloat(autoCashout) || undefined
+            });
+          }
+        }
+        
+        return res.status(200).json({ success: true });
       }
+      
+      default:
+        return res.status(400).json({ success: false, message: 'Invalid action' });
     }
-    
-    // Handle other HTTP methods
-    return res.status(405).json({ success: false, message: 'Method not allowed' });
   } catch (error) {
-    console.error('Game API error:', error);
-    return res.status(500).json({ success: false, message: 'Internal server error', error: error.message });
+    console.error(`Error in ${action} handler:`, error);
+    return res.status(500).json({ success: false, message: 'Server error' });
   } finally {
-    // Always disconnect Redis client
+    // Close Redis connection
     redis.disconnect();
   }
 } 

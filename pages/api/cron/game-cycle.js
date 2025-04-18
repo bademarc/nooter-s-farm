@@ -1,4 +1,4 @@
-// Game Cycle Cron Job for Crashout Game
+// Daily Maintenance Cron Job for Crashout Game
 import Redis from 'ioredis';
 
 // Initialize Redis client
@@ -13,13 +13,6 @@ const GAME_STATE = {
   COUNTDOWN: "countdown",
   ACTIVE: "active",
   CRASHED: "crashed",
-};
-
-// Generate a crash point using a fair algorithm
-// Returns a value between 1.1 and 10
-const generateCrashPoint = () => {
-  // Basic algorithm: 1.1 + random value (can be enhanced with different distribution)
-  return 1.1 + Math.random() * 8.9;
 };
 
 // Get the current game state
@@ -62,180 +55,154 @@ const updateGameState = async (redis, updates) => {
   }
 };
 
-// Get a player's data
-const getPlayerData = async (redis, username) => {
-  try {
-    const playerDataRaw = await redis.get(`crashout:player:${username}`);
-    if (!playerDataRaw) {
-      return { betAmount: 0, autoCashout: 2.0, joined: false, cashedOut: false };
-    }
-    return JSON.parse(playerDataRaw);
-  } catch (error) {
-    console.error('Error getting player data:', error);
-    throw error;
-  }
-};
-
-// Update a player's data
-const updatePlayerData = async (redis, username, updates) => {
-  try {
-    const currentData = await getPlayerData(redis, username);
-    const newData = { ...currentData, ...updates, lastUpdate: Date.now() };
-    await redis.set(`crashout:player:${username}`, JSON.stringify(newData));
-    return newData;
-  } catch (error) {
-    console.error('Error updating player data:', error);
-    throw error;
-  }
-};
-
-// Add a game result to history
-const addGameToHistory = async (redis, crashPoint) => {
-  try {
-    const gameResult = {
-      crashPoint,
-      timestamp: Date.now(),
-      color: crashPoint >= 2.0 ? "green" : "red" 
-    };
-    await redis.lpush('crashout:history', JSON.stringify(gameResult));
-    await redis.ltrim('crashout:history', 0, 49); // Keep only 50 most recent games
-    return gameResult;
-  } catch (error) {
-    console.error('Error adding game to history:', error);
-    throw error;
-  }
-};
-
-// Add a cashout to the recent list
-const addCashout = async (redis, username, multiplier, winning) => {
-  try {
-    const cashout = {
-      username,
-      multiplier,
-      winning,
-      timestamp: Date.now()
-    };
-    await redis.lpush('crashout:cashouts', JSON.stringify(cashout));
-    await redis.ltrim('crashout:cashouts', 0, 14); // Keep only 15 most recent cashouts
-    return cashout;
-  } catch (error) {
-    console.error('Error adding cashout:', error);
-    throw error;
-  }
-};
-
-// Process auto-cashouts for all players
-const processAutoCashouts = async (redis, currentMultiplier) => {
+// Clean up inactive players (no activity in last 7 days)
+const cleanupInactivePlayers = async (redis) => {
   try {
     // Get all player keys
     const playerKeys = await redis.keys('crashout:player:*');
+    const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000); // 7 days in ms
+    let removedCount = 0;
     
     for (const key of playerKeys) {
-      const username = key.split(':')[2];
-      const playerData = await getPlayerData(redis, username);
-      
-      // Check if player is in the game, hasn't cashed out yet, and should auto-cashout
-      if (playerData.joined && !playerData.cashedOut && playerData.autoCashout <= currentMultiplier) {
-        // Auto cashout
-        const winAmount = playerData.betAmount * currentMultiplier;
-        
-        // Update player data
-        await updatePlayerData(redis, username, {
-          cashedOut: true,
-          cashedOutAt: currentMultiplier,
-          winAmount
-        });
-        
-        // Add to recent cashouts
-        await addCashout(redis, username, currentMultiplier, winAmount);
+      const playerData = await redis.get(key);
+      if (playerData) {
+        const parsed = JSON.parse(playerData);
+        // If player has no lastUpdate or it's older than 7 days
+        if (!parsed.lastUpdate || parsed.lastUpdate < sevenDaysAgo) {
+          await redis.del(key);
+          removedCount++;
+        }
       }
     }
+    
+    return removedCount;
   } catch (error) {
-    console.error('Error processing auto-cashouts:', error);
+    console.error('Error cleaning up inactive players:', error);
     throw error;
   }
 };
 
-// Process game crash - handle players who didn't cash out
-const processGameCrash = async (redis, crashPoint) => {
+// Clean up online players tracking
+const cleanupOnlinePlayers = async (redis) => {
   try {
-    // Get all player keys
-    const playerKeys = await redis.keys('crashout:player:*');
-    
-    // Add the crash to history
-    await addGameToHistory(redis, crashPoint);
-    
-    for (const key of playerKeys) {
-      const username = key.split(':')[2];
-      const playerData = await getPlayerData(redis, username);
-      
-      // Mark uncashed players as losers
-      if (playerData.joined && !playerData.cashedOut) {
-        await updatePlayerData(redis, username, {
-          cashedOut: false,
-          lost: true,
-          winAmount: 0
-        });
-      }
-    }
-  } catch (error) {
-    console.error('Error processing game crash:', error);
-    throw error;
-  }
-};
-
-// Reset all players for a new round
-const resetAllPlayersForNewRound = async (redis) => {
-  try {
-    // Get all player keys
-    const playerKeys = await redis.keys('crashout:player:*');
-    
-    for (const key of playerKeys) {
-      const username = key.split(':')[2];
-      // Reset player's game status but keep their bet preferences
-      const playerData = await getPlayerData(redis, username);
-      
-      await updatePlayerData(redis, username, {
-        joined: false,
-        cashedOut: false,
-        lost: false,
-        cashedOutAt: null,
-        winAmount: null,
-        // Keep betAmount and autoCashout preferences
-        betAmount: playerData.betAmount,
-        autoCashout: playerData.autoCashout
-      });
-    }
-  } catch (error) {
-    console.error('Error resetting players for new round:', error);
-    throw error;
-  }
-};
-
-// Count active players (within last 2 minutes)
-const countActivePlayers = async (redis) => {
-  try {
+    // Get all online players
     const allPlayers = await redis.hgetall('crashout:active-players');
-    const twoMinutesAgo = Date.now() - (2 * 60 * 1000);
+    const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000); // 1 day in ms
+    let removedCount = 0;
     
-    let activeCount = 0;
-    for (const [_, timestamp] of Object.entries(allPlayers)) {
-      if (parseInt(timestamp) > twoMinutesAgo) {
-        activeCount++;
+    // Remove players inactive for more than a day
+    for (const [player, timestamp] of Object.entries(allPlayers)) {
+      if (parseInt(timestamp) < oneDayAgo) {
+        await redis.hdel('crashout:active-players', player);
+        removedCount++;
       }
     }
     
-    return activeCount;
+    return removedCount;
   } catch (error) {
-    console.error('Error counting active players:', error);
+    console.error('Error cleaning up online players:', error);
     throw error;
   }
 };
 
-// Main cron job handler
+// Archive old game history data (keeps Redis data size manageable)
+const archiveOldGameHistory = async (redis) => {
+  try {
+    // Get current history length
+    const historyLength = await redis.llen('crashout:history');
+    
+    // If we have more than 100 items, trim to 50
+    if (historyLength > 100) {
+      await redis.ltrim('crashout:history', 0, 49);
+      return historyLength - 50; // Number of items removed
+    }
+    
+    return 0;
+  } catch (error) {
+    console.error('Error archiving old game history:', error);
+    throw error;
+  }
+};
+
+// Reset game state if stuck
+const resetStuckGameState = async (redis) => {
+  try {
+    const gameState = await getGameState(redis);
+    const now = Date.now();
+    
+    // Check if game state is potentially stuck
+    if (gameState.lastUpdate && (now - gameState.lastUpdate) > (30 * 60 * 1000)) { // 30 minutes
+      // Game state hasn't been updated in 30 minutes, likely stuck
+      console.log('Detected potentially stuck game state, resetting...');
+      
+      // Reset to inactive state
+      await updateGameState(redis, {
+        state: GAME_STATE.INACTIVE,
+        multiplier: 1.0,
+        countdown: 10,
+        nextGameTime: now + 5000,
+        playersInGame: 0,
+        onlinePlayers: 0,
+        crashPoint: 0,
+        joinWindowTimeLeft: 0,
+        lastUpdate: now,
+      });
+      
+      return true;
+    }
+    
+    return false;
+  } catch (error) {
+    console.error('Error resetting stuck game state:', error);
+    throw error;
+  }
+};
+
+// Generate daily statistics
+const generateDailyStats = async (redis) => {
+  try {
+    // Get all recorded game history for the past day
+    const historyRaw = await redis.lrange('crashout:history', 0, -1);
+    const history = historyRaw.map(item => JSON.parse(item));
+    const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
+    
+    // Filter to last 24 hours
+    const recentHistory = history.filter(item => item.timestamp > oneDayAgo);
+    
+    if (recentHistory.length === 0) {
+      return {
+        gamesPlayed: 0,
+        averageCrashPoint: 0,
+        highestCrashPoint: 0,
+        lowestCrashPoint: 0
+      };
+    }
+    
+    // Calculate stats
+    const crashPoints = recentHistory.map(item => 
+      typeof item.crashPoint === 'string' ? parseFloat(item.crashPoint) : item.crashPoint
+    );
+    
+    const stats = {
+      gamesPlayed: recentHistory.length,
+      averageCrashPoint: crashPoints.reduce((a, b) => a + b, 0) / crashPoints.length,
+      highestCrashPoint: Math.max(...crashPoints),
+      lowestCrashPoint: Math.min(...crashPoints)
+    };
+    
+    // Store daily stats
+    await redis.set(`crashout:stats:${new Date().toISOString().split('T')[0]}`, JSON.stringify(stats));
+    
+    return stats;
+  } catch (error) {
+    console.error('Error generating daily stats:', error);
+    throw error;
+  }
+};
+
+// Main cron job handler - runs once per day
 export default async function handler(req, res) {
   // Verify this is a cron job request from Vercel
-  // You can add more security here if needed
   if (req.method !== 'POST') {
     return res.status(405).json({ success: false, message: 'Method not allowed' });
   }
@@ -243,133 +210,31 @@ export default async function handler(req, res) {
   const redis = getRedisClient();
   
   try {
-    // Get the current game state
-    const gameState = await getGameState(redis);
+    console.log('Running daily maintenance for Crashout game...');
     
-    // Count active players for metrics
-    const activePlayerCount = await countActivePlayers(redis);
+    // Perform maintenance tasks
+    const inactivePlayersRemoved = await cleanupInactivePlayers(redis);
+    const onlinePlayersRemoved = await cleanupOnlinePlayers(redis);
+    const historyItemsArchived = await archiveOldGameHistory(redis);
+    const wasGameStateReset = await resetStuckGameState(redis);
+    const dailyStats = await generateDailyStats(redis);
     
-    console.log(`Game cycle - Current state: ${gameState.state}, Players: ${gameState.playersInGame}/${activePlayerCount}`);
-    
-    // Game state machine
-    switch (gameState.state) {
-      case GAME_STATE.INACTIVE:
-        // Start countdown phase
-        await updateGameState(redis, {
-          state: GAME_STATE.COUNTDOWN,
-          countdown: 10,
-          joinWindowTimeLeft: 10,
-          multiplier: 1.0,
-          playersInGame: 0,
-          onlinePlayers: activePlayerCount
-        });
-        
-        // Reset all players for new round
-        await resetAllPlayersForNewRound(redis);
-        
-        console.log('Game moved to COUNTDOWN state');
-        break;
-        
-      case GAME_STATE.COUNTDOWN:
-        if (gameState.countdown > 0) {
-          // Continue countdown
-          await updateGameState(redis, {
-            countdown: gameState.countdown - 1,
-            joinWindowTimeLeft: Math.max(0, gameState.joinWindowTimeLeft - 1),
-            onlinePlayers: activePlayerCount
-          });
-          
-          console.log(`Countdown: ${gameState.countdown - 1}s, Join window: ${Math.max(0, gameState.joinWindowTimeLeft - 1)}s`);
-        } else {
-          // Start active phase
-          // Generate a random crash point between 1.1 and 10
-          const crashPoint = generateCrashPoint();
-          
-          await updateGameState(redis, {
-            state: GAME_STATE.ACTIVE,
-            multiplier: 1.0,
-            crashPoint,
-            startTime: Date.now(),
-            onlinePlayers: activePlayerCount
-          });
-          
-          console.log(`Game moved to ACTIVE state, Crash point: ${crashPoint.toFixed(2)}x`);
-        }
-        break;
-        
-      case GAME_STATE.ACTIVE:
-        // Increase multiplier
-        const newMultiplier = gameState.multiplier * 1.01; // Increase by 1% each tick
-        
-        // Check if we should crash
-        if (newMultiplier >= gameState.crashPoint) {
-          // Game crashed
-          await updateGameState(redis, {
-            state: GAME_STATE.CRASHED,
-            multiplier: gameState.crashPoint, // Use exact crash point
-            onlinePlayers: activePlayerCount
-          });
-          
-          // Process the crash
-          await processGameCrash(redis, gameState.crashPoint);
-          
-          console.log(`Game CRASHED at ${gameState.crashPoint.toFixed(2)}x`);
-        } else {
-          // Update multiplier
-          await updateGameState(redis, {
-            multiplier: newMultiplier,
-            onlinePlayers: activePlayerCount
-          });
-          
-          // Process auto-cashouts at this multiplier
-          await processAutoCashouts(redis, newMultiplier);
-          
-          // Log every 0.5x increase
-          if (Math.floor(newMultiplier * 2) > Math.floor(gameState.multiplier * 2)) {
-            console.log(`Multiplier reached ${newMultiplier.toFixed(2)}x`);
-          }
-        }
-        break;
-        
-      case GAME_STATE.CRASHED:
-        // Wait some time in crashed state to show the crash
-        // Then reset to inactive for the next round
-        const crashedDuration = Date.now() - gameState.lastUpdate;
-        
-        if (crashedDuration > 5000) { // 5 seconds in crashed state
-          await updateGameState(redis, {
-            state: GAME_STATE.INACTIVE,
-            multiplier: 1.0,
-            nextGameTime: Date.now() + 3000, // 3 seconds until next game
-            onlinePlayers: activePlayerCount
-          });
-          
-          console.log('Game reset to INACTIVE state, ready for next round');
-        }
-        break;
-        
-      default:
-        // Handle invalid state
-        console.error(`Invalid game state: ${gameState.state}`);
-        await updateGameState(redis, {
-          state: GAME_STATE.INACTIVE,
-          multiplier: 1.0,
-          nextGameTime: Date.now() + 5000,
-          onlinePlayers: activePlayerCount
-        });
-    }
-    
+    // Return summary of maintenance activities
     return res.status(200).json({
       success: true,
-      newState: gameState.state,
-      playersCount: gameState.playersInGame,
-      activePlayerCount
+      maintenance: {
+        inactivePlayersRemoved,
+        onlinePlayersRemoved,
+        historyItemsArchived,
+        wasGameStateReset
+      },
+      dailyStats
     });
   } catch (error) {
-    console.error('Game cycle cron error:', error);
-    return res.status(500).json({ success: false, message: 'Game cycle error', error: error.message });
+    console.error('Error in daily maintenance cron job:', error);
+    return res.status(500).json({ success: false, message: 'Server error' });
   } finally {
-    // Always disconnect Redis client
+    // Close Redis connection
     redis.disconnect();
   }
 } 
