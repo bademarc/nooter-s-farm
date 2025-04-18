@@ -18,7 +18,7 @@
   "crons": [
     {
       "path": "/api/cron/game-cycle",
-      "schedule": "* * * * *"
+      "schedule": "0 0 * * *"
     }
   ]
 } 
