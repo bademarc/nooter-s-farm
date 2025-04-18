@@ -6,8 +6,14 @@ const getRedisClient = () => {
   try {
     // Log Redis connection details (without exposing password)
     const redisUrl = process.env.REDIS_URL || '';
+    
+    if (!redisUrl) {
+      console.error('REDIS_URL environment variable is not set');
+      throw new Error('REDIS_URL environment variable is not set');
+    }
+    
     const maskedUrl = redisUrl.replace(/:([^@]+)@/, ':******@');
-    console.log('Connecting to Redis with URL:', maskedUrl || 'REDIS_URL not set');
+    console.log('Connecting to Redis with URL:', maskedUrl);
     
     // Additional options for better Vercel compatibility
     const options = {
@@ -15,7 +21,9 @@ const getRedisClient = () => {
       connectTimeout: 10000,       // Increase timeout
       retryStrategy: (times) => {  // Simple retry strategy
         return Math.min(times * 50, 2000);
-      }
+      },
+      maxRetriesPerRequest: 3,     // Limit retries per request
+      enableOfflineQueue: true     // Enable offline queue
     };
     
     // Initialize Redis client with options
@@ -28,6 +36,10 @@ const getRedisClient = () => {
     
     redis.on('connect', () => {
       console.log('Redis connected successfully');
+    });
+    
+    redis.on('reconnecting', (delay) => {
+      console.log(`Redis reconnecting in ${delay}ms`);
     });
     
     return redis;
@@ -522,22 +534,45 @@ export default async function handler(req, res) {
     return res.status(405).json({ success: false, message: 'Method not allowed' });
   }
   
-  // For GET requests, return a simple health check
+  // For GET requests, return game state too, not just health check
   if (req.method === 'GET') {
+    let redis;
     try {
       // Test Redis connection for GET requests too
-      const redis = getRedisClient();
+      redis = getRedisClient();
       await redis.ping();
+      
+      // Fetch current game state
+      const gameState = await getGameState(redis);
+      
+      // Update the game state based on time elapsed
+      const updatedState = await progressGameState(redis);
+      
+      // Get game history
+      const history = await getGameHistory(redis);
+      
+      // Get recent cashouts
+      const cashouts = await getRecentCashouts(redis);
+      
+      // Count online players
+      const onlinePlayers = await countActivePlayers(redis);
+      
       redis.disconnect();
       
       return res.status(200).json({ 
         success: true, 
         message: 'Game API is running', 
         timestamp: Date.now(),
-        redis: 'connected'
+        redis: 'connected',
+        gameState: updatedState,
+        history,
+        cashouts,
+        onlinePlayers
       });
     } catch (redisError) {
       console.error('Redis connection error during health check:', redisError);
+      if (redis) redis.disconnect();
+      
       return res.status(200).json({
         success: false,
         message: 'Game API is running but Redis is not connected',
@@ -595,11 +630,15 @@ export default async function handler(req, res) {
           playerData = await getPlayerData(redis, username);
         }
         
+        // Count online players
+        const onlinePlayers = await countActivePlayers(redis);
+        
         return res.status(200).json({
           success: true,
           gameState,
           history,
           cashouts,
+          onlinePlayers,
           playerData
         });
       }

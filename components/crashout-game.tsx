@@ -214,9 +214,20 @@ export function CrashoutGame() {
         return null;
       }
       
+      // If the response contains gameState data, use it directly
+      if (response.data.gameState) {
+        console.log('Received game state data from API:', response.data.gameState.state);
+        return {
+          ...response.data.gameState,
+          onlinePlayers: response.data.onlinePlayers,
+          history: response.data.history,
+          recentCashouts: response.data.cashouts
+        };
+      }
+      
       // If the response contains a message but no game state data, 
       // let's create a default state to avoid undefined errors
-      if (response.data.message && response.data.message === "Game API is running" && !response.data.state) {
+      if (response.data.message && response.data.message === "Game API is running" && !response.data.gameState) {
         console.warn('API returned connection message without game state, creating default state');
         
         // Create a basic default state
