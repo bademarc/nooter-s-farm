@@ -156,4 +156,42 @@
                0 0 30px rgba(0, 0, 0, 0.4);
   font-weight: 800;
   letter-spacing: -1px;
+}
+
+@keyframes bounce-slow {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+.animate-bounce-slow {
+  animation: bounce-slow 2s infinite;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Gradient animation for high value history items */
+@keyframes gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Add smooth scrolling for history */
+.history-scroll {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
+/* Improve visibility of the game display */
+.multiplier-text {
+  text-shadow: 0 0 10px rgba(0, 0, 0, 0.7);
+  transition: color 0.3s ease, font-size 0.3s ease;
+}
+
+/* Animated background for high values */
+.animate-bg-pulse {
+  background-size: 200% 200%;
+  animation: gradient-shift 3s ease infinite;
 } 

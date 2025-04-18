@@ -3,6 +3,7 @@ import "./globals.css"
 import { Toaster } from "react-hot-toast"
 import { Inter } from "next/font/google"
 import { Providers } from "./providers"
+import Script from "next/script"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -20,6 +21,54 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="theme-color" content="#000000" />
+        
+        {/* Script to prevent errors with window.ethereum property and others */}
+        <Script id="ethereum-shim" strategy="beforeInteractive">
+          {`
+            try {
+              // Create a dummy ethereum object to prevent errors
+              if (typeof window !== 'undefined' && !window.ethereum) {
+                Object.defineProperty(window, 'ethereum', {
+                  value: {
+                    isMetaMask: false,
+                    request: () => Promise.reject('MetaMask not installed'),
+                    on: () => {},
+                    removeListener: () => {}
+                  },
+                  writable: false,
+                  configurable: true
+                });
+              }
+              
+              // Prevent isZerion errors
+              if (typeof window !== 'undefined') {
+                window._ethereum_shimmed = true;
+              }
+              
+              // Store console.error to avoid interference
+              if (typeof window !== 'undefined') {
+                const originalConsoleError = console.error;
+                // Filter out specific wallet-related errors
+                console.error = function(...args) {
+                  const message = args.length > 0 ? String(args[0]) : '';
+                  if (
+                    message.includes('ethereum') || 
+                    message.includes('web3') || 
+                    message.includes('isZerion') ||
+                    message.includes('Access to storage')
+                  ) {
+                    // Suppress these errors
+                    return;
+                  }
+                  // Pass through other errors
+                  return originalConsoleError.apply(console, args);
+                };
+              }
+            } catch (e) {
+              // Ignore any errors from this script
+            }
+          `}
+        </Script>
       </head>
       <body className={`${inter.className} bg-black text-white`} suppressHydrationWarning>
         <Providers>
