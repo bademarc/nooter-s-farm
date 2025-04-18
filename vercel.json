@@ -1,5 +1,11 @@
 {
   "version": 2,
+  "functions": {
+    "api/**/*": {
+      "memory": 512,
+      "maxDuration": 10
+    }
+  },
   "buildCommand": null,
   "devCommand": null,
   "installCommand": null,
@@ -11,8 +17,8 @@
   ],
   "crons": [
     {
-      "path": "/api/cron",
-      "schedule": "0 0 * * *"
+      "path": "/api/cron/game-cycle",
+      "schedule": "* * * * *"
     }
   ]
 } 

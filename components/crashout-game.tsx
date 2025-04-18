@@ -14,8 +14,41 @@ import { toast } from 'sonner';
 import { useTheme } from 'next-themes';
 import './crashout/crashout-styles.css';
 import { FiVolume2, FiVolumeX } from 'react-icons/fi';
-import { Client, Room } from 'colyseus.js';
 import axios from 'axios';
+
+// Define required types and enums
+enum GameState {
+  INACTIVE = 'INACTIVE',
+  WAITING = 'WAITING',
+  RUNNING = 'RUNNING',
+  CRASHED = 'CRASHED'
+}
+
+interface PlayerData {
+  username: string;
+  betAmount: number;
+}
+
+interface CashoutData {
+  username: string;
+  multiplier: number;
+  winAmount: number;
+}
+
+interface GameHistoryEntry {
+  id?: string;
+  value: string;
+  color: string;
+  timestamp: number;
+  crashPoint?: number | string;
+}
+
+interface HighScoreEntry {
+  username: string;
+  multiplier: number;
+  winAmount: number;
+  timestamp: number;
+}
 
 // Constants for game states (same as server)
 const GAME_STATE = {
@@ -54,44 +87,42 @@ export function CrashoutGame() {
   const lossVideoRef = useRef<HTMLVideoElement>(null);
   
   // Game state
-  const [multiplier, setMultiplier] = useState<number>(1.0);
-  const [gameState, setGameState] = useState<string>(GAME_STATE.INACTIVE);
-  const [countdown, setCountdown] = useState<number>(10);
+  const [multiplier, setMultiplier] = useState<number>(1);
+  const [gameState, setGameState] = useState<GameState>(GameState.WAITING);
+  const [countdown, setCountdown] = useState<number>(0);
+  const [username, setUsername] = useState<string>('');
+  const [players, setPlayers] = useState<PlayerData[]>([]);
+  const [cashouts, setCashouts] = useState<CashoutData[]>([]);
+  const [gameHistory, setGameHistory] = useState<GameHistoryEntry[]>([]);
+  const [highScores, setHighScores] = useState<HighScoreEntry[]>([]);
   const [betAmount, setBetAmount] = useState<string>('10');
-  const [autoCashout, setAutoCashout] = useState<string>('2');
-  const [gameHistory, setGameHistory] = useState<Array<{value: string, color: string, timestamp: number}>>([]);
-  const [joinWindowTimeLeft, setJoinWindowTimeLeft] = useState<number>(0);
-  const joinWindowRef = useRef<NodeJS.Timeout | null>(null);
+  const [autoCashout, setAutoCashout] = useState<string>('2.0');
+  const [playerJoined, setPlayerJoined] = useState<boolean>(false);
+  const [cashedOutAt, setCashedOutAt] = useState<number | null>(null);
+  const [isCashoutDisabled, setIsCashoutDisabled] = useState<boolean>(true);
+  const [isConnected, setIsConnected] = useState<boolean>(false);
+  const [connectionStatus, setConnectionStatus] = useState<string>('Connecting...');
+  const [offlineMode, setOfflineMode] = useState<boolean>(false);
   
   // UI state
   const [isPlayDisabled, setIsPlayDisabled] = useState<boolean>(false);
-  const [isCashoutDisabled, setIsCashoutDisabled] = useState<boolean>(true);
   const [showGameStartedImage, setShowGameStartedImage] = useState<boolean>(false);
   const [showLossImage, setShowLossImage] = useState<boolean>(false);
-  const [cashedOutAt, setCashedOutAt] = useState<number | null>(null);
+  const [joinWindowTimeLeft, setJoinWindowTimeLeft] = useState<number>(0);
   
   // Auto-play
   const [autoPlayEnabled, setAutoPlayEnabled] = useState<boolean>(true);
   const [canPlaceBet, setCanPlaceBet] = useState<boolean>(true);
-  const [playerJoined, setPlayerJoined] = useState<boolean>(false);
   const [nextGameStartTime, setNextGameStartTime] = useState<number | null>(null);
   
-  // ---- Colyseus specific state ----
-  const colyseusClientRef = useRef<Client | null>(null);
-  const colyseusRoomRef = useRef<Room | null>(null);
-  const [isConnected, setIsConnected] = useState<boolean>(false);
-  const [connectionStatus, setConnectionStatus] = useState<string>("disconnected");
-
+  // Polling refs
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pollingRateRef = useRef<number>(3000); // Default polling rate (ms)
+  
   // Online specific state
   const [onlinePlayersCount, setOnlinePlayersCount] = useState<number>(0);
   const [playersInGame, setPlayersInGame] = useState<number>(0);
   const [recentCashouts, setRecentCashouts] = useState<Array<{username: string, multiplier: number, winning: number, timestamp: number}>>([]);
-  const [username, setUsername] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('crashoutUsername') || `Player-${Math.floor(Math.random() * 10000)}`;
-    }
-    return `Player-${Math.floor(Math.random() * 10000)}`;
-  });
 
   // Audio handling
   const audioRefs = useRef<{[key: string]: HTMLAudioElement | null}>({
@@ -130,7 +161,6 @@ export function CrashoutGame() {
   };
   
   // Offline demo mode
-  const [offlineMode, setOfflineMode] = useState<boolean>(false);
   const demoIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const demoTimerRef = useRef<NodeJS.Timeout | null>(null);
   
@@ -147,6 +177,9 @@ export function CrashoutGame() {
   // ---- ADD didMountRef HERE ----
   const didMountRef = useRef<boolean>(false);
   // ---- END ADD didMountRef ----
+  
+  // Add joinWindowRef
+  const joinWindowRef = useRef<NodeJS.Timeout | null>(null);
   
   // --- Helper Functions ---
 
@@ -224,17 +257,9 @@ export function CrashoutGame() {
   };
   
   const updateGameHistory = (newHistory: Array<{value: string, color: string, timestamp: number}>) => {
-    // Add timestamp to history entries for uniqueness
-    const timestampedHistory = newHistory.map((entry, index) => ({
-      ...entry, 
-      timestamp: Date.now() - (index * 100) // Add slight offset to ensure uniqueness
-    }));
-    
-    // Filter out duplicates by checking if the same value already exists
-    const uniqueHistory = timestampedHistory.reduce((acc, current) => {
-      // Only add if this exact value doesn't exist or is from a different time
-      const exists = acc.find(item => 
-        item.value === current.value && 
+    const uniqueHistory = newHistory.reduce((acc, current) => {
+      const exists = acc.some(
+        (item) =>
         Math.abs(item.timestamp - current.timestamp) < 5000 // Within 5 seconds
       );
       if (!exists) {
@@ -272,662 +297,214 @@ export function CrashoutGame() {
     }, 1000);
   }, [clearJoinWindowTimer]);
 
-  // ---- Colyseus Event Handling ----
+  // ---- API Communication Functions ----
 
-  // Handle full state synchronization from Colyseus
-  const handleColyseusStateChange = useCallback((newState: any) => {
-    console.log('Colyseus state changed:', newState);
-    latestGameStateRef.current = newState;
-    const updates: { [key: string]: any } = {};
-
-    if (newState.gameState !== undefined && newState.gameState !== gameState) updates.gameState = newState.gameState;
-    if (newState.currentMultiplier !== undefined && newState.currentMultiplier !== multiplier) updates.multiplier = newState.currentMultiplier;
-    if (newState.countdown !== undefined && newState.countdown !== countdown) updates.countdown = newState.countdown;
-    if (newState.playersInGame !== undefined && newState.playersInGame !== playersInGame) updates.playersInGame = newState.playersInGame;
-    if (newState.nextGameStartTime !== undefined && newState.nextGameStartTime !== nextGameStartTime) setNextGameStartTime(newState.nextGameStartTime);
-    if (newState.joinWindowTimeLeft !== undefined && newState.joinWindowTimeLeft !== joinWindowTimeLeft) updates.joinWindowTimeLeft = newState.joinWindowTimeLeft;
-
-    // Update history if it exists in the state
-    if (newState.gameHistory) {
-      updateGameHistory(newState.gameHistory);
-    }
-
-    // Update player count if available
-    if (newState.onlinePlayers !== undefined && newState.onlinePlayers !== onlinePlayersCount) {
-        setOnlinePlayersCount(newState.onlinePlayers);
-    }
-
-    // --- Update local state based on game state ---
-    const currentServerState = newState.gameState || gameState;
-
-    // Background music
-    if (audioRefs.current.backgroundMusic) {
-      if (currentServerState === GAME_STATE.ACTIVE || currentServerState === GAME_STATE.COUNTDOWN) {
-        playSound('backgroundMusic');
-      } else if (currentServerState === GAME_STATE.CRASHED || currentServerState === GAME_STATE.INACTIVE) {
-        if (!audioRefs.current.backgroundMusic.paused) {
-            audioRefs.current.backgroundMusic.pause();
-            audioRefs.current.backgroundMusic.currentTime = 0;
-        }
-      }
-    }
-
-    // UI elements and player status derived from state
-    let newCanPlaceBet = false;
-    let newIsCashoutDisabled = true;
-
-    if (currentServerState === GAME_STATE.INACTIVE) {
-      updates.showLossImage = false;
-      if (playerJoined) setPlayerJoined(false);
-      if (cashedOutAt !== null) setCashedOutAt(null);
-      newIsCashoutDisabled = true;
-      newCanPlaceBet = false;
-    } else if (currentServerState === GAME_STATE.COUNTDOWN) {
-      updates.showLossImage = false;
-      newIsCashoutDisabled = true;
-      if (newState.joinWindowTimeLeft > 0 && !playerJoined) {
-         newCanPlaceBet = true;
-       } else {
-         newCanPlaceBet = false;
-       }
-      if (newState.joinWindowTimeLeft > 0 && joinWindowRef.current === null) {
-        startJoinWindowTimer(newState.joinWindowTimeLeft);
-      } else if (newState.joinWindowTimeLeft <= 0 && joinWindowRef.current !== null) {
-        clearJoinWindowTimer();
-      }
-    } else if (currentServerState === GAME_STATE.ACTIVE) {
-      if (joinWindowRef.current !== null) clearJoinWindowTimer();
-      newCanPlaceBet = false;
-      updates.showGameStartedImage = true;
-      newIsCashoutDisabled = !playerJoined || cashedOutAt !== null;
-    } else if (currentServerState === GAME_STATE.CRASHED) {
-        updates.showGameStartedImage = false;
-        updates.showLossImage = true;
-        newIsCashoutDisabled = true;
-        newCanPlaceBet = false;
-        if (joinWindowRef.current !== null) clearJoinWindowTimer();
-
-        if (newState.crashPoint) {
-           requestAnimationFrame(() => {
-             if (multiplierTextRef.current) {
-               multiplierTextRef.current.style.color = "#f00";
-               multiplierTextRef.current.textContent = `${newState.crashPoint.toFixed(2)}x`;
-             }
-           });
-        }
-    }
-
-    // Update derived state if changed
-    if (newCanPlaceBet !== canPlaceBet) updates.canPlaceBet = newCanPlaceBet;
-    if (newIsCashoutDisabled !== isCashoutDisabled) updates.isCashoutDisabled = newIsCashoutDisabled;
-
-    // Apply batched updates
-    if (Object.keys(updates).length > 0) {
-      batchUpdate(updates);
-    }
-
-  }, [
-      gameState, multiplier, countdown, playersInGame, nextGameStartTime,
-      canPlaceBet, joinWindowTimeLeft, playerJoined, cashedOutAt, onlinePlayersCount, isCashoutDisabled,
-      updateGameHistory, batchUpdate, playSound, startJoinWindowTimer, clearJoinWindowTimer
-  ]);
-
-  // Handle custom messages from Colyseus room
-  const handleColyseusMessage = useCallback((type: string | number, message: any) => {
-    console.log('Colyseus message received:', type, message);
-
-    switch (type) {
-      case 'bet-accepted':
-        setPlayerJoined(true);
-        setIsPlayDisabled(true);
-        setIsCashoutDisabled(false);
-        toast.success("Bet placed successfully!");
-        break;
-      case 'bet-rejected':
-        setIsPlayDisabled(false);
-        toast.error(`Bet rejected: ${message?.reason || 'Unknown reason'}`);
-        break;
-      case 'cashout-success':
-        setCashedOutAt(message.multiplier);
-        setIsCashoutDisabled(true);
-        playSound('win');
-        if (message.winAmount) {
-          addFarmCoins(message.winAmount);
-          toast.success(`Cashed out at ${message.multiplier.toFixed(2)}x! Won ${message.winAmount.toFixed(2)} coins!`);
-        } else {
-            toast.success(`Cashed out at ${message.multiplier.toFixed(2)}x!`);
-        }
-        break;
-      case 'cashout-failed':
-         setIsCashoutDisabled(true);
-         toast.error(`Cashout failed: ${message?.reason || 'Game likely crashed'}`);
-         if (message?.reason?.toLowerCase().includes('crashed')) {
-             playSound('crash');
-         }
-         break;
-      case 'game-lost':
-        playSound('crash');
-        break;
-      case 'player-cashed-out':
-        setRecentCashouts(prev => {
-          const newCashout = {
-              username: message.username || 'Unknown',
-              multiplier: message.multiplier || 0,
-              winning: message.winning || 0,
-              timestamp: Date.now()
-          };
-          const newList = [newCashout, ...prev];
-          return newList.slice(0, 15);
-        });
-        playSound('cashout');
-        break;
-      case 'game-crashed-final':
-           playSound('crash');
-           if (message && message.crashPoint) {
-             logGameResult(message.crashPoint);
-           }
-           break;
-       case 'username-update-success':
-           toast.success("Username updated successfully!");
-           break;
-       case 'username-update-failed':
-           toast.error(`Failed to update username: ${message?.reason || 'Unknown reason'}`);
-           break;
-      default:
-        console.warn(`Unhandled Colyseus message type: ${type}`);
-    }
-  }, [playSound, addFarmCoins, logGameResult]);
-
-  // Demo mode functions
-  const startDemoMode = () => {
-    setOfflineMode(true);
-    setIsConnected(false);
-    setConnectionStatus("demo");
-    toast.info("Running in offline demo mode. Connect to server for full functionality.");
+  // Fetch game state from API
+  const fetchGameState = useCallback(async () => {
+    if (offlineMode) return;
     
-    // Set initial state
-    setGameState(GAME_STATE.COUNTDOWN);
-    setCountdown(10);
-    setMultiplier(1.0);
-    updateMultiplierDisplay(1.0);
-    
-    // Basic demo history
-    const demoHistory = [
-      { value: "1.84", color: "red", timestamp: Date.now() - 5000 },
-      { value: "2.56", color: "red", timestamp: Date.now() - 10000 },
-      { value: "1.37", color: "red", timestamp: Date.now() - 15000 },
-      { value: "4.20", color: "red", timestamp: Date.now() - 20000 },
-      { value: "1.12", color: "red", timestamp: Date.now() - 25000 }
-    ];
-    updateGameHistory(demoHistory);
-    
-    // Start countdown
-    let count = 10;
-    const countdownInterval = setInterval(() => {
-      count--;
-      setCountdown(count);
+    try {
+      const response = await axios.post('/api/game', { 
+        action: 'sync',
+        username 
+      });
       
-      if (count <= 0) {
-        clearInterval(countdownInterval);
-        startDemoGame();
-      }
-    }, 1000);
-    
-    // Start demo game after countdown
-    const startDemoGame = () => {
-      setGameState(GAME_STATE.ACTIVE);
-      setShowGameStartedImage(true);
-      setCanPlaceBet(false);
-      
-      // Generate random crash point between 1.1 and 10
-      const demoCrashPoint = Math.random() * 9 + 1.1;
-      
-      // Start multiplier increase
-      let demoMultiplier = 1.0;
-      
-      // Clear any existing interval
-      if (demoIntervalRef.current !== null) {
-        clearInterval(demoIntervalRef.current);
-        demoIntervalRef.current = null;
-      }
-      
-      demoIntervalRef.current = setInterval(() => {
-        demoMultiplier *= 1.01; // Increase by 1% each tick
-        setMultiplier(demoMultiplier);
-        updateMultiplierDisplay(demoMultiplier);
+      if (response.data.success) {
+        const { gameState, history, cashouts, playerData } = response.data;
         
-        // If reached crash point, trigger crash
-        if (demoMultiplier >= demoCrashPoint) {
-          if (demoIntervalRef.current !== null) {
-            clearInterval(demoIntervalRef.current);
-            demoIntervalRef.current = null;
+        // Update game state
+        const updates: { [key: string]: any } = {};
+        
+        if (gameState.state !== undefined) updates.gameState = gameState.state;
+        if (gameState.multiplier !== undefined) updates.multiplier = gameState.multiplier;
+        if (gameState.countdown !== undefined) updates.countdown = gameState.countdown;
+        if (gameState.playersInGame !== undefined) setPlayersInGame(gameState.playersInGame);
+        if (gameState.onlinePlayers !== undefined) setOnlinePlayersCount(gameState.onlinePlayers);
+        if (gameState.nextGameTime !== undefined) setNextGameStartTime(gameState.nextGameTime);
+        if (gameState.joinWindowTimeLeft !== undefined) updates.joinWindowTimeLeft = gameState.joinWindowTimeLeft;
+        
+        // Update history if provided
+        if (history) {
+          const formattedHistory = history.map((item: any) => ({
+            value: typeof item.crashPoint === 'string' ? item.crashPoint : item.crashPoint.toFixed(2),
+            color: item.color || (parseFloat(item.crashPoint.toString()) >= 2.0 ? "green" : "red"),
+            timestamp: item.timestamp
+          }));
+          updateGameHistory(formattedHistory);
+        }
+        
+        // Update cashouts if provided
+        if (cashouts && cashouts.length > 0) {
+          setRecentCashouts(cashouts);
+        }
+        
+        // Update player state if provided
+        if (playerData) {
+          if (playerData.joined !== undefined) setPlayerJoined(playerData.joined);
+          if (playerData.cashedOut !== undefined && playerData.cashedOutAt) {
+            setCashedOutAt(playerData.cashedOutAt);
           }
-          triggerDemoCrash();
-        }
-      }, 100);
-    };
-    
-    // Simulate crash
-    const triggerDemoCrash = () => {
-      setGameState(GAME_STATE.CRASHED);
-      setShowGameStartedImage(false);
-      setShowLossImage(true);
-      
-      // Play crash sound
-      playSound('crash');
-      
-      // Update history
-      const newHistoryEntry = {
-        value: multiplier.toFixed(2),
-        color: "red",
-        timestamp: Date.now()
-      };
-      
-      setGameHistory(prev => {
-        const updatedHistory = [newHistoryEntry, ...prev].slice(0, 50);
-        return updatedHistory;
-      });
-      
-      // Clean up any existing timer
-      if (demoTimerRef.current !== null) {
-        clearTimeout(demoTimerRef.current);
-        demoTimerRef.current = null;
-      }
-      
-      // Reset after 5 seconds
-      demoTimerRef.current = setTimeout(() => {
-        setShowLossImage(false);
-        
-        // Clean up first timer
-        demoTimerRef.current = null;
-        
-        // Start new game after delay
-        setTimeout(() => {
-          startDemoMode();
-        }, 3000);
-      }, 5000);
-    };
-    
-    // Allow demo cashout if player joined
-    setIsPlayDisabled(false);
-    setCanPlaceBet(true);
-    setPlayerJoined(false);
-  };
-  
-  useEffect(() => {
-    // Check if we should start in demo mode
-    const shouldStartInDemoMode = 
-      process.env.NEXT_PUBLIC_DEMO_MODE === 'true' || 
-      localStorage.getItem('crashoutDemoMode') === 'true';
-    
-    if (shouldStartInDemoMode) {
-      // Small delay to ensure component is fully mounted
-      setTimeout(() => {
-        startDemoMode();
-      }, 100);
-    }
-    
-    // Clean up demo mode timers on unmount
-    return () => {
-      if (demoIntervalRef.current !== null) {
-        clearInterval(demoIntervalRef.current);
-      }
-      if (demoTimerRef.current !== null) {
-        clearTimeout(demoTimerRef.current);
-      }
-    };
-  }, []);
-  
-  // --- connectToServer ---
-  const connectToServer = useCallback(async (retryCount = 0) => {
-    if (isConnected || connectionStatus === 'connecting' || connectionStatus === 'connected') {
-      console.log(`Skipping connection attempt. Status: ${connectionStatus}, Connected: ${isConnected}`);
-      return;
-    }
-
-    if (retryCount === 0) {
-      toast.info("Connecting to game server...");
-      setConnectionStatus("connecting");
-    }
-
-    if (!colyseusClientRef.current) {
-      const wsEndpoint = process.env.NEXT_PUBLIC_COLYSEUS_ENDPOINT ||
-                         (typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss' : 'ws') + `://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:2567`;
-      console.log(`Initializing Colyseus client for endpoint: ${wsEndpoint}`);
-      try {
-        colyseusClientRef.current = new Client(wsEndpoint);
-      } catch (initError) {
-          console.error("Failed to initialize Colyseus client:", initError);
-           toast.error("Internal error: Could not setup connection client.");
-           setConnectionStatus("failed");
-           startDemoMode();
-           return;
-      }
-    }
-    const client = colyseusClientRef.current;
-
-    try {
-      if (localStorage.getItem('crashoutDemoMode') === 'true') {
-        throw new Error('Manual demo mode enabled');
-      }
-      if (process.env.NEXT_PUBLIC_DEMO_MODE === 'true' && !localStorage.getItem('crashoutDemoModeDisabled')) {
-         console.log("Demo mode preferred by environment variable. Attempting connection first...");
-       }
-
-      console.log("Attempting to join or create 'crashout_room'...");
-      const room = await client.joinOrCreate<{ /* Define expected State structure type here */ }>("crashout_room", {
-          username: username,
-       });
-
-      console.log("Successfully joined room:", room.roomId, room.sessionId);
-      colyseusRoomRef.current = room;
-      setIsConnected(true);
-      setOfflineMode(false);
-      setConnectionStatus("connected");
-      toast.success("Connected to game server!");
-
-      // Add this line to sync with Redis after connecting
-      syncWithRedis();
-
-      room.onStateChange((state: any) => {
-        // Use the ref to check if it's the first state update
-        if (latestGameStateRef.current === null) {
-             console.log("Initial Colyseus state received via onStateChange:", state);
-        } else {
-             console.log("Subsequent Colyseus state received:", state);
-        }
-        // Process the state (initial or update)
-        handleColyseusStateChange(state);
-      });
-
-      room.onMessage("*", (type: string | number, message: any) => {
-        handleColyseusMessage(type, message);
-      });
-
-      room.onError((code: number, message?: string) => {
-        console.error("Colyseus room error:", code, message);
-        toast.error(`Server error: ${message || 'Unknown error'} (Code: ${code})`);
-        setIsConnected(false);
-        setConnectionStatus("error");
-        colyseusRoomRef.current = null;
-
-        setTimeout(() => connectToServer(0), 5000);
-
-      });
-
-      room.onLeave((code: number) => {
-        console.log(`Left Colyseus room (code: ${code})`);
-        const wasConnected = isConnected;
-        setIsConnected(false);
-        colyseusRoomRef.current = null;
-
-        if (code > 1001 && wasConnected) {
-           toast.warning(`Disconnected from server (Code: ${code}). Attempting to reconnect...`);
-           setConnectionStatus("disconnected");
-           setTimeout(() => connectToServer(0), 3000);
-        } else if (wasConnected) {
-           setConnectionStatus("disconnected");
-        } else {
-           setConnectionStatus("disconnected");
-        }
-      });
-
-    } catch (err: any) {
-      console.error('Error connecting to Colyseus:', err);
-      setIsConnected(false);
-      colyseusRoomRef.current = null;
-
-      let errorMessage = err.message || 'Unknown connection error';
-      if (errorMessage.includes('failed to join room') || errorMessage.includes('timeout')) {
-           errorMessage = "Failed to join game room. Server might be busy or offline.";
-           setConnectionStatus("failed");
-      } else if (err.code) {
-           errorMessage = `Connection error ${err.code}: ${errorMessage}`;
-           setConnectionStatus("error");
-      } else {
-           setConnectionStatus("failed");
-      }
-
-      if (err.message?.includes('Demo mode enabled')) {
-           localStorage.setItem('crashoutDemoMode', 'true');
-      } else {
-           toast.error(errorMessage);
-      }
-
-      if (retryCount < 3 && !err.message?.includes('Demo mode enabled')) {
-        const delay = 1000 * (retryCount + 1);
-        console.log(`Retrying Colyseus connection in ${delay/1000} seconds...`);
-         if (!err.message?.includes('Demo mode enabled')) {
-             toast.info(`Retrying connection in ${delay/1000} seconds...`);
-         }
-        setTimeout(() => connectToServer(retryCount + 1), delay);
-      } else {
-        if (!offlineMode) {
-             toast.error('Failed to connect to game server. Switching to offline demo mode.');
-             startDemoMode();
-         }
-      }
-    }
-  }, [
-      username, isConnected, connectionStatus,
-      handleColyseusStateChange, handleColyseusMessage, startDemoMode,
-      syncWithRedis
-  ]);
-
-  // Define these helper functions at the top of the component
-  const syncWithRedis = useCallback(async () => {
-    if (offlineMode) return;
-    
-    try {
-      // Get current game state from Redis
-      const response = await axios.get('/api/redis?action=getGameState');
-      if (response.data.success && response.data.gameState) {
-        console.log('Synced with Redis game state:', response.data.gameState);
-        
-        // Update local state based on Redis data
-        if (response.data.gameState.state) {
-          setGameState(response.data.gameState.state);
-        }
-        
-        if (response.data.gameState.nextGameTime) {
-          setNextGameStartTime(response.data.gameState.nextGameTime);
-        }
-      } else {
-        // If no game state exists, initialize it
-        await axios.post('/api/redis', {
-          action: 'updateGameState',
-          data: {
-            state: gameState,
-            nextGameTime: nextGameStartTime || Date.now() + 10000,
-            lastUpdate: Date.now()
-          }
-        });
-      }
-      
-      // Get game history
-      const historyResponse = await axios.get('/api/redis?action=getHistory');
-      if (historyResponse.data.success && historyResponse.data.history) {
-        // Convert Redis history format to game history format
-        const formattedHistory = historyResponse.data.history.map((item: any) => ({
-          value: item.crashPoint.toFixed(2),
-          color: parseFloat(item.crashPoint) >= 2.0 ? "green" : "red",
-          timestamp: item.timestamp
-        }));
-        
-        updateGameHistory(formattedHistory);
-      }
-      
-      // Update heartbeat on every sync 
-      await axios.post('/api/redis', {
-        action: 'updateHeartbeat',
-        data: { timestamp: Date.now() }
-      });
-    } catch (error) {
-      console.error('Error syncing with Redis:', error);
-    }
-  }, [offlineMode, updateGameHistory, gameState, nextGameStartTime]);
-
-  // Function to log player activity to Redis
-  const logPlayerActivity = useCallback(async () => {
-    if (offlineMode) return;
-    
-    try {
-      await axios.post('/api/redis', {
-        action: 'updatePlayer',
-        data: {
-          playerId: username,
-          lastBet: parseFloat(betAmount) || 0,
-          autoCashout: parseFloat(autoCashout) || 2.0,
-          lastGameResult: cashedOutAt ? 'win' : (playerJoined && gameState === GAME_STATE.CRASHED ? 'loss' : null)
-        }
-      });
-    } catch (error) {
-      console.error('Error logging player activity:', error);
-    }
-  }, [offlineMode, username, betAmount, autoCashout, cashedOutAt, playerJoined, gameState]);
-
-  // Function to log game results to Redis
-  const logGameResult = useCallback(async (crashPoint: number) => {
-    if (offlineMode) return;
-    
-    try {
-      await axios.post('/api/redis', {
-        action: 'logGameResult',
-        data: {
-          crashPoint: crashPoint,
-          playerCount: playersInGame,
-          activePlayerCount: onlinePlayersCount
-        }
-      });
-      
-      // Also update the game state when a game ends
-      await axios.post('/api/redis', {
-        action: 'updateGameState',
-        data: {
-          state: GAME_STATE.INACTIVE,
-          nextGameTime: Date.now() + 10000,
-          lastUpdate: Date.now()
-        }
-      });
-    } catch (error) {
-      console.error('Error logging game result:', error);
-    }
-  }, [offlineMode, playersInGame, onlinePlayersCount]);
-
-  // Update the useEffect that deals with Redis syncing to be more active
-  useEffect(() => {
-    if (!offlineMode && isConnected) {
-      // Log player activity when component is first mounted
-      logPlayerActivity();
-      
-      // Initial sync
-      syncWithRedis();
-      
-      // Set up much more frequent sync (every 10 seconds) to make up for less frequent cron job
-      const syncInterval = setInterval(() => {
-        syncWithRedis();
-      }, 10000);
-      
-      // More frequent player activity logging (every 30 seconds)
-      const activityInterval = setInterval(() => {
-        logPlayerActivity();
-      }, 30000);
-      
-      // Also do some maintenance that would normally be handled by the cron job
-      const maintenanceInterval = setInterval(async () => {
-        try {
-          const stats = {
-            playerCount: onlinePlayersCount,
-            activePlayers: playersInGame,
-            timestamp: Date.now()
-          };
           
-          await axios.post('/api/redis', {
-            action: 'updateStats',
-            data: stats
+          // Optionally update bet preferences if they've changed on the server
+          if (playerData.betAmount) setBetAmount(playerData.betAmount.toString());
+          if (playerData.autoCashout) setAutoCashout(playerData.autoCashout.toString());
+        }
+        
+        // --- Update UI based on game state ---
+        const currentServerState = gameState.state;
+        
+        // Background music
+        if (audioRefs.current.backgroundMusic) {
+          if (currentServerState === GAME_STATE.ACTIVE || currentServerState === GAME_STATE.COUNTDOWN) {
+            playSound('backgroundMusic');
+          } else if (currentServerState === GAME_STATE.CRASHED || currentServerState === GAME_STATE.INACTIVE) {
+            if (audioRefs.current.backgroundMusic.paused === false) {
+              audioRefs.current.backgroundMusic.pause();
+              audioRefs.current.backgroundMusic.currentTime = 0;
+            }
+          }
+        }
+        
+        // UI elements and player status derived from state
+        let newCanPlaceBet = false;
+        let newIsCashoutDisabled = true;
+        
+        if (currentServerState === GAME_STATE.INACTIVE) {
+          updates.showLossImage = false;
+          updates.showGameStartedImage = false;
+          if (playerJoined) setPlayerJoined(false);
+          if (cashedOutAt !== null) setCashedOutAt(null);
+          newIsCashoutDisabled = true;
+          newCanPlaceBet = false;
+        } else if (currentServerState === GAME_STATE.COUNTDOWN) {
+          updates.showLossImage = false;
+          updates.showGameStartedImage = false;
+          newIsCashoutDisabled = true;
+          
+          if (gameState.joinWindowTimeLeft > 0 && !playerData?.joined) {
+            newCanPlaceBet = true;
+          } else {
+            newCanPlaceBet = false;
+          }
+          
+          if (gameState.joinWindowTimeLeft > 0 && joinWindowRef.current === null) {
+            startJoinWindowTimer(gameState.joinWindowTimeLeft);
+          } else if (gameState.joinWindowTimeLeft <= 0 && joinWindowRef.current !== null) {
+            clearJoinWindowTimer();
+          }
+        } else if (currentServerState === GAME_STATE.ACTIVE) {
+          if (joinWindowRef.current !== null) clearJoinWindowTimer();
+          newCanPlaceBet = false;
+          updates.showGameStartedImage = true;
+          
+          const isPlayerActive = playerData?.joined && !playerData?.cashedOut;
+          newIsCashoutDisabled = !isPlayerActive;
+          
+          // Adjust polling rate for active game
+          pollingRateRef.current = 1000; // Poll more frequently during active game
+        } else if (currentServerState === GAME_STATE.CRASHED) {
+          updates.showGameStartedImage = false;
+          updates.showLossImage = true;
+          newIsCashoutDisabled = true;
+          newCanPlaceBet = false;
+          
+          if (joinWindowRef.current !== null) clearJoinWindowTimer();
+          
+          // Play crash sound if we just crashed and player lost
+          if (playerData?.joined && !playerData?.cashedOut) {
+            playSound('crash');
+          }
+          
+          // Reset polling rate
+          pollingRateRef.current = 3000;
+          
+          requestAnimationFrame(() => {
+            if (multiplierTextRef.current && gameState.crashPoint) {
+              multiplierTextRef.current.style.color = "#f00";
+              multiplierTextRef.current.textContent = `${gameState.crashPoint.toFixed(2)}x`;
+            }
           });
-        } catch (error) {
-          console.error('Error performing client-side maintenance:', error);
         }
-      }, 60000); // Run every minute
-      
-      return () => {
-        clearInterval(syncInterval);
-        clearInterval(activityInterval);
-        clearInterval(maintenanceInterval);
-      };
-    }
-  }, [offlineMode, isConnected, logPlayerActivity, syncWithRedis, onlinePlayersCount, playersInGame]);
-
-  // Main setup effect
-  useEffect(() => {
-    if (didMountRef.current) {
-        console.log('[Dev Only/StrictMode] Skipping setup effect run.');
-        return;
-    }
-    didMountRef.current = true;
-
-    console.log('CrashoutGame component mounted - Running setup effect');
-    
-    audioRefs.current.crash = new Audio('/sounds/crash.mp3');
-    audioRefs.current.cashout = new Audio('/sounds/cashout.mp3');
-    audioRefs.current.win = new Audio('/sounds/win.mp3');
-    const bgMusic = new Audio('/sounds/background_music.mp3');
-    bgMusic.loop = true;
-    bgMusic.volume = muted ? 0 : volume * 0.3;
-    audioRefs.current.backgroundMusic = bgMusic;
-
-    const shouldStartInDemoMode =
-      process.env.NEXT_PUBLIC_DEMO_MODE === 'true' ||
-      localStorage.getItem('crashoutDemoMode') === 'true';
-
-    if (!shouldStartInDemoMode) {
-        connectToServer();
-    } else {
-        console.log("Initial setup: Starting in demo mode based on settings.");
-    }
-
-    return () => {
-      console.log('CrashoutGame setup cleanup running.');
-      clearJoinWindowTimer();
-
-      if (colyseusRoomRef.current) {
-        console.log('Leaving Colyseus room on unmount...');
-        colyseusRoomRef.current.leave(true);
-        colyseusRoomRef.current = null;
+        
+        // Update derived state if changed
+        if (newCanPlaceBet !== canPlaceBet) updates.canPlaceBet = newCanPlaceBet;
+        if (newIsCashoutDisabled !== isCashoutDisabled) updates.isCashoutDisabled = newIsCashoutDisabled;
+        
+        // Apply batched updates
+        if (Object.keys(updates).length > 0) {
+          batchUpdate(updates);
+        }
+        
+        // If we're connected now but weren't before, update status
+        if (!isConnected) {
+          setIsConnected(true);
+          setConnectionStatus("connected");
+          toast.success("Connected to game server!");
+        }
       }
+    } catch (error) {
+      console.error('Error fetching game state:', error);
       
-      Object.values(audioRefs.current).forEach(audio => {
-        if (audio) {
-          audio.pause();
-          audio.src = '';
-        }
-      });
-
-      if (demoIntervalRef.current) clearInterval(demoIntervalRef.current);
-      if (demoTimerRef.current) clearTimeout(demoTimerRef.current);
-      didMountRef.current = false;
+      // Handle connection errors
+      if (isConnected) {
+        setIsConnected(false);
+        setConnectionStatus("disconnected");
+        toast.error("Lost connection to game server. Attempting to reconnect...");
+      }
+    }
+  }, [
+    offlineMode, username, gameState, multiplier, countdown, 
+    joinWindowTimeLeft, playerJoined, cashedOutAt, isConnected, playSound,
+    updateGameHistory, canPlaceBet, isCashoutDisabled,
+    clearJoinWindowTimer, startJoinWindowTimer
+  ]);
+  
+  // Set up polling for game state
+  const setupPolling = useCallback(() => {
+    if (offlineMode) return;
+    
+    // Clear any existing interval
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+    }
+    
+    // Initial fetch
+    fetchGameState();
+    
+    // Set up polling interval - rate varies based on game state
+    pollingIntervalRef.current = setInterval(() => {
+      fetchGameState();
+    }, pollingRateRef.current);
+    
+    setConnectionStatus("connecting");
+    toast.info("Connecting to game server...");
+    
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
     };
-  }, []);
-
+  }, [offlineMode, fetchGameState]);
+  
   // Handle placing a bet
   const handlePlay = useCallback(async () => {
     if (offlineMode) {
-        if (!canPlaceBet || isPlayDisabled) {
-            toast.warning("Cannot place demo bet now.");
-            return;
-        }
-        const bet = parseFloat(betAmount);
-        if (isNaN(bet) || bet <= 0) { toast.error("Invalid bet amount."); return; }
-
-        setPlayerJoined(true);
-        setIsPlayDisabled(true);
-        setIsCashoutDisabled(false);
-        toast.info("Demo bet placed!");
+      // Handle offline bet as before
+      if (!canPlaceBet || isPlayDisabled) {
+        toast.warning("Cannot place demo bet now.");
         return;
+      }
+      const bet = parseFloat(betAmount);
+      if (isNaN(bet) || bet <= 0) { toast.error("Invalid bet amount."); return; }
+
+      setPlayerJoined(true);
+      setIsPlayDisabled(true);
+      setIsCashoutDisabled(false);
+      toast.info("Demo bet placed!");
+      return;
     }
 
-    if (!canPlaceBet || !isConnected || joinWindowTimeLeft <= 0 || isPlayDisabled || !colyseusRoomRef.current) {
+    if (!canPlaceBet || !isConnected || joinWindowTimeLeft <= 0 || isPlayDisabled) {
       toast.warning("Cannot place bet now. Ensure you are connected and the join window is open.");
       return;
     }
@@ -941,70 +518,113 @@ export function CrashoutGame() {
     setIsPlayDisabled(true);
     toast.info("Placing bet...");
 
-    colyseusRoomRef.current.send("place-bet", {
-      betAmount: bet,
-      autoCashout: cashoutTarget,
-    });
+    try {
+      const response = await axios.post('/api/game', {
+        action: 'placeBet',
+        username,
+        betAmount: bet,
+        autoCashout: cashoutTarget
+      });
 
+      if (response.data.success) {
+        setPlayerJoined(true);
+        setIsPlayDisabled(true);
+        setIsCashoutDisabled(false);
+        toast.success("Bet placed successfully!");
+      } else {
+        setIsPlayDisabled(false);
+        toast.error(response.data.message || "Failed to place bet");
+      }
+    } catch (error) {
+      console.error('Error placing bet:', error);
+      setIsPlayDisabled(false);
+      toast.error("Error communicating with server. Please try again.");
+    }
   }, [
-      canPlaceBet, isConnected, betAmount, autoCashout, joinWindowTimeLeft, isPlayDisabled, farmCoins, offlineMode
+    canPlaceBet, isConnected, betAmount, autoCashout, joinWindowTimeLeft, isPlayDisabled, offlineMode
   ]);
 
   // Handle cashing out
   const handleCashout = useCallback(async () => {
     if (offlineMode) {
-        if (!playerJoined || gameState !== GAME_STATE.ACTIVE || isCashoutDisabled || cashedOutAt !== null) {
-            toast.warning("Cannot cashout demo game now.");
-            return;
-        }
-        const winAmount = parseFloat(betAmount) * multiplier;
-        setCashedOutAt(multiplier);
-        setIsCashoutDisabled(true);
-        playSound('win');
-        addFarmCoins(winAmount);
-        toast.success(`Demo Cashout at ${multiplier.toFixed(2)}x! Won ${winAmount.toFixed(2)} coins!`);
+      // Handle offline cashout as before
+      if (!playerJoined || gameState !== GAME_STATE.ACTIVE || isCashoutDisabled || cashedOutAt !== null) {
+          toast.warning("Cannot cashout demo game now.");
+          return;
+      }
+      const winAmount = parseFloat(betAmount) * multiplier;
+      setCashedOutAt(multiplier);
+      setIsCashoutDisabled(true);
+      playSound('win');
+      addFarmCoins(winAmount);
+      toast.success(`Demo Cashout at ${multiplier.toFixed(2)}x! Won ${winAmount.toFixed(2)} coins!`);
 
-        if (demoIntervalRef.current !== null) {
-            clearInterval(demoIntervalRef.current);
-            demoIntervalRef.current = null;
-        }
-        return;
+      if (demoIntervalRef.current !== null) {
+          clearInterval(demoIntervalRef.current);
+          demoIntervalRef.current = null;
+      }
+      return;
     }
 
-    if (!playerJoined || gameState !== GAME_STATE.ACTIVE || !isConnected || isCashoutDisabled || !colyseusRoomRef.current || cashedOutAt !== null) {
-       toast.warning("Cannot cash out now.");
-       return;
+    if (!playerJoined || gameState !== GAME_STATE.ACTIVE || !isConnected || isCashoutDisabled || cashedOutAt !== null) {
+      toast.warning("Cannot cash out now.");
+      return;
     }
 
     setIsCashoutDisabled(true);
     toast.info("Cashing out...");
 
-    colyseusRoomRef.current.send("cashout");
+    try {
+      const response = await axios.post('/api/game', {
+        action: 'cashout',
+        username
+      });
 
+      if (response.data.success) {
+        setCashedOutAt(response.data.multiplier);
+        playSound('win');
+        
+        if (response.data.winAmount) {
+          addFarmCoins(response.data.winAmount);
+          toast.success(`Cashed out at ${response.data.multiplier.toFixed(2)}x! Won ${response.data.winAmount.toFixed(2)} coins!`);
+        } else {
+          toast.success(`Cashed out at ${response.data.multiplier.toFixed(2)}x!`);
+        }
+      } else {
+        setIsCashoutDisabled(!playerJoined);
+        toast.error(response.data.message || "Failed to cash out");
+      }
+    } catch (error) {
+      console.error('Error cashing out:', error);
+      setIsCashoutDisabled(!playerJoined);
+      toast.error("Error communicating with server. Please try again.");
+    }
   }, [
-      playerJoined, gameState, isConnected, isCashoutDisabled, cashedOutAt, offlineMode, multiplier, betAmount, addFarmCoins, playSound
+    playerJoined, gameState, isConnected, isCashoutDisabled, cashedOutAt, offlineMode, multiplier, betAmount, addFarmCoins, playSound
   ]);
 
   // Handle changing username
   const changeUsername = useCallback(async (newUsername: string) => {
     if (offlineMode) {
-        if (!newUsername || newUsername.trim().length === 0 || newUsername.length > 20) {
-            toast.error("Invalid username (1-20 characters).");
-            return;
-        }
-        const trimmedUsername = newUsername.trim();
-        setUsername(trimmedUsername);
-        if (typeof window !== 'undefined') {
-            localStorage.setItem('crashoutUsername', trimmedUsername);
-        }
-        toast.success("Demo username updated!");
-        return;
+      // Handle offline username change
+      if (!newUsername || newUsername.trim().length === 0 || newUsername.length > 20) {
+          toast.error("Invalid username (1-20 characters).");
+          return;
+      }
+      const trimmedUsername = newUsername.trim();
+      setUsername(trimmedUsername);
+      if (typeof window !== 'undefined') {
+          localStorage.setItem('crashoutUsername', trimmedUsername);
+      }
+      toast.success("Demo username updated!");
+      return;
     }
 
-    if (!isConnected || !colyseusRoomRef.current) {
+    if (!isConnected) {
       toast.error("Cannot change username while offline.");
       return;
     }
+    
     if (!newUsername || newUsername.trim().length === 0 || newUsername.length > 20) {
       toast.error("Invalid username (1-20 characters).");
       return;
@@ -1012,15 +632,219 @@ export function CrashoutGame() {
 
     const trimmedUsername = newUsername.trim();
     const oldUsername = username;
+    
+    // Update locally first for responsive UI
     setUsername(trimmedUsername);
     if (typeof window !== 'undefined') {
-       localStorage.setItem('crashoutUsername', trimmedUsername);
-     }
+      localStorage.setItem('crashoutUsername', trimmedUsername);
+    }
     toast.info("Updating username...");
 
-    colyseusRoomRef.current.send("update-username", { newUsername: trimmedUsername });
+    try {
+      // Notify the server
+      await axios.post('/api/game', {
+        action: 'playerActivity',
+        username: trimmedUsername,
+        oldUsername,
+        betAmount: parseFloat(betAmount) || 10,
+        autoCashout: parseFloat(autoCashout) || 2.0
+      });
+      
+      toast.success("Username updated successfully!");
+    } catch (error) {
+      console.error('Error updating username:', error);
+      // Revert on failure
+      setUsername(oldUsername);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('crashoutUsername', oldUsername);
+      }
+      toast.error("Failed to update username on server.");
+    }
+  }, [isConnected, username, offlineMode, betAmount, autoCashout]);
 
-  }, [isConnected, username, offlineMode]);
+  // Start demo mode function
+  const startDemoMode = useCallback(() => {
+    console.log("Starting demo mode");
+    setOfflineMode(true);
+    setIsConnected(true);
+    setConnectionStatus('Demo Mode');
+    
+    // Load demo username from localStorage or use default
+    const storedUsername = localStorage.getItem('crashoutUsername') || 'Player' + Math.floor(Math.random() * 1000);
+    setUsername(storedUsername);
+    localStorage.setItem('crashoutUsername', storedUsername);
+    localStorage.setItem('crashoutDemoMode', 'true');
+    
+    // Reset game state
+    setGameState(GameState.WAITING);
+    setMultiplier(1);
+    setCountdown(5);
+    setPlayers([]);
+    setCashouts([]);
+    setPlayerJoined(false);
+    setCashedOutAt(null);
+    setIsCashoutDisabled(true);
+    
+    // Sample game history
+    setGameHistory([
+      { 
+        id: '1', 
+        value: '1.25', 
+        color: parseFloat('1.25') >= 2.0 ? 'green' : 'red',
+        timestamp: Date.now() - 50000,
+        crashPoint: 1.25
+      },
+      { 
+        id: '2', 
+        value: '2.5', 
+        color: parseFloat('2.5') >= 2.0 ? 'green' : 'red',
+        timestamp: Date.now() - 40000,
+        crashPoint: 2.5
+      },
+      { 
+        id: '3', 
+        value: '1.1', 
+        color: parseFloat('1.1') >= 2.0 ? 'green' : 'red',
+        timestamp: Date.now() - 30000,
+        crashPoint: 1.1
+      },
+      { 
+        id: '4', 
+        value: '5.2', 
+        color: parseFloat('5.2') >= 2.0 ? 'green' : 'red',
+        timestamp: Date.now() - 20000,
+        crashPoint: 5.2
+      },
+      { 
+        id: '5', 
+        value: '1.9', 
+        color: parseFloat('1.9') >= 2.0 ? 'green' : 'red',
+        timestamp: Date.now() - 10000,
+        crashPoint: 1.9
+      }
+    ]);
+    
+    // Setup demo game loop
+    let demoGameState = GameState.WAITING;
+    let demoMultiplier = 1;
+    let demoCountdown = 5;
+    let demoCrashPoint = 1 + Math.random() * 10;
+    
+    // Clear any existing intervals/timers
+    if (demoIntervalRef.current) clearInterval(demoIntervalRef.current);
+    if (demoTimerRef.current) clearTimeout(demoTimerRef.current);
+    
+    // Start the demo game cycle
+    demoTimerRef.current = setTimeout(() => {
+      // Switch to RUNNING state after countdown
+      demoGameState = GameState.RUNNING;
+      setGameState(GameState.RUNNING);
+      setIsCashoutDisabled(false);
+      
+      // Update multiplier at intervals during RUNNING state
+      demoIntervalRef.current = setInterval(() => {
+        demoMultiplier = parseFloat((demoMultiplier * 1.05).toFixed(2));
+        setMultiplier(demoMultiplier);
+        
+        // Check if we should crash
+        if (demoMultiplier >= demoCrashPoint) {
+          clearInterval(demoIntervalRef.current as NodeJS.Timeout);
+          
+          // Crash the game
+          setGameState(GameState.CRASHED);
+          playSound('crash');
+          
+          // Add to history
+          const newHistoryEntry: GameHistoryEntry = {
+            id: Date.now().toString(),
+            value: demoMultiplier.toFixed(2),
+            color: demoMultiplier >= 2.0 ? 'green' : 'red',
+            timestamp: Date.now(),
+            crashPoint: demoMultiplier
+          };
+          setGameHistory(prev => [newHistoryEntry, ...prev.slice(0, 9)]);
+          
+          // If player joined but didn't cash out, they lost
+          if (playerJoined && cashedOutAt === null) {
+            toast.error(`Game crashed at ${demoMultiplier.toFixed(2)}x. You lost ${betAmount} Farm Coins.`);
+          }
+          
+          // Reset for next round
+          setTimeout(() => {
+            startDemoMode();
+          }, 5000);
+        }
+      }, 100);
+    }, demoCountdown * 1000);
+    
+    // Update countdown during WAITING state
+    const countdownInterval = setInterval(() => {
+      demoCountdown--;
+      setCountdown(demoCountdown);
+      
+      if (demoCountdown <= 0) {
+        clearInterval(countdownInterval);
+      }
+    }, 1000);
+    
+    toast.success("Started demo mode! You have 1000 Farm Coins to play with.");
+    
+  }, [betAmount, cashedOutAt, playerJoined, playSound]);
+
+  // Use setupPolling in place of connectToServer
+  useEffect(() => {
+    if (didMountRef.current) {
+      console.log('[Dev Only/StrictMode] Skipping setup effect run.');
+      return;
+    }
+    didMountRef.current = true;
+
+    console.log('CrashoutGame component mounted - Running setup effect');
+    
+    // Setup audio
+    audioRefs.current.crash = new Audio('/sounds/crash.mp3');
+    audioRefs.current.cashout = new Audio('/sounds/cashout.mp3');
+    audioRefs.current.win = new Audio('/sounds/win.mp3');
+    const bgMusic = new Audio('/sounds/background_music.mp3');
+    bgMusic.loop = true;
+    bgMusic.volume = muted ? 0 : volume * 0.3;
+    audioRefs.current.backgroundMusic = bgMusic;
+
+    const shouldStartInDemoMode =
+      process.env.NEXT_PUBLIC_DEMO_MODE === 'true' ||
+      localStorage.getItem('crashoutDemoMode') === 'true';
+
+    if (!shouldStartInDemoMode) {
+      // Start polling instead of connecting to Colyseus
+      setupPolling();
+    } else {
+      console.log("Initial setup: Starting in demo mode based on settings.");
+      startDemoMode();
+    }
+
+    return () => {
+      console.log('CrashoutGame setup cleanup running.');
+      clearJoinWindowTimer();
+      
+      // Clear polling interval
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+      
+      // Clean up audio
+      Object.values(audioRefs.current).forEach(audio => {
+        if (audio) {
+          audio.pause();
+          audio.src = '';
+        }
+      });
+
+      if (demoIntervalRef.current) clearInterval(demoIntervalRef.current);
+      if (demoTimerRef.current) clearTimeout(demoTimerRef.current);
+      didMountRef.current = false;
+    };
+  }, [setupPolling, clearJoinWindowTimer]);
 
   return (
     <div className="space-y-4">
