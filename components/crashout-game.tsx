@@ -5,6 +5,8 @@
 declare global {
   interface Window {
     _loggedUrls?: {[key: string]: boolean};
+    _audioInstances?: {[key: string]: HTMLAudioElement};
+    _crashoutAudioInitialized?: boolean;
   }
 }
 
@@ -59,6 +61,10 @@ const GAME_STATE = {
   CASHED_OUT: "cashed_out",
 };
 
+// Constants
+const MAX_RETRY_ATTEMPTS = 3;
+const API_TIMEOUT_MS = 10000; // 10 seconds
+
 // Helper components
 const DemoModeSwitch = ({ enabled, onChange }: { enabled: boolean; onChange: (enabled: boolean) => void }) => {
   return (
@@ -74,6 +80,36 @@ const DemoModeSwitch = ({ enabled, onChange }: { enabled: boolean; onChange: (en
   );
 };
 
+// Add a utility function to get or create shared audio instances
+const getAudioInstance = (key: string, src: string): HTMLAudioElement => {
+  if (typeof window === 'undefined') return null as unknown as HTMLAudioElement;
+  
+  // Initialize the audio instances cache if it doesn't exist
+  if (!window._audioInstances) {
+    window._audioInstances = {};
+  }
+  
+  // Return the existing instance if it exists
+  if (window._audioInstances[key]) {
+    return window._audioInstances[key];
+  }
+  
+  // Log creation of a new audio instance to help with debugging
+  console.info(`Creating new audio instance for: ${key}`);
+  
+  // Create a new instance if it doesn't exist yet
+  const audio = new Audio(src);
+  
+  // Set up error handling on the audio element
+  audio.addEventListener('error', (e) => {
+    console.warn(`Audio error on ${key}:`, e);
+  });
+  
+  // Store in global cache
+  window._audioInstances[key] = audio;
+  return audio;
+};
+
 export function CrashoutGame() {
   // Existing local state
   const { farmCoins, addFarmCoins } = useContext(GameContext);
@@ -85,6 +121,40 @@ export function CrashoutGame() {
   const countdownTextRef = useRef<HTMLDivElement>(null);
   const countdownOverlayRef = useRef<HTMLDivElement>(null);
   const lossVideoRef = useRef<HTMLVideoElement>(null);
+  
+  // Add didMountRef to prevent double mounting issues
+  const didMountRef = useRef<boolean>(false);
+  
+  // Add intervals and timers refs
+  const demoIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const demoTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const joinWindowRef = useRef<NodeJS.Timeout | null>(null);
+  const apiRetryCountRef = useRef<number>(0);
+  const pollingRateRef = useRef<number>(3000); // Default polling rate (ms)
+  
+  // Audio handling - use shared instances instead of creating new ones
+  const audioRefs = useRef<{[key: string]: HTMLAudioElement | null}>({
+    crash: null,
+    cashout: null,
+    win: null,
+    backgroundMusic: null
+  });
+  
+  // Audio control state
+  const [volume, setVolume] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      return parseFloat(localStorage.getItem('crashoutVolume') || '0.5');
+    }
+    return 0.5;
+  });
+  
+  const [muted, setMuted] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('crashoutMuted') === 'true';
+    }
+    return false;
+  });
   
   // Game state
   const [multiplier, setMultiplier] = useState<number>(1);
@@ -115,76 +185,550 @@ export function CrashoutGame() {
   const [canPlaceBet, setCanPlaceBet] = useState<boolean>(true);
   const [nextGameStartTime, setNextGameStartTime] = useState<number | null>(null);
   
-  // Polling refs
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const pollingRateRef = useRef<number>(3000); // Default polling rate (ms)
-  
   // Online specific state
   const [onlinePlayersCount, setOnlinePlayersCount] = useState<number>(0);
   const [playersInGame, setPlayersInGame] = useState<number>(0);
   const [recentCashouts, setRecentCashouts] = useState<Array<{username: string, multiplier: number, winning: number, timestamp: number}>>([]);
 
-  // Audio handling
-  const audioRefs = useRef<{[key: string]: HTMLAudioElement | null}>({
-    crash: null,
-    cashout: null,
-    win: null,
-    backgroundMusic: null
-  });
-  
-  // Audio control state
-  const [volume, setVolume] = useState<number>(() => {
-    if (typeof window !== 'undefined') {
-      return parseFloat(localStorage.getItem('crashoutVolume') || '0.5');
+  // Create a currentGameData ref to track state changes without re-renders
+  const currentGameData = useRef<any>(null);
+  const apiError = useRef<boolean>(false);
+
+  const setApiError = useCallback((value: boolean) => {
+    apiError.current = value;
+  }, []);
+
+  // Utility function for fetching game data
+  const getCurrentGameData = useCallback(async () => {
+    try {
+      const response = await axios.get('/api/game', {
+        headers: { 'Cache-Control': 'no-cache' }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching game data:', error);
+      return null;
     }
-    return 0.5;
-  });
-  const [muted, setMuted] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('crashoutMuted') === 'true';
+  }, []);
+
+  // Utility function for fetching game history
+  const getGameHistory = useCallback(async () => {
+    try {
+      const response = await axios.get('/api/game/history', {
+        headers: { 'Cache-Control': 'no-cache' }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching game history:', error);
+      return [];
     }
-    return false;
-  });
+  }, []);
+
+  // Define timer functions before they're used
+  const clearJoinWindowTimer = useCallback(() => {
+    if (joinWindowRef.current) {
+      clearInterval(joinWindowRef.current);
+      joinWindowRef.current = null;
+    }
+  }, []);
+
+  const startJoinWindowTimer = useCallback((seconds: number) => {
+    clearJoinWindowTimer();
+    setJoinWindowTimeLeft(seconds);
+    joinWindowRef.current = setInterval(() => {
+      setJoinWindowTimeLeft(prev => {
+        const newValue = prev - 1;
+        if (newValue <= 0) {
+          clearJoinWindowTimer();
+          return 0;
+        }
+        return newValue;
+      });
+    }, 1000);
+  }, [clearJoinWindowTimer]);
   
-  // Play sound function
-  const playSound = (type: string) => {
-    if (audioRefs.current[type] && !muted) {
-      const audio = audioRefs.current[type];
+  // Initialize audio with shared instances to avoid too many media players
+  const initializeAudio = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    
+    // Only initialize once to prevent multiple instances
+    if (window._crashoutAudioInitialized) {
+      console.info('Audio already initialized, reusing instances');
+      
+      // Update references to existing audio instances
+      if (window._audioInstances) {
+        audioRefs.current.crash = window._audioInstances['crashout_crash'] || null;
+        audioRefs.current.cashout = window._audioInstances['crashout_cashout'] || null;
+        audioRefs.current.win = window._audioInstances['crashout_win'] || null;
+        audioRefs.current.backgroundMusic = window._audioInstances['crashout_bgm'] || null;
+        
+        // Update volume settings on existing instances
+        if (audioRefs.current.backgroundMusic) {
+          audioRefs.current.backgroundMusic.volume = muted ? 0 : volume * 0.3;
+        }
+      }
+      return;
+    }
+    
+    console.info('Initializing audio for Crashout game');
+    window._crashoutAudioInitialized = true;
+    
+    // Preload all audio files with a single instance each
+    audioRefs.current.crash = getAudioInstance('crashout_crash', '/sounds/crash.mp3');
+    audioRefs.current.cashout = getAudioInstance('crashout_cashout', '/sounds/cashout.mp3');
+    audioRefs.current.win = getAudioInstance('crashout_win', '/sounds/win.mp3');
+    
+    const bgMusic = getAudioInstance('crashout_bgm', '/sounds/background_music.mp3');
+    bgMusic.loop = true;
+    bgMusic.volume = muted ? 0 : volume * 0.3;
+    audioRefs.current.backgroundMusic = bgMusic;
+    
+    // Set up instances to handle auto-play restrictions
+    Object.values(audioRefs.current).forEach(audio => {
       if (audio) {
-        audio.volume = type === 'backgroundMusic' ? volume * 0.3 : volume;
-        audio.currentTime = 0;
-        audio.play().catch(e => {
-          console.warn(`Could not play ${type} sound:`, e);
+        // Set initial volume for all audio elements
+        audio.volume = audio === audioRefs.current.backgroundMusic ? volume * 0.3 : volume;
+        // Pre-mute if needed
+        audio.muted = muted;
+      }
+    });
+  }, [muted, volume]);
+  
+  // Modified playSound function to handle errors better
+  const playSound = useCallback((type: string) => {
+    if (!audioRefs.current[type] || muted) return;
+    
+    try {
+      const audio = audioRefs.current[type];
+      if (!audio) return;
+      
+      // Update volume before playing
+      audio.volume = type === 'backgroundMusic' ? volume * 0.3 : volume;
+      audio.muted = muted;
+      
+      // Handle background music specially to avoid resetting position
+      if (type === 'backgroundMusic') {
+        if (audio.paused) {
+          const playPromise = audio.play();
+          if (playPromise !== undefined) {
+            playPromise.catch(e => {
+              if (e.name !== 'AbortError' && e.name !== 'NotAllowedError') {
+                console.warn(`Could not play background music:`, e);
+              }
+            });
+          }
+        }
+        // Don't reset currentTime for background music
+        return;
+      }
+      
+      // For sound effects, reset position and play
+      audio.currentTime = 0;
+      
+      // Use a promise with proper error handling
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(e => {
+          if (e.name !== 'AbortError' && e.name !== 'NotAllowedError') {
+            console.warn(`Could not play ${type} sound:`, e);
+          }
         });
       }
+    } catch (err) {
+      console.warn(`Error playing sound: ${type}`, err);
     }
-  };
+  }, [muted, volume]);
   
-  // Offline demo mode
-  const demoIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const demoTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // Helper method to detect API availability with timeout
+  const checkApiAvailability = useCallback(async () => {
+    try {
+      console.log('Checking API availability...');
+      
+      // Create a promise that rejects after timeout
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('API check timeout')), API_TIMEOUT_MS);
+      });
+      
+      // First try the health endpoint which has more detailed diagnostics
+      try {
+        const healthCheckPromise = fetch('/api/health', { 
+          method: 'GET',
+          headers: { 'Cache-Control': 'no-cache' }
+        })
+        .then(res => res.json());
+        
+        // Race against timeout
+        const healthData = await Promise.race([healthCheckPromise, timeoutPromise]);
+        console.log('API health endpoint response:', healthData);
+        
+        if (healthData.redis?.status !== 'connected') {
+          const errorMsg = healthData.redis?.error || 'Unknown Redis error';
+          console.error('Redis not connected in health check:', errorMsg);
+          toast.error(`Redis connection error: ${errorMsg}`);
+          return false;
+        }
+        
+        return true;
+      } catch (healthError) {
+        console.warn('Health endpoint not available, falling back to game endpoint:', healthError);
+      }
+      
+      // Fall back to the game endpoint with timeout
+      const gameCheckPromise = fetch('/api/game', { 
+        method: 'GET',
+        headers: { 'Cache-Control': 'no-cache' }
+      })
+      .then(res => res.json());
+      
+      const data = await Promise.race([gameCheckPromise, timeoutPromise]);
+      console.log('API game endpoint response:', data);
+      
+      if (data.redis === 'disconnected' || data.status === 'error') {
+        toast.error(`Redis connection error: ${data.error || 'Unknown error'}`);
+        return false;
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('API availability check failed:', error);
+      toast.error(`API availability check failed: ${error instanceof Error ? error.message : String(error)}`);
+      return false;
+    }
+  }, []);
   
-  // Event buffering
-  const latestGameStateRef = useRef<any>(null);
-  const latestMultiplierRef = useRef<number | null>(1.0);
-  const isProcessingUpdatesRef = useRef<boolean>(false);
+  // Modified startDemoMode function to prevent infinite loops
+  const startDemoMode = useCallback(() => {
+    console.log("Starting demo mode");
+    setOfflineMode(true);
+    setIsConnected(true);
+    setConnectionStatus('Demo Mode');
+    
+    // Load demo username from localStorage or use default
+    const storedUsername = localStorage.getItem('crashoutUsername') || 'Player' + Math.floor(Math.random() * 1000);
+    setUsername(storedUsername);
+    localStorage.setItem('crashoutUsername', storedUsername);
+    localStorage.setItem('crashoutDemoMode', 'true');
+    
+    // Reset game state
+    setGameState(GameState.WAITING);
+    setMultiplier(1);
+    setCountdown(5);
+    setPlayers([]);
+    setCashouts([]);
+    setPlayerJoined(false);
+    setCashedOutAt(null);
+    setIsCashoutDisabled(true);
+    
+    // Sample game history
+    setGameHistory([
+      { 
+        id: '1', 
+        value: '1.25', 
+        color: parseFloat('1.25') >= 2.0 ? 'green' : 'red',
+        timestamp: Date.now() - 50000,
+        crashPoint: 1.25
+      },
+      { 
+        id: '2', 
+        value: '2.5', 
+        color: parseFloat('2.5') >= 2.0 ? 'green' : 'red',
+        timestamp: Date.now() - 40000,
+        crashPoint: 2.5
+      },
+      { 
+        id: '3', 
+        value: '1.1', 
+        color: parseFloat('1.1') >= 2.0 ? 'green' : 'red',
+        timestamp: Date.now() - 30000,
+        crashPoint: 1.1
+      },
+      { 
+        id: '4', 
+        value: '5.2', 
+        color: parseFloat('5.2') >= 2.0 ? 'green' : 'red',
+        timestamp: Date.now() - 20000,
+        crashPoint: 5.2
+      },
+      { 
+        id: '5', 
+        value: '1.9', 
+        color: parseFloat('1.9') >= 2.0 ? 'green' : 'red',
+        timestamp: Date.now() - 10000,
+        crashPoint: 1.9
+      }
+    ]);
+    
+    // Clear any existing intervals/timers
+    if (demoIntervalRef.current) {
+      clearInterval(demoIntervalRef.current);
+      demoIntervalRef.current = null;
+    }
+    
+    if (demoTimerRef.current) {
+      clearTimeout(demoTimerRef.current);
+      demoTimerRef.current = null;
+    }
+    
+    // Start the demo game cycle
+    let demoGameState = GameState.WAITING;
+    let demoMultiplier = 1;
+    let demoCountdown = 5;
+    let demoCrashPoint = 1 + Math.random() * 10;
+    
+    // Use a separate variable to track countdown - don't modify state directly in intervals
+    let countdownValue = demoCountdown;
+    
+    // Update countdown during WAITING state - using proper state updates
+    const countdownInterval = setInterval(() => {
+      countdownValue--;
+      // Update state safely
+      setCountdown(countdownValue);
+      
+      if (countdownValue <= 0) {
+        clearInterval(countdownInterval);
+      }
+    }, 1000);
+    
+    // Switch to RUNNING state after countdown
+    demoTimerRef.current = setTimeout(() => {
+      // Switch to RUNNING state after countdown
+      demoGameState = GameState.RUNNING;
+      setGameState(GameState.RUNNING);
+      setIsCashoutDisabled(false);
+      
+      // Update multiplier at intervals during RUNNING state
+      demoIntervalRef.current = setInterval(() => {
+        demoMultiplier = parseFloat((demoMultiplier * 1.05).toFixed(2));
+        setMultiplier(demoMultiplier);
+        
+        // Check if we should crash
+        if (demoMultiplier >= demoCrashPoint) {
+          if (demoIntervalRef.current) {
+            clearInterval(demoIntervalRef.current);
+            demoIntervalRef.current = null;
+          }
+          
+          // Crash the game
+          setGameState(GameState.CRASHED);
+          playSound('crash');
+          
+          // Add to history
+          const newHistoryEntry: GameHistoryEntry = {
+            id: Date.now().toString(),
+            value: demoMultiplier.toFixed(2),
+            color: demoMultiplier >= 2.0 ? 'green' : 'red',
+            timestamp: Date.now(),
+            crashPoint: demoMultiplier
+          };
+          setGameHistory(prev => [newHistoryEntry, ...prev.slice(0, 9)]);
+          
+          // If player joined but didn't cash out, they lost
+          if (playerJoined && cashedOutAt === null) {
+            toast.error(`Game crashed at ${demoMultiplier.toFixed(2)}x. You lost ${betAmount} Farm Coins.`);
+          }
+          
+          // Reset for next round - delay to avoid multiple state updates
+          setTimeout(() => {
+            if (!offlineMode) return; // Only restart if still in demo mode
+            startDemoMode();
+          }, 5000);
+        }
+      }, 100);
+    }, demoCountdown * 1000);
+    
+    toast.success("Started demo mode! You have 1000 Farm Coins to play with.");
+  }, [playSound, betAmount, cashedOutAt, playerJoined, setOfflineMode, setIsConnected, setConnectionStatus, setUsername, setGameState, setMultiplier, setCountdown, setPlayers, setCashouts, setPlayerJoined, setCashedOutAt, setIsCashoutDisabled, setGameHistory, offlineMode]);
+
+  // Set up polling for game state - Define this function here
+  const setupPolling = useCallback(() => {
+    // Polling setup logic...
+    console.log("Setting up polling for game state");
+    
+    // Clear any existing polling interval
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+    
+    // Start polling
+    pollingIntervalRef.current = setInterval(() => {
+      // Actual implementation would call fetchGameState() here
+      console.log("Polling for game state");
+    }, 1000);
+  }, []);
   
-  // Settings for update throttling
-  const MIN_UPDATE_INTERVAL = 500; // ms
-  const FLUSH_INTERVAL = 200; // ms
-  const MAX_QUEUED_EVENTS = 50; // max events in queue
-  
-  // Add MAX_RETRY_ATTEMPTS for API calls
-  const MAX_RETRY_ATTEMPTS = 3;
-  const apiRetryCountRef = useRef<number>(0);
-  
-  // ---- ADD didMountRef HERE ----
-  const didMountRef = useRef<boolean>(false);
-  // ---- END ADD didMountRef ----
-  
-  // Add joinWindowRef
-  const joinWindowRef = useRef<NodeJS.Timeout | null>(null);
-  
+  // Use a more stable structure for dependency arrays in useEffect
+  useEffect(() => {
+    console.log('CrashoutGame component mounted - Running setup effect');
+    
+    // Mark as mounted to prevent useEffect from running twice in development mode
+    if (didMountRef.current) {
+      console.log('[Dev Only/StrictMode] Skipping duplicate setup effect run.');
+      return;
+    }
+    didMountRef.current = true;
+    
+    // Initialize audio with shared instances
+    initializeAudio();
+
+    // Check if environment explicitly sets demo mode
+    const envDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
+    const forceDemoMode = process.env.NEXT_PUBLIC_FORCE_DEMO_MODE === 'true';
+    // Check localStorage for user preference
+    const localStorageDemoMode = typeof window !== 'undefined' && localStorage.getItem('crashoutDemoMode') === 'true';
+    // VERCEL_ENV is automatically available in Vercel deployments
+    const isVercelPreview = typeof window !== 'undefined' && window.location.hostname.includes('vercel.app');
+    
+    const shouldStartInDemoMode = envDemoMode || localStorageDemoMode || isVercelPreview || forceDemoMode;
+
+    if (!shouldStartInDemoMode) {
+      // Try to connect to server and check API availability first
+      checkApiAvailability().then(isAvailable => {
+        if (isAvailable) {
+          console.log("API available, starting online mode");
+          setupPolling();
+        } else {
+          console.log("API not available, starting in demo mode");
+          startDemoMode();
+        }
+      }).catch(() => {
+        console.log("API check failed, starting in demo mode");
+        startDemoMode();
+      });
+    } else {
+      console.log("Initial setup: Starting in demo mode based on settings.");
+      startDemoMode();
+    }
+
+    // Cleanup function
+    return () => {
+      console.log('CrashoutGame setup cleanup running.');
+      clearJoinWindowTimer();
+      
+      // Clear polling interval
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+      
+      // Clean up local timers and intervals
+      if (demoIntervalRef.current) clearInterval(demoIntervalRef.current);
+      if (demoTimerRef.current) clearTimeout(demoTimerRef.current);
+      
+      // Cleanup audio
+      if (audioRefs.current.backgroundMusic) {
+        audioRefs.current.backgroundMusic.pause();
+      }
+    };
+  }, []); // Empty dependency array as this should only run once
+
+  // Handle background music based on game state with proper dependency tracking
+  useEffect(() => {
+    // Only manage audio playback when dependencies change
+    if (audioRefs.current.backgroundMusic) {
+      const bgMusic = audioRefs.current.backgroundMusic;
+      
+      // Update volume
+      bgMusic.volume = muted ? 0 : volume * 0.3;
+      
+      // Handle playing/pausing based on game state
+      if (gameState === GameState.RUNNING && !muted) {
+        const playPromise = bgMusic.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(err => {
+            if (err.name !== 'NotAllowedError') {
+              console.warn('Background music playback error:', err);
+            }
+          });
+        }
+      } else {
+        bgMusic.pause();
+      }
+    }
+  }, [gameState, muted, volume]);
+
+  // Use proper lifecycle handling for the updateGameState function
+  useEffect(() => {
+    // Skip if offline
+    if (offlineMode) return;
+    
+    // Create polling interval
+    const intervalId = setInterval(async () => {
+      if (!isConnected) return;
+      
+      try {
+        const data = await getCurrentGameData();
+        
+        if (!data) {
+          console.warn('No game data received');
+          return;
+        }
+        
+        // Only update state if the data has changed
+        if (JSON.stringify(data) !== JSON.stringify(currentGameData.current)) {
+          currentGameData.current = data;
+          
+          // Handle game state transition
+          const prevState = gameState;
+          setGameState(data.state);
+          
+          // Handle multiplier updates
+          if (data.state === GameState.RUNNING) {
+            if (prevState !== GameState.RUNNING) {
+              // Started a new round - play background music
+              playSound('backgroundMusic');
+            }
+            setMultiplier(data.multiplier || 1.0);
+          }
+          
+          // Handle crash
+          if (data.state === GameState.CRASHED && prevState !== GameState.CRASHED) {
+            // Just crashed - play crash sound
+            playSound('crash');
+            // Update game history with the new round
+            getGameHistory().then(history => setGameHistory(history)).catch(console.error);
+          }
+        }
+      } catch (error) {
+        console.error('Error updating game state:', error);
+        setApiError(true);
+      }
+    }, 1000);
+    
+    // Clean up interval on unmount
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [offlineMode, isConnected, gameState, setApiError, getCurrentGameData, getGameHistory, playSound]);
+
+  // Store volume in localStorage when it changes
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('crashoutVolume', volume.toString());
+      
+      // Update volume for all audio elements
+      Object.values(audioRefs.current).forEach(audio => {
+        if (audio) {
+          audio.volume = audio === audioRefs.current.backgroundMusic ? volume * 0.3 : volume;
+        }
+      });
+    }
+  }, [volume]);
+
+  // Store muted state in localStorage when it changes
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('crashoutMuted', muted ? 'true' : 'false');
+      
+      // Update muted state for all audio elements
+      Object.values(audioRefs.current).forEach(audio => {
+        if (audio) {
+          audio.muted = muted;
+        }
+      });
+    }
+  }, [muted]);
+
   // --- Helper Functions ---
 
   const batchUpdate = (updates: { [key: string]: any }) => {
@@ -277,249 +821,6 @@ export function CrashoutGame() {
 
     setGameHistory(limitedHistory);
   };
-  
-  // --- Define timer functions before use ---
-  const clearJoinWindowTimer = useCallback(() => {
-    if (joinWindowRef.current) {
-      clearInterval(joinWindowRef.current);
-      joinWindowRef.current = null;
-    }
-  }, []);
-
-  const startJoinWindowTimer = useCallback((seconds: number) => {
-    clearJoinWindowTimer();
-    setJoinWindowTimeLeft(seconds);
-    joinWindowRef.current = setInterval(() => {
-      setJoinWindowTimeLeft(prev => {
-        const newValue = prev - 1;
-        if (newValue <= 0) {
-          clearJoinWindowTimer();
-          return 0;
-        }
-        return newValue;
-      });
-    }, 1000);
-  }, [clearJoinWindowTimer]);
-
-  // ---- API Communication Functions ----
-
-  // Fetch game state from API
-  const fetchGameState = useCallback(async () => {
-    if (offlineMode) return;
-    
-    try {
-      const response = await axios.post('/api/game', { 
-        action: 'sync',
-        username 
-      });
-      
-      if (response.data.success) {
-        // Reset retry counter on successful request
-        apiRetryCountRef.current = 0;
-        
-        const { gameState, history, cashouts, playerData } = response.data;
-        
-        // Update game state
-        const updates: { [key: string]: any } = {};
-        
-        if (gameState.state !== undefined) updates.gameState = gameState.state;
-        if (gameState.multiplier !== undefined) updates.multiplier = gameState.multiplier;
-        if (gameState.countdown !== undefined) updates.countdown = gameState.countdown;
-        if (gameState.playersInGame !== undefined) setPlayersInGame(gameState.playersInGame);
-        if (gameState.onlinePlayers !== undefined) setOnlinePlayersCount(gameState.onlinePlayers);
-        if (gameState.nextGameTime !== undefined) setNextGameStartTime(gameState.nextGameTime);
-        if (gameState.joinWindowTimeLeft !== undefined) updates.joinWindowTimeLeft = gameState.joinWindowTimeLeft;
-        
-        // Update history if provided
-        if (history) {
-          const formattedHistory = history.map((item: any) => ({
-            value: typeof item.crashPoint === 'string' ? item.crashPoint : item.crashPoint.toFixed(2),
-            color: item.color || (parseFloat(item.crashPoint.toString()) >= 2.0 ? "green" : "red"),
-            timestamp: item.timestamp
-          }));
-          updateGameHistory(formattedHistory);
-        }
-        
-        // Update cashouts if provided
-        if (cashouts && cashouts.length > 0) {
-          setRecentCashouts(cashouts);
-        }
-        
-        // Update player state if provided
-        if (playerData) {
-          if (playerData.joined !== undefined) setPlayerJoined(playerData.joined);
-          if (playerData.cashedOut !== undefined && playerData.cashedOutAt) {
-            setCashedOutAt(playerData.cashedOutAt);
-          }
-          
-          // Optionally update bet preferences if they've changed on the server
-          if (playerData.betAmount) setBetAmount(playerData.betAmount.toString());
-          if (playerData.autoCashout) setAutoCashout(playerData.autoCashout.toString());
-        }
-        
-        // --- Update UI based on game state ---
-        const currentServerState = gameState.state;
-        
-        // Background music
-        if (audioRefs.current.backgroundMusic) {
-          if (currentServerState === GAME_STATE.ACTIVE || currentServerState === GAME_STATE.COUNTDOWN) {
-            playSound('backgroundMusic');
-          } else if (currentServerState === GAME_STATE.CRASHED || currentServerState === GAME_STATE.INACTIVE) {
-            if (audioRefs.current.backgroundMusic.paused === false) {
-              audioRefs.current.backgroundMusic.pause();
-              audioRefs.current.backgroundMusic.currentTime = 0;
-            }
-          }
-        }
-        
-        // UI elements and player status derived from state
-        let newCanPlaceBet = false;
-        let newIsCashoutDisabled = true;
-        
-        if (currentServerState === GAME_STATE.INACTIVE) {
-          updates.showLossImage = false;
-          updates.showGameStartedImage = false;
-          if (playerJoined) setPlayerJoined(false);
-          if (cashedOutAt !== null) setCashedOutAt(null);
-          newIsCashoutDisabled = true;
-          newCanPlaceBet = false;
-        } else if (currentServerState === GAME_STATE.COUNTDOWN) {
-          updates.showLossImage = false;
-          updates.showGameStartedImage = false;
-          newIsCashoutDisabled = true;
-          
-          if (gameState.joinWindowTimeLeft > 0 && !playerData?.joined) {
-            newCanPlaceBet = true;
-          } else {
-            newCanPlaceBet = false;
-          }
-          
-          if (gameState.joinWindowTimeLeft > 0 && joinWindowRef.current === null) {
-            startJoinWindowTimer(gameState.joinWindowTimeLeft);
-          } else if (gameState.joinWindowTimeLeft <= 0 && joinWindowRef.current !== null) {
-            clearJoinWindowTimer();
-          }
-        } else if (currentServerState === GAME_STATE.ACTIVE) {
-          if (joinWindowRef.current !== null) clearJoinWindowTimer();
-          newCanPlaceBet = false;
-          updates.showGameStartedImage = true;
-          
-          const isPlayerActive = playerData?.joined && !playerData?.cashedOut;
-          newIsCashoutDisabled = !isPlayerActive;
-          
-          // Adjust polling rate for active game
-          pollingRateRef.current = 1000; // Poll more frequently during active game
-        } else if (currentServerState === GAME_STATE.CRASHED) {
-          updates.showGameStartedImage = false;
-          updates.showLossImage = true;
-          newIsCashoutDisabled = true;
-          newCanPlaceBet = false;
-          
-          if (joinWindowRef.current !== null) clearJoinWindowTimer();
-          
-          // Play crash sound if we just crashed and player lost
-          if (playerData?.joined && !playerData?.cashedOut) {
-            playSound('crash');
-          }
-          
-          // Reset polling rate
-          pollingRateRef.current = 3000;
-          
-          requestAnimationFrame(() => {
-            if (multiplierTextRef.current && gameState.crashPoint) {
-              multiplierTextRef.current.style.color = "#f00";
-              multiplierTextRef.current.textContent = `${gameState.crashPoint.toFixed(2)}x`;
-            }
-          });
-        }
-        
-        // Update derived state if changed
-        if (newCanPlaceBet !== canPlaceBet) updates.canPlaceBet = newCanPlaceBet;
-        if (newIsCashoutDisabled !== isCashoutDisabled) updates.isCashoutDisabled = newIsCashoutDisabled;
-        
-        // Apply batched updates
-        if (Object.keys(updates).length > 0) {
-          batchUpdate(updates);
-        }
-        
-        // If we're connected now but weren't before, update status
-        if (!isConnected) {
-          setIsConnected(true);
-          setConnectionStatus("connected");
-          toast.success("Connected to game server!");
-        }
-      }
-    } catch (error) {
-      console.error('Error fetching game state:', error);
-      
-      // Get more detailed error information
-      let errorMessage = 'Connection error';
-      if (axios.isAxiosError(error)) {
-        if (error.response) {
-          // The request was made and the server responded with a status code
-          // that falls out of the range of 2xx
-          errorMessage = `Server error: ${error.response.status} - ${error.response.data?.message || 'Unknown error'}`;
-          console.error('Error response data:', error.response.data);
-        } else if (error.request) {
-          // The request was made but no response was received
-          errorMessage = 'No response from server';
-        } else {
-          // Something happened in setting up the request
-          errorMessage = `Request failed: ${error.message}`;
-        }
-      } else if (error instanceof Error) {
-        errorMessage = error.message;
-      }
-      
-      // Handle connection errors - with retry counter and auto fallback to demo mode
-      if (isConnected) {
-        setIsConnected(false);
-        setConnectionStatus("disconnected");
-        toast.error(`Lost connection to game server: ${errorMessage}. Attempting to reconnect...`);
-      }
-      
-      // Increment retry counter
-      apiRetryCountRef.current += 1;
-      
-      // If we've tried too many times, switch to demo mode automatically
-      if (apiRetryCountRef.current >= MAX_RETRY_ATTEMPTS) {
-        toast.error(`Unable to connect to game server: ${errorMessage}. Switching to demo mode...`);
-        startDemoMode();
-      }
-    }
-  }, [
-    offlineMode, username, gameState, multiplier, countdown, 
-    joinWindowTimeLeft, playerJoined, cashedOutAt, isConnected, playSound,
-    updateGameHistory, canPlaceBet, isCashoutDisabled,
-    clearJoinWindowTimer, startJoinWindowTimer
-  ]);
-  
-  // Set up polling for game state
-  const setupPolling = useCallback(() => {
-    if (offlineMode) return;
-    
-    // Clear any existing interval
-    if (pollingIntervalRef.current) {
-      clearInterval(pollingIntervalRef.current);
-    }
-    
-    // Initial fetch
-    fetchGameState();
-    
-    // Set up polling interval - rate varies based on game state
-    pollingIntervalRef.current = setInterval(() => {
-      fetchGameState();
-    }, pollingRateRef.current);
-    
-    setConnectionStatus("connecting");
-    toast.info("Connecting to game server...");
-    
-    return () => {
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-      }
-    };
-  }, [offlineMode, fetchGameState]);
   
   // Handle placing a bet
   const handlePlay = useCallback(async () => {
@@ -697,236 +998,6 @@ export function CrashoutGame() {
     }
   }, [isConnected, username, offlineMode, betAmount, autoCashout]);
 
-  // Start demo mode function
-  const startDemoMode = useCallback(() => {
-    console.log("Starting demo mode");
-    setOfflineMode(true);
-    setIsConnected(true);
-    setConnectionStatus('Demo Mode');
-    
-    // Load demo username from localStorage or use default
-    const storedUsername = localStorage.getItem('crashoutUsername') || 'Player' + Math.floor(Math.random() * 1000);
-    setUsername(storedUsername);
-    localStorage.setItem('crashoutUsername', storedUsername);
-    localStorage.setItem('crashoutDemoMode', 'true');
-    
-    // Reset game state
-    setGameState(GameState.WAITING);
-    setMultiplier(1);
-    setCountdown(5);
-    setPlayers([]);
-    setCashouts([]);
-    setPlayerJoined(false);
-    setCashedOutAt(null);
-    setIsCashoutDisabled(true);
-    
-    // Sample game history
-    setGameHistory([
-      { 
-        id: '1', 
-        value: '1.25', 
-        color: parseFloat('1.25') >= 2.0 ? 'green' : 'red',
-        timestamp: Date.now() - 50000,
-        crashPoint: 1.25
-      },
-      { 
-        id: '2', 
-        value: '2.5', 
-        color: parseFloat('2.5') >= 2.0 ? 'green' : 'red',
-        timestamp: Date.now() - 40000,
-        crashPoint: 2.5
-      },
-      { 
-        id: '3', 
-        value: '1.1', 
-        color: parseFloat('1.1') >= 2.0 ? 'green' : 'red',
-        timestamp: Date.now() - 30000,
-        crashPoint: 1.1
-      },
-      { 
-        id: '4', 
-        value: '5.2', 
-        color: parseFloat('5.2') >= 2.0 ? 'green' : 'red',
-        timestamp: Date.now() - 20000,
-        crashPoint: 5.2
-      },
-      { 
-        id: '5', 
-        value: '1.9', 
-        color: parseFloat('1.9') >= 2.0 ? 'green' : 'red',
-        timestamp: Date.now() - 10000,
-        crashPoint: 1.9
-      }
-    ]);
-    
-    // Setup demo game loop
-    let demoGameState = GameState.WAITING;
-    let demoMultiplier = 1;
-    let demoCountdown = 5;
-    let demoCrashPoint = 1 + Math.random() * 10;
-    
-    // Clear any existing intervals/timers
-    if (demoIntervalRef.current) clearInterval(demoIntervalRef.current);
-    if (demoTimerRef.current) clearTimeout(demoTimerRef.current);
-    
-    // Start the demo game cycle
-    demoTimerRef.current = setTimeout(() => {
-      // Switch to RUNNING state after countdown
-      demoGameState = GameState.RUNNING;
-      setGameState(GameState.RUNNING);
-      setIsCashoutDisabled(false);
-      
-      // Update multiplier at intervals during RUNNING state
-      demoIntervalRef.current = setInterval(() => {
-        demoMultiplier = parseFloat((demoMultiplier * 1.05).toFixed(2));
-        setMultiplier(demoMultiplier);
-        
-        // Check if we should crash
-        if (demoMultiplier >= demoCrashPoint) {
-          clearInterval(demoIntervalRef.current as NodeJS.Timeout);
-          
-          // Crash the game
-          setGameState(GameState.CRASHED);
-          playSound('crash');
-          
-          // Add to history
-          const newHistoryEntry: GameHistoryEntry = {
-            id: Date.now().toString(),
-            value: demoMultiplier.toFixed(2),
-            color: demoMultiplier >= 2.0 ? 'green' : 'red',
-            timestamp: Date.now(),
-            crashPoint: demoMultiplier
-          };
-          setGameHistory(prev => [newHistoryEntry, ...prev.slice(0, 9)]);
-          
-          // If player joined but didn't cash out, they lost
-          if (playerJoined && cashedOutAt === null) {
-            toast.error(`Game crashed at ${demoMultiplier.toFixed(2)}x. You lost ${betAmount} Farm Coins.`);
-          }
-          
-          // Reset for next round
-          setTimeout(() => {
-            startDemoMode();
-          }, 5000);
-        }
-      }, 100);
-    }, demoCountdown * 1000);
-    
-    // Update countdown during WAITING state
-    const countdownInterval = setInterval(() => {
-      demoCountdown--;
-      setCountdown(demoCountdown);
-      
-      if (demoCountdown <= 0) {
-        clearInterval(countdownInterval);
-      }
-    }, 1000);
-    
-    toast.success("Started demo mode! You have 1000 Farm Coins to play with.");
-    
-  }, [betAmount, cashedOutAt, playerJoined, playSound]);
-
-  // Use setupPolling in place of connectToServer
-  useEffect(() => {
-    if (didMountRef.current) {
-      console.log('[Dev Only/StrictMode] Skipping setup effect run.');
-      return;
-    }
-    didMountRef.current = true;
-
-    console.log('CrashoutGame component mounted - Running setup effect');
-    
-    // Setup audio
-    audioRefs.current.crash = new Audio('/sounds/crash.mp3');
-    audioRefs.current.cashout = new Audio('/sounds/cashout.mp3');
-    audioRefs.current.win = new Audio('/sounds/win.mp3');
-    const bgMusic = new Audio('/sounds/background_music.mp3');
-    bgMusic.loop = true;
-    bgMusic.volume = muted ? 0 : volume * 0.3;
-    audioRefs.current.backgroundMusic = bgMusic;
-
-    // Check if environment explicitly sets demo mode
-    const envDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
-    // Check localStorage for user preference
-    const localStorageDemoMode = typeof window !== 'undefined' && localStorage.getItem('crashoutDemoMode') === 'true';
-    // VERCEL_ENV is automatically available in Vercel deployments
-    const isVercelPreview = typeof window !== 'undefined' && window.location.hostname.includes('vercel.app');
-    
-    const shouldStartInDemoMode = envDemoMode || localStorageDemoMode || isVercelPreview;
-
-    if (!shouldStartInDemoMode) {
-      // Try online mode first, but it will fallback to demo if API calls fail
-      setupPolling();
-    } else {
-      console.log("Initial setup: Starting in demo mode based on settings.");
-      startDemoMode();
-    }
-
-    return () => {
-      console.log('CrashoutGame setup cleanup running.');
-      clearJoinWindowTimer();
-      
-      // Clear polling interval
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-        pollingIntervalRef.current = null;
-      }
-      
-      // Clean up audio
-      Object.values(audioRefs.current).forEach(audio => {
-        if (audio) {
-          audio.pause();
-          audio.src = '';
-        }
-      });
-
-      if (demoIntervalRef.current) clearInterval(demoIntervalRef.current);
-      if (demoTimerRef.current) clearTimeout(demoTimerRef.current);
-      didMountRef.current = false;
-    };
-  }, [setupPolling, clearJoinWindowTimer, startDemoMode]);
-
-  // Add helper method to detect API availability
-  const checkApiAvailability = useCallback(async () => {
-    try {
-      console.log('Checking API availability...');
-      
-      // First try the health endpoint which has more detailed diagnostics
-      try {
-        const healthResponse = await fetch('/api/health', { method: 'GET' });
-        const healthData = await healthResponse.json();
-        console.log('API health endpoint response:', healthData);
-        
-        if (healthData.redis?.status !== 'connected') {
-          const errorMsg = healthData.redis?.error || 'Unknown Redis error';
-          console.error('Redis not connected in health check:', errorMsg);
-          toast.error(`Redis connection error: ${errorMsg}`);
-          return false;
-        }
-        
-        return true;
-      } catch (healthError) {
-        console.warn('Health endpoint not available, falling back to game endpoint:', healthError);
-      }
-      
-      // Fall back to the game endpoint
-      const response = await fetch('/api/game', { method: 'GET' });
-      const data = await response.json();
-      console.log('API game endpoint response:', data);
-      
-      if (data.redis === 'disconnected') {
-        toast.error(`Redis connection error: ${data.error || 'Unknown error'}`);
-        return false;
-      }
-      
-      return true;
-    } catch (error) {
-      console.error('API availability check failed:', error);
-      toast.error(`API availability check failed: ${error instanceof Error ? error.message : String(error)}`);
-      return false;
-    }
-  }, []);
-
   useEffect(() => {
     // When the component first mounts, check if API is reachable at all
     // If not, don't even try POST requests and go straight to demo mode
@@ -1062,9 +1133,7 @@ export function CrashoutGame() {
           </div>
           
           <div className="hidden">
-            <audio src="/sounds/crash.mp3" ref={el => { if (el) audioRefs.current.crash = el; }}></audio>
-            <audio src="/sounds/cashout.mp3" ref={el => { if (el) audioRefs.current.cashout = el; }}></audio>
-            <audio src="/sounds/win.mp3" ref={el => { if (el) audioRefs.current.win = el; }}></audio>
+            {/* No need to create audio elements here anymore */}
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
