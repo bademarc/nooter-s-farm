@@ -8,8 +8,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Akaya+Kanadaka&display=swap');
 
-
-
 * {
   font-family: "Akaya Kanadaka", system-ui;
 }
@@ -45,12 +43,39 @@
 
 body {
   font-family: var(--font-sans);
-  @apply bg-background text-foreground;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
 }
 
 @layer utilities {
   .text-balance {
     text-wrap: balance;
+  }
+  
+  .bg-background {
+    background-color: hsl(var(--background));
+  }
+  
+  .bg-gradient-to-r {
+    background-image: linear-gradient(to right, var(--tw-gradient-stops));
+  }
+  
+  .from-secondary {
+    --tw-gradient-from: hsl(var(--secondary));
+    --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, transparent);
+  }
+  
+  .to-highlight-blue {
+    --tw-gradient-to: hsl(var(--highlight-blue));
+  }
+  
+  .text-transparent {
+    color: transparent;
+  }
+  
+  .bg-clip-text {
+    -webkit-background-clip: text;
+    background-clip: text;
   }
 }
 
@@ -104,7 +129,8 @@ body {
   
   body {
     font-family: "Akaya Kanadaka", system-ui;
-    @apply bg-background text-foreground;
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
   }
   
   h1, h2, h3, h4 {
@@ -147,7 +173,7 @@ body {
 
   /* Removed redundant @layer base and applied border only to specific elements */
   html, body, div, section, article {
-    @apply border-border;
+    border-color: hsl(var(--border));
   }
 
   html, body {
