@@ -14,8 +14,8 @@ try {
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: false, // Disable strict mode to prevent double-mounting issues with Phaser
-  // Always use static export to avoid server components issues
-  output: 'export',
+  // Remove static export to enable API routes
+  // output: 'export',
   // Add trailingSlash to improve compatibility with static hosting
   trailingSlash: true,
   // Set standard page extensions

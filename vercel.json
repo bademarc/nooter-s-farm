@@ -10,11 +10,6 @@
   "devCommand": null,
   "installCommand": "pnpm install",
   "framework": "nextjs",
-  "outputDirectory": "out",
-  "rewrites": [
-    { "source": "/guide", "destination": "/guide.html" },
-    { "source": "/(.*)", "destination": "/index.html" }
-  ],
   "crons": [
     {
       "path": "/api/cron/game-cycle",
