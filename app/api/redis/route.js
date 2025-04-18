@@ -80,6 +80,32 @@ export async function POST(req) {
       
       return NextResponse.json({ success: true });
     }
+    else if (action === 'updateGameState') {
+      // Update game state
+      await redis.set('crashout:gameState', JSON.stringify({
+        ...data,
+        lastUpdate: Date.now()
+      }));
+      return NextResponse.json({ success: true });
+    }
+    else if (action === 'updateHeartbeat') {
+      // Just update the heartbeat timestamp (already done above)
+      return NextResponse.json({ success: true });
+    }
+    else if (action === 'updateStats') {
+      // Update game statistics based on client data
+      const currentStats = await redis.get('crashout:stats');
+      const parsedStats = currentStats ? JSON.parse(currentStats) : {};
+      
+      const updatedStats = {
+        ...parsedStats,
+        ...data,
+        lastClientUpdate: Date.now()
+      };
+      
+      await redis.set('crashout:stats', JSON.stringify(updatedStats));
+      return NextResponse.json({ success: true });
+    }
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
   } catch (error) {

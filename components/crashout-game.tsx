@@ -714,20 +714,150 @@ export function CrashoutGame() {
       syncWithRedis
   ]);
 
-  // Add an effect to sync with Redis periodically
+  // Define these helper functions at the top of the component
+  const syncWithRedis = useCallback(async () => {
+    if (offlineMode) return;
+    
+    try {
+      // Get current game state from Redis
+      const response = await axios.get('/api/redis?action=getGameState');
+      if (response.data.success && response.data.gameState) {
+        console.log('Synced with Redis game state:', response.data.gameState);
+        
+        // Update local state based on Redis data
+        if (response.data.gameState.state) {
+          setGameState(response.data.gameState.state);
+        }
+        
+        if (response.data.gameState.nextGameTime) {
+          setNextGameStartTime(response.data.gameState.nextGameTime);
+        }
+      } else {
+        // If no game state exists, initialize it
+        await axios.post('/api/redis', {
+          action: 'updateGameState',
+          data: {
+            state: gameState,
+            nextGameTime: nextGameStartTime || Date.now() + 10000,
+            lastUpdate: Date.now()
+          }
+        });
+      }
+      
+      // Get game history
+      const historyResponse = await axios.get('/api/redis?action=getHistory');
+      if (historyResponse.data.success && historyResponse.data.history) {
+        // Convert Redis history format to game history format
+        const formattedHistory = historyResponse.data.history.map((item: any) => ({
+          value: item.crashPoint.toFixed(2),
+          color: parseFloat(item.crashPoint) >= 2.0 ? "green" : "red",
+          timestamp: item.timestamp
+        }));
+        
+        updateGameHistory(formattedHistory);
+      }
+      
+      // Update heartbeat on every sync 
+      await axios.post('/api/redis', {
+        action: 'updateHeartbeat',
+        data: { timestamp: Date.now() }
+      });
+    } catch (error) {
+      console.error('Error syncing with Redis:', error);
+    }
+  }, [offlineMode, updateGameHistory, gameState, nextGameStartTime]);
+
+  // Function to log player activity to Redis
+  const logPlayerActivity = useCallback(async () => {
+    if (offlineMode) return;
+    
+    try {
+      await axios.post('/api/redis', {
+        action: 'updatePlayer',
+        data: {
+          playerId: username,
+          lastBet: parseFloat(betAmount) || 0,
+          autoCashout: parseFloat(autoCashout) || 2.0,
+          lastGameResult: cashedOutAt ? 'win' : (playerJoined && gameState === GAME_STATE.CRASHED ? 'loss' : null)
+        }
+      });
+    } catch (error) {
+      console.error('Error logging player activity:', error);
+    }
+  }, [offlineMode, username, betAmount, autoCashout, cashedOutAt, playerJoined, gameState]);
+
+  // Function to log game results to Redis
+  const logGameResult = useCallback(async (crashPoint: number) => {
+    if (offlineMode) return;
+    
+    try {
+      await axios.post('/api/redis', {
+        action: 'logGameResult',
+        data: {
+          crashPoint: crashPoint,
+          playerCount: playersInGame,
+          activePlayerCount: onlinePlayersCount
+        }
+      });
+      
+      // Also update the game state when a game ends
+      await axios.post('/api/redis', {
+        action: 'updateGameState',
+        data: {
+          state: GAME_STATE.INACTIVE,
+          nextGameTime: Date.now() + 10000,
+          lastUpdate: Date.now()
+        }
+      });
+    } catch (error) {
+      console.error('Error logging game result:', error);
+    }
+  }, [offlineMode, playersInGame, onlinePlayersCount]);
+
+  // Update the useEffect that deals with Redis syncing to be more active
   useEffect(() => {
     if (!offlineMode && isConnected) {
-      // Log player activity when they join or leave a game
+      // Log player activity when component is first mounted
       logPlayerActivity();
       
-      // Set up periodic sync (every 30 seconds)
+      // Initial sync
+      syncWithRedis();
+      
+      // Set up much more frequent sync (every 10 seconds) to make up for less frequent cron job
       const syncInterval = setInterval(() => {
         syncWithRedis();
+      }, 10000);
+      
+      // More frequent player activity logging (every 30 seconds)
+      const activityInterval = setInterval(() => {
+        logPlayerActivity();
       }, 30000);
       
-      return () => clearInterval(syncInterval);
+      // Also do some maintenance that would normally be handled by the cron job
+      const maintenanceInterval = setInterval(async () => {
+        try {
+          const stats = {
+            playerCount: onlinePlayersCount,
+            activePlayers: playersInGame,
+            timestamp: Date.now()
+          };
+          
+          await axios.post('/api/redis', {
+            action: 'updateStats',
+            data: stats
+          });
+        } catch (error) {
+          console.error('Error performing client-side maintenance:', error);
+        }
+      }, 60000); // Run every minute
+      
+      return () => {
+        clearInterval(syncInterval);
+        clearInterval(activityInterval);
+        clearInterval(maintenanceInterval);
+      };
     }
-  }, [offlineMode, isConnected, logPlayerActivity, syncWithRedis]);
+  }, [offlineMode, isConnected, logPlayerActivity, syncWithRedis, onlinePlayersCount, playersInGame]);
 
   // Main setup effect
   useEffect(() => {
@@ -891,80 +1021,6 @@ export function CrashoutGame() {
     colyseusRoomRef.current.send("update-username", { newUsername: trimmedUsername });
 
   }, [isConnected, username, offlineMode]);
-
-  // Add these new functions for Redis integration
-  const syncWithRedis = useCallback(async () => {
-    if (offlineMode) return;
-    
-    try {
-      // Get current game state from Redis
-      const response = await axios.get('/api/redis?action=getGameState');
-      if (response.data.success && response.data.gameState) {
-        console.log('Synced with Redis game state:', response.data.gameState);
-        
-        // Update local state based on Redis data
-        if (response.data.gameState.state) {
-          setGameState(response.data.gameState.state);
-        }
-        
-        if (response.data.gameState.nextGameTime) {
-          setNextGameStartTime(response.data.gameState.nextGameTime);
-        }
-      }
-      
-      // Get game history
-      const historyResponse = await axios.get('/api/redis?action=getHistory');
-      if (historyResponse.data.success && historyResponse.data.history) {
-        // Convert Redis history format to game history format
-        const formattedHistory = historyResponse.data.history.map(item => ({
-          value: item.crashPoint.toFixed(2),
-          color: parseFloat(item.crashPoint) >= 2.0 ? "green" : "red",
-          timestamp: item.timestamp
-        }));
-        
-        updateGameHistory(formattedHistory);
-      }
-    } catch (error) {
-      console.error('Error syncing with Redis:', error);
-    }
-  }, [offlineMode, updateGameHistory]);
-
-  // Function to log player activity to Redis
-  const logPlayerActivity = useCallback(async () => {
-    if (offlineMode) return;
-    
-    try {
-      await axios.post('/api/redis', {
-        action: 'updatePlayer',
-        data: {
-          playerId: username,
-          lastBet: parseFloat(betAmount) || 0,
-          autoCashout: parseFloat(autoCashout) || 2.0,
-          lastGameResult: cashedOutAt ? 'win' : (playerJoined && gameState === GAME_STATE.CRASHED ? 'loss' : null)
-        }
-      });
-    } catch (error) {
-      console.error('Error logging player activity:', error);
-    }
-  }, [offlineMode, username, betAmount, autoCashout, cashedOutAt, playerJoined, gameState]);
-
-  // Function to log game results to Redis
-  const logGameResult = useCallback(async (crashPoint) => {
-    if (offlineMode) return;
-    
-    try {
-      await axios.post('/api/redis', {
-        action: 'logGameResult',
-        data: {
-          crashPoint: crashPoint,
-          playerCount: playersInGame,
-          activePlayerCount: onlinePlayersCount
-        }
-      });
-    } catch (error) {
-      console.error('Error logging game result:', error);
-    }
-  }, [offlineMode, playersInGame, onlinePlayersCount]);
 
   return (
     <div className="space-y-4">
