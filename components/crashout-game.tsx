@@ -174,6 +174,10 @@ export function CrashoutGame() {
   const FLUSH_INTERVAL = 200; // ms
   const MAX_QUEUED_EVENTS = 50; // max events in queue
   
+  // Add MAX_RETRY_ATTEMPTS for API calls
+  const MAX_RETRY_ATTEMPTS = 3;
+  const apiRetryCountRef = useRef<number>(0);
+  
   // ---- ADD didMountRef HERE ----
   const didMountRef = useRef<boolean>(false);
   // ---- END ADD didMountRef ----
@@ -310,6 +314,9 @@ export function CrashoutGame() {
       });
       
       if (response.data.success) {
+        // Reset retry counter on successful request
+        apiRetryCountRef.current = 0;
+        
         const { gameState, history, cashouts, playerData } = response.data;
         
         // Update game state
@@ -445,11 +452,20 @@ export function CrashoutGame() {
     } catch (error) {
       console.error('Error fetching game state:', error);
       
-      // Handle connection errors
+      // Handle connection errors - with retry counter and auto fallback to demo mode
       if (isConnected) {
         setIsConnected(false);
         setConnectionStatus("disconnected");
         toast.error("Lost connection to game server. Attempting to reconnect...");
+      }
+      
+      // Increment retry counter
+      apiRetryCountRef.current += 1;
+      
+      // If we've tried too many times, switch to demo mode automatically
+      if (apiRetryCountRef.current >= MAX_RETRY_ATTEMPTS) {
+        toast.error("Unable to connect to game server. Switching to demo mode...");
+        startDemoMode();
       }
     }
   }, [
@@ -810,12 +826,17 @@ export function CrashoutGame() {
     bgMusic.volume = muted ? 0 : volume * 0.3;
     audioRefs.current.backgroundMusic = bgMusic;
 
-    const shouldStartInDemoMode =
-      process.env.NEXT_PUBLIC_DEMO_MODE === 'true' ||
-      localStorage.getItem('crashoutDemoMode') === 'true';
+    // Check if environment explicitly sets demo mode
+    const envDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
+    // Check localStorage for user preference
+    const localStorageDemoMode = typeof window !== 'undefined' && localStorage.getItem('crashoutDemoMode') === 'true';
+    // VERCEL_ENV is automatically available in Vercel deployments
+    const isVercelPreview = typeof window !== 'undefined' && window.location.hostname.includes('vercel.app');
+    
+    const shouldStartInDemoMode = envDemoMode || localStorageDemoMode || isVercelPreview;
 
     if (!shouldStartInDemoMode) {
-      // Start polling instead of connecting to Colyseus
+      // Try online mode first, but it will fallback to demo if API calls fail
       setupPolling();
     } else {
       console.log("Initial setup: Starting in demo mode based on settings.");
@@ -844,7 +865,32 @@ export function CrashoutGame() {
       if (demoTimerRef.current) clearTimeout(demoTimerRef.current);
       didMountRef.current = false;
     };
-  }, [setupPolling, clearJoinWindowTimer]);
+  }, [setupPolling, clearJoinWindowTimer, startDemoMode]);
+
+  // Add helper method to detect API availability
+  const checkApiAvailability = useCallback(async () => {
+    try {
+      // Try a simple GET request first to check if API is available at all
+      await fetch('/api/game', { method: 'GET' });
+      return true;
+    } catch (error) {
+      console.error('API availability check failed:', error);
+      return false;
+    }
+  }, []);
+
+  useEffect(() => {
+    // When the component first mounts, check if API is reachable at all
+    // If not, don't even try POST requests and go straight to demo mode
+    if (!offlineMode) {
+      checkApiAvailability().then(isAvailable => {
+        if (!isAvailable) {
+          toast.error("Game server API not available. Starting in demo mode.");
+          startDemoMode();
+        }
+      });
+    }
+  }, [checkApiAvailability, offlineMode, startDemoMode]);
 
   return (
     <div className="space-y-4">
@@ -870,6 +916,15 @@ export function CrashoutGame() {
               disabled={muted}
             />
           </div>
+          {!offlineMode && (
+            <button
+              onClick={startDemoMode}
+              className="text-xs bg-yellow-600 hover:bg-yellow-700 text-white px-2 py-1 rounded-full"
+              title="Switch to offline demo mode"
+            >
+              Demo Mode
+            </button>
+          )}
           <span className={`text-sm ${
             connectionStatus === 'connected' ? 'text-green-500' :
             connectionStatus === 'connecting' ? 'text-yellow-500' :

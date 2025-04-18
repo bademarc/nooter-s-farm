@@ -487,9 +487,18 @@ const recordPlayerActivity = async (redis, username) => {
 
 // Main API handler
 export default async function handler(req, res) {
-  // Process POST requests only
-  if (req.method !== 'POST') {
+  // Allow both GET and POST for better Vercel compatibility
+  if (req.method !== 'POST' && req.method !== 'GET') {
     return res.status(405).json({ success: false, message: 'Method not allowed' });
+  }
+  
+  // For GET requests, return a simple health check
+  if (req.method === 'GET') {
+    return res.status(200).json({ 
+      success: true, 
+      message: 'Game API is running', 
+      timestamp: Date.now() 
+    });
   }
   
   const { action, username } = req.body;
@@ -497,7 +506,9 @@ export default async function handler(req, res) {
   
   try {
     // Record player activity for online count 
-    await recordPlayerActivity(redis, username);
+    if (username) {
+      await recordPlayerActivity(redis, username);
+    }
     
     // Handle different API actions
     switch (action) {
