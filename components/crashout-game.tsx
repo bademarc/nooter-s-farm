@@ -367,6 +367,18 @@ export function CrashoutGame() {
           return false;
         }
         
+        // Explicitly check for "connected" status to ensure proper detection
+        if (gameResponse.data.redis === 'connected') {
+          console.log('Redis connected successfully');
+          
+          // Force remove any demo mode flags
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('crashoutDemoMode');
+          }
+          
+          return true;
+        }
+        
         return true;
       } catch (gameError) {
         console.warn('Game endpoint check failed, trying health endpoint:', gameError);
@@ -398,6 +410,12 @@ export function CrashoutGame() {
               timeout: API_TIMEOUT_MS * 2,
               headers: { 'Cache-Control': 'no-cache' }
             });
+            
+            // Make sure connected flag is properly checked
+            if (finalResponse.data?.redis === 'connected') {
+              console.log('Redis connected successfully on final attempt');
+              return true;
+            }
             
             return finalResponse.status === 200;
           } catch (finalError) {
@@ -567,10 +585,28 @@ export function CrashoutGame() {
       pollingIntervalRef.current = null;
     }
     
+    // Make sure demo mode is completely disabled
+    if (demoIntervalRef.current) {
+      clearInterval(demoIntervalRef.current);
+      demoIntervalRef.current = null;
+    }
+    
+    if (demoTimerRef.current) {
+      clearTimeout(demoTimerRef.current);
+      demoTimerRef.current = null;
+    }
+    
     // Set initial state
     setIsConnected(true);
     setConnectionStatus('Connected');
     setOfflineMode(false);
+    
+    // Force remove demo mode flag from localStorage
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('crashoutDemoMode');
+    }
+    
+    console.log('Online mode activated - synchronizing with server');
     
     // Helper function to update game history (avoid using updateGameHistory before declared)
     const addToGameHistory = (newEntries: GameHistoryEntry[]) => {
@@ -607,14 +643,32 @@ export function CrashoutGame() {
           return;
         }
         
+        // Always update game history from server to ensure consistency across devices
+        if (data.gameHistory && Array.isArray(data.gameHistory) && data.gameHistory.length > 0) {
+          setGameHistory(data.gameHistory);
+        }
+        
         // Check if the state has changed
-        if (JSON.stringify(data) !== JSON.stringify(currentGameData.current)) {
-          currentGameData.current = data;
-          
-          // Update game state
-          if (data.state) {
-            setGameState(data.state);
-          }
+        const dataChanged = JSON.stringify(data) !== JSON.stringify(currentGameData.current);
+        currentGameData.current = data;
+        
+        // Always update these critical fields regardless of change detection
+        // to ensure consistency across all clients
+        if (data.state) {
+          setGameState(data.state);
+        }
+        
+        if (data.multiplier !== undefined) {
+          setMultiplier(data.multiplier);
+        }
+        
+        if (data.countdown !== undefined) {
+          setCountdown(data.countdown);
+        }
+        
+        // If significant data changed, process all state updates
+        if (dataChanged) {
+          console.log('Game state updated from server:', data.state);
           
           // Handle game state specific logic
           switch (data.state) {
@@ -720,12 +774,18 @@ export function CrashoutGame() {
     };
     
     // Do an initial fetch right away
-    fetchGameState().catch(err => {
+    fetchGameState().then(() => {
+      toast.success('Connected to game server! Play with other players in real-time.');
+    }).catch(err => {
       console.error('Initial game state fetch failed:', err);
     });
     
+    // Use a faster polling rate for better synchronization
+    const onlinePollingRate = 1000; // Poll every second for online mode
+    console.log(`Setting up polling at ${onlinePollingRate}ms intervals`);
+    
     // Start polling at the specified rate
-    pollingIntervalRef.current = setInterval(fetchGameState, pollingRateRef.current);
+    pollingIntervalRef.current = setInterval(fetchGameState, onlinePollingRate);
     
     return () => {
       if (pollingIntervalRef.current) {
@@ -764,6 +824,37 @@ export function CrashoutGame() {
     setOnlinePlayersCount,
     setRecentCashouts
   ]);
+
+  // Add an effect to force check for connection status periodically
+  useEffect(() => {
+    // Don't run if already in offline mode
+    if (offlineMode) return;
+    
+    console.log('Setting up connection verification interval');
+    
+    // Check connection status every 30 seconds
+    const verificationInterval = setInterval(async () => {
+      console.log('Verifying connection status...');
+      
+      try {
+        const isAvailable = await checkApiAvailability();
+        
+        if (isAvailable && offlineMode) {
+          console.log('API now available, switching to online mode');
+          setupPolling();
+        } else if (!isAvailable && !offlineMode) {
+          console.log('API no longer available, switching to demo mode');
+          startDemoMode();
+        }
+      } catch (error) {
+        console.error('Connection verification failed:', error);
+      }
+    }, 30000); // Check every 30 seconds
+    
+    return () => {
+      clearInterval(verificationInterval);
+    };
+  }, [offlineMode, checkApiAvailability, setupPolling, startDemoMode]);
 
   // Use a more stable structure for dependency arrays in useEffect
   useEffect(() => {
