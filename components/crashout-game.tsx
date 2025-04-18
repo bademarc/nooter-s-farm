@@ -452,11 +452,30 @@ export function CrashoutGame() {
     } catch (error) {
       console.error('Error fetching game state:', error);
       
+      // Get more detailed error information
+      let errorMessage = 'Connection error';
+      if (axios.isAxiosError(error)) {
+        if (error.response) {
+          // The request was made and the server responded with a status code
+          // that falls out of the range of 2xx
+          errorMessage = `Server error: ${error.response.status} - ${error.response.data?.message || 'Unknown error'}`;
+          console.error('Error response data:', error.response.data);
+        } else if (error.request) {
+          // The request was made but no response was received
+          errorMessage = 'No response from server';
+        } else {
+          // Something happened in setting up the request
+          errorMessage = `Request failed: ${error.message}`;
+        }
+      } else if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+      
       // Handle connection errors - with retry counter and auto fallback to demo mode
       if (isConnected) {
         setIsConnected(false);
         setConnectionStatus("disconnected");
-        toast.error("Lost connection to game server. Attempting to reconnect...");
+        toast.error(`Lost connection to game server: ${errorMessage}. Attempting to reconnect...`);
       }
       
       // Increment retry counter
@@ -464,7 +483,7 @@ export function CrashoutGame() {
       
       // If we've tried too many times, switch to demo mode automatically
       if (apiRetryCountRef.current >= MAX_RETRY_ATTEMPTS) {
-        toast.error("Unable to connect to game server. Switching to demo mode...");
+        toast.error(`Unable to connect to game server: ${errorMessage}. Switching to demo mode...`);
         startDemoMode();
       }
     }
@@ -870,11 +889,40 @@ export function CrashoutGame() {
   // Add helper method to detect API availability
   const checkApiAvailability = useCallback(async () => {
     try {
-      // Try a simple GET request first to check if API is available at all
-      await fetch('/api/game', { method: 'GET' });
+      console.log('Checking API availability...');
+      
+      // First try the health endpoint which has more detailed diagnostics
+      try {
+        const healthResponse = await fetch('/api/health', { method: 'GET' });
+        const healthData = await healthResponse.json();
+        console.log('API health endpoint response:', healthData);
+        
+        if (healthData.redis?.status !== 'connected') {
+          const errorMsg = healthData.redis?.error || 'Unknown Redis error';
+          console.error('Redis not connected in health check:', errorMsg);
+          toast.error(`Redis connection error: ${errorMsg}`);
+          return false;
+        }
+        
+        return true;
+      } catch (healthError) {
+        console.warn('Health endpoint not available, falling back to game endpoint:', healthError);
+      }
+      
+      // Fall back to the game endpoint
+      const response = await fetch('/api/game', { method: 'GET' });
+      const data = await response.json();
+      console.log('API game endpoint response:', data);
+      
+      if (data.redis === 'disconnected') {
+        toast.error(`Redis connection error: ${data.error || 'Unknown error'}`);
+        return false;
+      }
+      
       return true;
     } catch (error) {
       console.error('API availability check failed:', error);
+      toast.error(`API availability check failed: ${error instanceof Error ? error.message : String(error)}`);
       return false;
     }
   }, []);
