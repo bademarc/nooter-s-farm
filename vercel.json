@@ -6,10 +6,10 @@
       "maxDuration": 10
     }
   },
-  "buildCommand": null,
+  "buildCommand": "npm install --legacy-peer-deps && npm run build",
   "devCommand": null,
-  "installCommand": null,
-  "framework": null,
+  "installCommand": "npm install --legacy-peer-deps",
+  "framework": "nextjs",
   "outputDirectory": "out",
   "rewrites": [
     { "source": "/guide", "destination": "/guide.html" },
@@ -20,5 +20,8 @@
       "path": "/api/cron/game-cycle",
       "schedule": "0 0 * * *"
     }
-  ]
+  ],
+  "env": {
+    "NEXT_PUBLIC_DEMO_MODE": "false"
+  }
 } 
