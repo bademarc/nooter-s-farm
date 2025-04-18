@@ -7,6 +7,32 @@ declare global {
     _loggedUrls?: {[key: string]: boolean};
     _audioInstances?: {[key: string]: HTMLAudioElement};
     _crashoutAudioInitialized?: boolean;
+    _ethereumPropertyProtected?: boolean;
+  }
+}
+
+// Add immediate protection for ethereum properties before imports
+// This runs as soon as the file is parsed, before any components mount
+if (typeof window !== 'undefined' && !window._ethereumPropertyProtected) {
+  try {
+    const protectProperty = (propName: string) => {
+      if (!Object.getOwnPropertyDescriptor(window, propName)) {
+        try {
+          Object.defineProperty(window, propName, {
+            configurable: true,
+            get: () => undefined
+          });
+        } catch (err) {
+          // Silent fail if property is protected
+        }
+      }
+    };
+    
+    // Protect common properties that cause conflicts with browser extensions
+    ['ethereum', 'isZerion', 'web3', 'solana'].forEach(protectProperty);
+    window._ethereumPropertyProtected = true;
+  } catch (e) {
+    // Silent fail for any errors
   }
 }
 
@@ -193,6 +219,8 @@ export function CrashoutGame() {
   // Create a currentGameData ref to track state changes without re-renders
   const currentGameData = useRef<any>(null);
   const apiError = useRef<boolean>(false);
+  const jsonErrorCountRef = useRef<number>(0);
+  const [redisJsonErrorPersistent, setRedisJsonErrorPersistent] = useState<boolean>(false);
 
   const setApiError = useCallback((value: boolean) => {
     apiError.current = value;
@@ -203,7 +231,56 @@ export function CrashoutGame() {
     try {
       console.log('Fetching current game data...');
       const response = await axios.get('/api/game', {
-        headers: { 'Cache-Control': 'no-cache' }
+        headers: { 
+          'Cache-Control': 'no-cache',
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        transformResponse: [
+          // Add custom transform to handle malformed JSON before axios tries to parse it
+          (data) => {
+            if (typeof data !== 'string') return data;
+            
+            try {
+              return JSON.parse(data);
+            } catch (err: any) {
+              console.warn('JSON parse error in response:', err.message);
+              // Try to clean the response
+              if (data.startsWith('{') && data.includes('error')) {
+                try {
+                  // Extract the error message directly
+                  const errorMatch = data.match(/error["']?\s*:\s*["']([^"']+)["']/i);
+                  const errorMsg = errorMatch ? errorMatch[1] : 'Unknown JSON parse error';
+                  
+                  // Return a valid fallback object
+                  return {
+                    success: false,
+                    message: 'Error parsing game data',
+                    error: errorMsg,
+                    redis: 'disconnected',
+                    timestamp: Date.now()
+                  };
+                } catch (e) {
+                  // Last resort fallback
+                  return {
+                    success: false,
+                    message: 'Invalid JSON from API',
+                    error: String(err),
+                    redis: 'disconnected'
+                  };
+                }
+              }
+              
+              // Return a standard error object 
+              return {
+                success: false,
+                message: 'API returned invalid data',
+                error: String(err),
+                redis: 'disconnected'
+              };
+            }
+          }
+        ]
       });
       
       console.log('Game data response status:', response.status);
@@ -212,6 +289,24 @@ export function CrashoutGame() {
       if (!response.data) {
         console.error('API returned empty data');
         return null;
+      }
+      
+      // Check if the response is potentially invalid JSON that was already parsed
+      if (response.data && typeof response.data === 'object' && response.data.error && 
+          response.data.error.includes("JSON")) {
+        console.warn('JSON parse error detected from API response:', response.data.error);
+        // Return a safe fallback object
+        return {
+          state: GAME_STATE.INACTIVE,
+          multiplier: 1.0,
+          countdown: 0,
+          message: "API returned invalid JSON",
+          error: response.data.error,
+          redis: "disconnected",
+          players: [],
+          onlinePlayers: 0,
+          recentCashouts: []
+        };
       }
       
       // If the response contains gameState data, use it directly
@@ -235,8 +330,8 @@ export function CrashoutGame() {
           state: GAME_STATE.INACTIVE,
           multiplier: 1.0,
           countdown: 0,
-          redis: "connected",
-          message: "Game API is running",
+          redis: response.data.redis || "unknown",
+          message: response.data.message || "Game API is running",
           // Add any other default fields we need
           players: [],
           onlinePlayers: 0,
@@ -252,6 +347,12 @@ export function CrashoutGame() {
       if (error.response) {
         // Server responded with non-2xx status
         console.error('Server error response:', error.response.status, error.response.data);
+        
+        // Check if the error is a JSON parsing error
+        const errorData = error.response.data;
+        if (typeof errorData === 'string' && errorData.includes('JSON')) {
+          console.warn('Possible JSON parse error in response');
+        }
       } else if (error.request) {
         // Request was made but no response received
         console.error('No response received from server');
@@ -260,7 +361,18 @@ export function CrashoutGame() {
         console.error('Request setup error:', error.message);
       }
       
-      return null;
+      // Return a fallback state object
+      return {
+        state: GAME_STATE.INACTIVE,
+        multiplier: 1.0,
+        countdown: 0,
+        message: "Error connecting to game API",
+        error: error.message,
+        redis: "disconnected",
+        players: [],
+        onlinePlayers: 0,
+        recentCashouts: []
+      };
     }
   }, []);
 
@@ -671,6 +783,100 @@ export function CrashoutGame() {
     }
   }, []);
   
+  // Helper function to update game history (avoid using updateGameHistory before declared)
+  const addToGameHistory = (newEntries: GameHistoryEntry[]) => {
+    setGameHistory(prev => [...newEntries, ...prev.slice(0, 49)]);
+  };
+  
+  // More reliable fetch with retries
+  const fetchGameStateWithRetry = async (retryCount = 0): Promise<any> => {
+    try {
+      const data = await getCurrentGameData();
+      if (data) {
+        // Check if we have a JSON parse error
+        if (data.error && typeof data.error === 'string' && data.error.includes('JSON')) {
+          console.warn(`JSON parse error in API response: ${data.error}`);
+          
+          // Increment issue counter for tracking persistent issues
+          jsonErrorCountRef.current++;
+          
+          // If we still have retries, try again
+          if (retryCount < 2) {
+            console.log(`JSON parse error, retry ${retryCount + 1}/3`);
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            return fetchGameStateWithRetry(retryCount + 1);
+          }
+          
+          // Check if we're getting persistent JSON errors (5+ in a row)
+          if (jsonErrorCountRef.current > 5) {
+            console.warn('Persistent JSON parsing errors detected, considering fallback to demo mode');
+            
+            // First try the health endpoint to validate Redis status
+            try {
+              const healthResponse = await axios.get('/api/health', {
+                headers: { 'Cache-Control': 'no-cache' }
+              });
+              
+              if (healthResponse.data && healthResponse.data.redis?.status === 'connected') {
+                console.log('Redis is connected via health endpoint despite JSON errors');
+                jsonErrorCountRef.current = 0; // Reset counter since Redis appears to be working
+                // Use fallback data but don't switch to demo mode
+                return data;
+              }
+            } catch (healthErr) {
+              console.error('Health endpoint also failed:', healthErr);
+            }
+            
+            // If health check also fails, consider switching to demo mode
+            setRedisJsonErrorPersistent(true);
+          }
+          
+          // If we're out of retries, use the fallback data
+          return data;
+        }
+        
+        // Reset error counters on successful request
+        if (apiError.current) {
+          console.log('API connection restored');
+          setApiError(false);
+        }
+        
+        // Reset JSON error counter on successful request without JSON errors
+        if (jsonErrorCountRef.current > 0) {
+          jsonErrorCountRef.current = 0;
+        }
+        
+        // Reset persistent JSON error flag if set
+        if (redisJsonErrorPersistent) {
+          setRedisJsonErrorPersistent(false);
+        }
+        
+        return data;
+      }
+      
+      // If we get an empty response but still have retries left
+      if (retryCount < 2) {
+        console.log(`Empty game data, retry ${retryCount + 1}/3`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        return fetchGameStateWithRetry(retryCount + 1);
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Error fetching game state:', error);
+      
+      // Retry a few times before giving up
+      if (retryCount < 2) {
+        console.log(`Request failed, retry ${retryCount + 1}/3`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        return fetchGameStateWithRetry(retryCount + 1);
+      }
+      
+      setApiError(true);
+      return null;
+    }
+  };
+  
   // Modify setupPolling function to be more reliable
   const setupPolling = useCallback(() => {
     console.log("Setting up polling for game state");
@@ -714,11 +920,64 @@ export function CrashoutGame() {
       try {
         const data = await getCurrentGameData();
         if (data) {
-          // Reset API error state on successful request
+          // Check if we have a JSON parse error
+          if (data.error && typeof data.error === 'string' && data.error.includes('JSON')) {
+            console.warn(`JSON parse error in API response: ${data.error}`);
+            
+            // Increment issue counter for tracking persistent issues
+            jsonErrorCountRef.current++;
+            
+            // If we still have retries, try again
+            if (retryCount < 2) {
+              console.log(`JSON parse error, retry ${retryCount + 1}/3`);
+              await new Promise(resolve => setTimeout(resolve, 1000));
+              return fetchGameStateWithRetry(retryCount + 1);
+            }
+            
+            // Check if we're getting persistent JSON errors (5+ in a row)
+            if (jsonErrorCountRef.current > 5) {
+              console.warn('Persistent JSON parsing errors detected, considering fallback to demo mode');
+              
+              // First try the health endpoint to validate Redis status
+              try {
+                const healthResponse = await axios.get('/api/health', {
+                  headers: { 'Cache-Control': 'no-cache' }
+                });
+                
+                if (healthResponse.data && healthResponse.data.redis?.status === 'connected') {
+                  console.log('Redis is connected via health endpoint despite JSON errors');
+                  jsonErrorCountRef.current = 0; // Reset counter since Redis appears to be working
+                  // Use fallback data but don't switch to demo mode
+                  return data;
+                }
+              } catch (healthErr) {
+                console.error('Health endpoint also failed:', healthErr);
+              }
+              
+              // If health check also fails, consider switching to demo mode
+              setRedisJsonErrorPersistent(true);
+            }
+            
+            // If we're out of retries, use the fallback data
+            return data;
+          }
+          
+          // Reset error counters on successful request
           if (apiError.current) {
             console.log('API connection restored');
             setApiError(false);
           }
+          
+          // Reset JSON error counter on successful request without JSON errors
+          if (jsonErrorCountRef.current > 0) {
+            jsonErrorCountRef.current = 0;
+          }
+          
+          // Reset persistent JSON error flag if set
+          if (redisJsonErrorPersistent) {
+            setRedisJsonErrorPersistent(false);
+          }
+          
           return data;
         }
         
@@ -748,6 +1007,15 @@ export function CrashoutGame() {
     // Function to fetch and update game state
     const fetchGameState = async () => {
       try {
+        // Check if we've detected persistent JSON errors and need to switch to demo mode
+        if (redisJsonErrorPersistent) {
+          console.log("Persistent JSON errors detected, switching to demo mode");
+          if (!offlineMode) {
+            startDemoMode();
+          }
+          return;
+        }
+        
         if (apiError.current) {
           // If we had an API error, try to reconnect
           console.log("Attempting to reconnect to API after error");
@@ -770,7 +1038,32 @@ export function CrashoutGame() {
         
         // Check if we have a connection issue
         if (data.status === 'error' || data.redis === 'disconnected') {
-          console.error('Redis connection issue during polling:', data.error || 'Unknown error');
+          const errorMsg = data.error || 'Unknown Redis error';
+          console.error('Redis connection issue during polling:', errorMsg);
+          
+          // Special handling for JSON parse errors - these might be recoverable
+          // so don't immediately switch to demo mode
+          if (errorMsg.includes('JSON')) {
+            console.warn('JSON parse error detected - will retry in next poll cycle');
+            setApiError(true);
+            return;
+          }
+          
+          // Try a direct health check before setting api error
+          try {
+            const healthResponse = await axios.get('/api/health', {
+              headers: { 'Cache-Control': 'no-cache' }
+            });
+            
+            if (healthResponse.data && healthResponse.data.redis && 
+                healthResponse.data.redis.status === 'connected') {
+              console.log('Redis is actually connected via health endpoint - continuing');
+              return;
+            }
+          } catch (healthErr) {
+            console.error('Health check failed during polling:', healthErr);
+          }
+          
           setApiError(true);
           return;
         }
@@ -966,7 +1259,7 @@ export function CrashoutGame() {
     getCurrentGameData, 
     offlineMode, 
     setApiError, 
-    startDemoMode, 
+    startDemoMode,
     gameHistory,
     playerJoined, 
     cashedOutAt, 
@@ -990,7 +1283,9 @@ export function CrashoutGame() {
     setPlayerJoined,
     setCashedOutAt,
     setOnlinePlayersCount,
-    setRecentCashouts
+    setRecentCashouts,
+    redisJsonErrorPersistent,
+    setRedisJsonErrorPersistent
   ]);
 
   // Add back the main setup effect after the reconnection effect
@@ -1167,40 +1462,6 @@ export function CrashoutGame() {
       });
     }
   }, [volume]);
-
-  // Add protection against ethereum-related window errors
-  useEffect(() => {
-    // This helps prevent the ethereum property errors in the error logs
-    if (typeof window !== 'undefined') {
-      try {
-        // Create a simple getter for ethereum if it doesn't exist to prevent errors
-        if (!window.hasOwnProperty('ethereum') && !Object.getOwnPropertyDescriptor(window, 'ethereum')) {
-          console.log('Adding safeguard for ethereum property');
-          Object.defineProperty(window, 'ethereum', {
-            configurable: true,
-            get: () => undefined
-          });
-        }
-        
-        // Add similar protection for other properties causing errors
-        ['isZerion'].forEach(prop => {
-          try {
-            // Only add if doesn't exist and no descriptor already defined
-            if (!window.hasOwnProperty(prop) && !Object.getOwnPropertyDescriptor(window, prop)) {
-              Object.defineProperty(window, prop, {
-                configurable: true,
-                get: () => undefined
-              });
-            }
-          } catch (err) {
-            console.warn(`Could not add safeguard for ${prop}:`, err);
-          }
-        });
-      } catch (error) {
-        console.warn('Could not add ethereum property safeguards:', error);
-      }
-    }
-  }, []);
 
   // Store muted state in localStorage when it changes
   useEffect(() => {
