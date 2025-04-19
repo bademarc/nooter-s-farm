@@ -99,6 +99,11 @@ if (typeof window !== 'undefined' && !typedWindow._ethereumPropertyProtected) {
     
     typedWindow._ethereumPropertyProtected = true;
     
+    // Suppress unhandled promise rejections (e.g., wallet injections) to avoid console spam
+    window.addEventListener('unhandledrejection', event => {
+      event.preventDefault();
+    });
+    
     // Add error handler for extension security policy access errors
     window.addEventListener('error', function(event) {
       if (event.error && event.error.message && 
@@ -122,6 +127,21 @@ import { useTheme } from 'next-themes';
 import './crashout/crashout-styles.css';
 import { FiVolume2, FiVolumeX } from 'react-icons/fi';
 import axios from 'axios';
+
+// silence console for performance
+if (typeof window !== 'undefined') {
+  const noOp = () => {};
+  console.log = noOp;
+  console.info = noOp;
+  console.warn = noOp;
+  console.debug = noOp;
+}
+
+// disable verbose logging for performance
+if (typeof window !== 'undefined') {
+  console.log = () => {};
+  console.info = () => {};
+}
 
 // Define required types and enums
 enum GameState {
@@ -1003,11 +1023,9 @@ export function CrashoutGame() {
   }, []);
   
   // Helper function to update game history with proper validation
-  const addToGameHistory = (newEntries: GameHistoryEntry[]) => {
-    console.log('Adding new entries to game history:', newEntries);
-    
+  const addToGameHistory = (newHistory: GameHistoryEntry[]) => {
     // Filter out invalid entries
-    const validEntries = newEntries.filter(entry => {
+    const validEntries = newHistory.filter(entry => {
       // Ensure we have a valid value
       const value = typeof entry.value === 'string' ? 
         parseFloat(entry.value) : 
@@ -2179,27 +2197,7 @@ export function CrashoutGame() {
     }
   }, [isConnected, username, offlineMode, betAmount, autoCashout]);
 
-  // Fix the multiplier display updating when game is running
-  useEffect(() => {
-    if (offlineMode || gameState !== GameState.RUNNING) return;
-    let lastTime = performance.now();
-    let currentVal = currentGameData.current?.gameState?.multiplier ?? multiplier;
-    let rafId: number;
-    const loop = (time: number) => {
-      const delta = (time - lastTime) / 1000;
-      lastTime = time;
-      currentVal = parseFloat((currentVal * Math.exp(0.02 * delta)).toFixed(2));
-      const serverVal = currentGameData.current?.gameState?.multiplier;
-      if (serverVal && Math.abs(serverVal - currentVal) > 0.1) currentVal = serverVal;
-      if (!document.hidden && document.hasFocus()) {
-        updateMultiplierDisplay(currentVal);
-        if (Math.abs(multiplier - currentVal) > 0.05) setMultiplier(currentVal);
-      }
-      rafId = requestAnimationFrame(loop);
-    };
-    rafId = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(rafId);
-  }, [gameState, offlineMode, multiplier]);
+  // Per-frame smoothing removed; use server-driven multiplier updates
 
   // Update game loss handling to include streak tracking and better media playback
   useEffect(() => {
@@ -2353,6 +2351,25 @@ export function CrashoutGame() {
       setIsPlayDisabled(false);
     }, 1000);
   };
+
+  // After setupPolling usage in useEffect mount:
+  useEffect(() => {
+    // smooth multiplier between server ticks
+    if (gameState === GameState.RUNNING) {
+      let frameId: number;
+      let last = performance.now();
+      let displayed = multiplier;
+      const step = (now: number) => {
+        const dt = now - last;
+        last = now;
+        displayed = displayed * Math.pow(1.02, dt / 1000);
+        updateMultiplierDisplay(displayed);
+        frameId = requestAnimationFrame(step);
+      };
+      frameId = requestAnimationFrame(step);
+      return () => cancelAnimationFrame(frameId);
+    }
+  }, [gameState]);
 
   return (
     <div className="space-y-4">
@@ -2620,19 +2637,8 @@ export function CrashoutGame() {
             <div className="relative overflow-hidden">
               <div className="flex space-x-3 overflow-x-auto py-2 scrollbar-hide history-scroll" 
                    style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                {gameHistory.map((entry, index) => {
-                  // Ensure we always have a valid numeric value
-                  const valueString = typeof entry.value === 'string' ? entry.value : String(entry.value ?? '0');
-                  const value = parseFloat(valueString) || 0;
-                  
-                  // Log the entry for debugging
-                  if (index === 0) {
-                    console.log('Latest history entry:', entry);
-                  }
-                  
-                  const isHigh = value >= 2.0;
-                  const isVeryHigh = value >= 5.0;
-                  
+                {gameHistory.slice(0,10).map((entry,index) => {
+                  // no debug logs
                   return (
                     <div
                       key={entry.id ?? `${entry.timestamp}-${index}`}
@@ -2640,14 +2646,14 @@ export function CrashoutGame() {
                         flex-shrink-0 w-20 h-20
                         relative overflow-hidden rounded-md shadow-lg
                         transition-all duration-300 transform
-                        ${isVeryHigh ? 'animate-bounce-slow' : isHigh ? 'animate-pulse' : ''}
+                        ${entry.value === 'N/A' ? 'animate-bounce-slow' : entry.color === "green" ? 'animate-pulse' : ''}
                       `}
                     >
                       <div
                         className={`
                           w-full h-full
                           flex items-center justify-center text-center font-bold text-lg
-                          ${value <= 0 ? "bg-gray-700" : // Use gray for invalid values 
+                          ${entry.value === 'N/A' ? "bg-gray-700" : // Use gray for invalid values 
                             entry.color === "green" 
                             ? "bg-gradient-to-br from-emerald-400 to-green-600" 
                             : "bg-gradient-to-br from-red-400 to-red-700"}
@@ -2657,7 +2663,7 @@ export function CrashoutGame() {
                           textShadow: "1px 1px 2px rgba(0,0,0,0.5)"
                         }}
                       >
-                        {value <= 0 ? "N/A" : value.toFixed(2) + "x"}
+                        {entry.value === 'N/A' ? "N/A" : entry.value.toFixed(2) + "x"}
                         {index === 0 && (
                           <div className="absolute top-0 right-0 bg-blue-600 text-xs px-1 rounded-bl-md">
                             Latest
