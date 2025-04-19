@@ -1694,60 +1694,6 @@ export function CrashoutGame() {
     }
   }, [gameState, muted, volume]);
 
-  // Use proper lifecycle handling for the updateGameState function
-  useEffect(() => {
-    // Skip if offline
-    if (offlineMode) return;
-    
-    // Create polling interval
-    const intervalId = setInterval(async () => {
-      if (!isConnected) return;
-      
-      try {
-        const data = await getCurrentGameData();
-        
-        if (!data) {
-          console.warn('No game data received');
-          return;
-        }
-        
-        // Only update state if the data has changed
-        if (JSON.stringify(data) !== JSON.stringify(currentGameData.current)) {
-          currentGameData.current = data;
-          
-          // Handle game state transition
-          const prevState = gameState;
-          setGameState(data.state);
-          
-          // Handle multiplier updates
-          if (data.state === GameState.RUNNING) {
-            if (prevState !== GameState.RUNNING) {
-              // Started a new round - play background music
-                playSound('backgroundMusic');
-            }
-            setMultiplier(data.multiplier || 1.0);
-          }
-          
-          // Handle crash
-          if (data.state === GameState.CRASHED && prevState !== GameState.CRASHED) {
-            // Just crashed - play crash sound
-            playSound('crash');
-            // Update game history with the new round
-            getGameHistory().then(history => setGameHistory(history)).catch(console.error);
-          }
-        }
-      } catch (error) {
-        console.error('Error updating game state:', error);
-        setApiError(true);
-      }
-    }, 3000);
-    
-    // Clean up interval on unmount
-    return () => {
-      clearInterval(intervalId);
-    };
-  }, [offlineMode, isConnected, gameState, setApiError, getCurrentGameData, getGameHistory, playSound]);
-
   // Store volume in localStorage when it changes
   useEffect(() => {
     if (typeof window !== 'undefined') {
