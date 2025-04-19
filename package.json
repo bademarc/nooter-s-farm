@@ -88,6 +88,7 @@
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "@types/uuid": "^10.0.0",
+    "babel-plugin-transform-remove-console": "^6.9.4",
     "cross-env": "^7.0.3",
     "postcss": "^8",
     "typescript": "^5"

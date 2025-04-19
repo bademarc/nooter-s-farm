@@ -67,6 +67,11 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  compiler: {
+    removeConsole: {
+      exclude: ['error', 'warn'],
+    },
+  },
   // Set basePath for GitHub Pages if needed
   ...(process.env.GITHUB_ACTIONS ? {
     basePath: '/nooter-s-farm',
