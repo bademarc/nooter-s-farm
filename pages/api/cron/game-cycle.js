@@ -1,9 +1,25 @@
 // Daily Maintenance Cron Job for Crashout Game
 import Redis from 'ioredis';
 
-// Initialize Redis client
+// Initialize Redis client with Upstash/TLS options
 const getRedisClient = () => {
-  const redis = new Redis(process.env.REDIS_URL);
+  const redisUrl = process.env.REDIS_URL;
+  if (!redisUrl) {
+    console.error('REDIS_URL environment variable is not set');
+    throw new Error('REDIS_URL environment variable is not set');
+  }
+  const { hostname } = new URL(redisUrl);
+  const options = {
+    enableAutoPipelining: false,
+    connectTimeout: 10000,
+    retryStrategy: times => Math.min(times * 50, 2000),
+    maxRetriesPerRequest: 3,
+    enableOfflineQueue: true,
+    tls: { servername: hostname }
+  };
+  const redis = new Redis(redisUrl, options);
+  redis.on('error', err => console.error('Cron Redis connection error:', err));
+  redis.on('connect', () => console.log('Cron Redis connected successfully'));
   return redis;
 };
 
@@ -202,8 +218,9 @@ const generateDailyStats = async (redis) => {
 
 // Main cron job handler - runs once per day
 export default async function handler(req, res) {
-  // Verify this is a cron job request from Vercel
-  if (req.method !== 'POST') {
+  // Allow Vercel Cron GET or POST, require x-vercel-cron header for GET
+  const isCronGET = req.method === 'GET' && req.headers['x-vercel-cron'] === 'true';
+  if (!isCronGET && req.method !== 'POST') {
     return res.status(405).json({ success: false, message: 'Method not allowed' });
   }
   

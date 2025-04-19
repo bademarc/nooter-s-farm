@@ -663,58 +663,42 @@ export const GameProvider = ({ children }: GameProviderProps) => {
   };
 
   const addFarmCoins = (amount: number) => {
-    // Direct state update without setTimeout to avoid race conditions
-    const currentCoins = farmCoins; // Capture current value
-    const newAmount = currentCoins + amount;
-    const safeNewAmount = newAmount < 0 ? 0 : newAmount; // Prevent negative coins
-    
-    // Update state immediately
-    setFarmCoins(safeNewAmount);
-    
-    // Immediately update localStorage to ensure persistence
-    if (typeof window !== "undefined") {
-      localStorage.setItem("farm-coins", JSON.stringify(safeNewAmount));
-      console.log(`Coins updated: ${currentCoins} → ${safeNewAmount} (Δ${amount})`);
+    if (typeof amount !== 'number' || isNaN(amount)) {
+      console.warn('Invalid coin amount:', amount);
+      return;
     }
     
-    // Handle additional effects for positive amounts
-    if (amount > 0) {
-      addCoinsEarned(amount);
-      
-      const xpGained = Math.floor(amount / 2); // Use the same XP calculation as farm component
-      
-      let newXp = playerXp + xpGained;
-      let currentXpToNext = playerXpToNext;
-      let currentLevel = playerLevel;
-      let didLevelUp = false;
-      
-      if (newXp >= currentXpToNext) {
-        currentLevel += 1;
-        didLevelUp = true;
-        newXp = newXp - currentXpToNext;
-        currentXpToNext = Math.floor(currentXpToNext * 1.5);
-      }
-      
-      if (didLevelUp) {
-        setPlayerLevel(currentLevel);
-        setPlayerXpToNext(currentXpToNext);
-        
-        // Add level-up bonus coins
-        const levelBonus = currentLevel * 10;
-        setFarmCoins(prev => {
-          const withBonus = prev + levelBonus;
-          // Update localStorage with the bonus immediately
-          if (typeof window !== "undefined") {
-            localStorage.setItem("farm-coins", JSON.stringify(withBonus));
-          }
-          return withBonus;
-        });
-        
-        addCoinsEarned(levelBonus);
-      }
-      
-      setPlayerXp(newXp);
+    // Round to 2 decimal places to prevent floating point issues
+    const roundedAmount = Math.round(amount * 100) / 100;
+    
+    if (roundedAmount <= 0) {
+      console.warn('Cannot add negative or zero coins:', roundedAmount);
+      return;
     }
+
+    setFarmCoins(prevCoins => {
+      const newTotal = prevCoins + roundedAmount;
+      const rounded = Math.round(newTotal * 100) / 100; // Prevent floating point issues
+      
+      // Update total coins earned stats
+      const newTotalEarned = totalCoinsEarned + roundedAmount;
+      setTotalCoinsEarned(newTotalEarned);
+      
+      // Save to localStorage
+      if (typeof window !== "undefined") {
+        localStorage.setItem("farm-coins", JSON.stringify(rounded));
+        localStorage.setItem("total-coins-earned", JSON.stringify(newTotalEarned));
+      }
+      
+      // Show toast for significant winnings
+      if (roundedAmount >= 50) {
+        toast.success(`Wow! You earned ${roundedAmount.toFixed(2)} coins!`);
+      } else if (roundedAmount >= 10) {
+        toast.success(`You earned ${roundedAmount.toFixed(2)} coins!`);
+      }
+      
+      return rounded;
+    });
   }
 
   const expandFarm = () => {

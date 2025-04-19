@@ -58,6 +58,28 @@
 .game-container {
   max-width: 100%;
   margin: 0 auto;
+  filter: grayscale(100%) !important;
+  background-color: #000 !important;
+  color: #fff !important;
+}
+
+.game-container * {
+  background-color: transparent !important;
+  color: #fff !important;
+  border-color: #555 !important;
+}
+
+.game-container .game-buttons button {
+  background-color: #333 !important;
+  color: #fff !important;
+  border: 1px solid #555 !important;
+}
+
+.game-container input,
+.game-container select {
+  background-color: #222 !important;
+  color: #fff !important;
+  border: 1px solid #444 !important;
 }
 
 .game-display {
@@ -156,6 +178,8 @@
                0 0 30px rgba(0, 0, 0, 0.4);
   font-weight: 800;
   letter-spacing: -1px;
+  color: #fff !important;
+  text-shadow: none !important;
 }
 
 @keyframes bounce-slow {
@@ -194,4 +218,9 @@
 .animate-bg-pulse {
   background-size: 200% 200%;
   animation: gradient-shift 3s ease infinite;
+}
+
+#multiplierText {
+  color: #fff !important;
+  text-shadow: none !important;
 } 

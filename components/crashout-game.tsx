@@ -13,6 +13,7 @@ declare module global {
     _propertyValues?: {[key: string]: any};
     _earlyWalletInjectionAttempts?: {[key: string]: number};
     _hiddenDescriptors?: {[key: string]: PropertyDescriptor | null};
+    ethereum?: any; // Add this line to declare ethereum property
   }
 }
 
@@ -56,21 +57,24 @@ if (typeof window !== 'undefined' && !typedWindow._ethereumPropertyProtected) {
         // Only try to redefine properties that don't exist yet or are configurable
         if (!descriptor || descriptor.configurable) {
           try {
+            // Use more robust property definition to prevent property access errors
             Object.defineProperty(window, propName, {
               configurable: true,
               enumerable: true,
-              get: () => typedWindow._propertyValues[propName],
-              set: (newValue) => {
-                // Allow setting the property value in our storage
-                typedWindow._propertyValues[propName] = newValue;
-                
-                // Track access attempts for debugging
+              get: function() {
+                // Track access attempts for debugging without logging
                 typedWindow._propertyAccessAttempts[propName] = 
                   (typedWindow._propertyAccessAttempts[propName] || 0) + 1;
+                return typedWindow._propertyValues[propName];
+              },
+              set: function(newValue) {
+                // Allow setting the property value in our storage
+                typedWindow._propertyValues[propName] = newValue;
               }
             });
           } catch (defineError) {
             // Silently ignore errors when defining properties
+            console.warn(`Could not redefine property ${propName}:`, defineError);
           }
         }
       } catch (err) {
@@ -83,7 +87,8 @@ if (typeof window !== 'undefined' && !typedWindow._ethereumPropertyProtected) {
     // Try to protect each property, ignoring any errors
     [
       'web3', 'solana', 'solflare', 'phantom',
-      'keplr', 'xdefi', 'leap', 'cosmostation', 'terraWallets', 'evmProvider'
+      'keplr', 'xdefi', 'leap', 'cosmostation', 'terraWallets', 'evmProvider',
+      'ethereum' // Add ethereum explicitly to the list
     ].forEach(propName => {
       try {
         protectProperty(propName);
@@ -98,7 +103,8 @@ if (typeof window !== 'undefined' && !typedWindow._ethereumPropertyProtected) {
     window.addEventListener('error', function(event) {
       if (event.error && event.error.message && 
           (event.error.message.includes('storage is not allowed') || 
-           event.error.message.includes('security policy violations'))) {
+           event.error.message.includes('security policy violations') ||
+           event.error.message.includes('Failed to set window.ethereum'))) {
         // Suppress console errors for extension content security policy violations
         event.preventDefault();
       }
@@ -369,6 +375,9 @@ export function CrashoutGame() {
   const [totalLost, setTotalLost] = useState<number>(0);
   const [showHotStreak, setShowHotStreak] = useState<boolean>(false);
   const [streakEffect, setStreakEffect] = useState<string>('');
+
+  // Fix the showCountdownOverlay state
+  const [showCountdownOverlay, setShowCountdownOverlay] = useState<boolean>(false);
 
   const setApiError = useCallback((value: boolean) => {
     apiError.current = value;
@@ -649,9 +658,9 @@ export function CrashoutGame() {
     audioRefs.current.cashout = getAudioInstance('crashout_cashout', '/sounds/cashout.mp3');
     audioRefs.current.win = getAudioInstance('crashout_win', '/sounds/win.mp3');
     // Add new gambling-focused sound effects
-    audioRefs.current.bigWin = getAudioInstance('crashout_bigwin', '/sounds/bigwin.mp3');
-    audioRefs.current.smallWin = getAudioInstance('crashout_smallwin', '/sounds/smallwin.mp3');
-    audioRefs.current.bigLoss = getAudioInstance('crashout_bigloss', '/sounds/bigloss.mp3');
+    audioRefs.current.bigWin = getAudioInstance('crashout_bigwin', '/sounds/win.mp3');
+    audioRefs.current.smallWin = getAudioInstance('crashout_smallwin', '/sounds/win.mp3');
+    audioRefs.current.bigLoss = getAudioInstance('crashout_bigloss', '/sounds/crash.mp3');
     
     const bgMusic = getAudioInstance('crashout_bgm', '/sounds/background_music.mp3');
     bgMusic.loop = true;
@@ -1539,7 +1548,33 @@ export function CrashoutGame() {
     username
   ]);
 
-  // Add back the main setup effect after the reconnection effect
+  // Add media preloading function
+  const preloadMediaResources = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    
+    // Preload Game Started GIF
+    const gameStartedImg = new Image();
+    gameStartedImg.src = '/images/crashout/Game Started.gif';
+    
+    // Preload Loss video
+    if (!lossVideoRef.current) return;
+    lossVideoRef.current.preload = 'auto';
+    
+    // Attempt to load video without playing
+    fetch('/images/crashout/Loss.mp4')
+      .then(response => response.blob())
+      .then(blob => {
+        const url = URL.createObjectURL(blob);
+        if (lossVideoRef.current) {
+          lossVideoRef.current.src = url;
+          lossVideoRef.current.load();
+        }
+      })
+      .catch(err => console.warn('Error preloading loss video:', err));
+
+  }, []);
+
+  // Call preloadMediaResources in the setup effect
   useEffect(() => {
     console.log('CrashoutGame component mounted - Running setup effect');
     
@@ -1562,6 +1597,9 @@ export function CrashoutGame() {
     
     // Initialize audio with shared instances
     initializeAudio();
+    
+    // Preload media resources for faster display
+    preloadMediaResources();
 
     // Never force demo mode - always try online first
     console.log("Always trying to connect to online mode first");
@@ -1629,7 +1667,7 @@ export function CrashoutGame() {
         audioRefs.current.backgroundMusic.pause();
       }
     };
-  }, []); // Empty dependency array as this should only run once
+  }, []); // Empty dependency array to only run once - necessary to prevent reconnection loops
 
   // Handle background music based on game state with proper dependency tracking
   useEffect(() => {
@@ -1685,7 +1723,7 @@ export function CrashoutGame() {
           if (data.state === GameState.RUNNING) {
             if (prevState !== GameState.RUNNING) {
               // Started a new round - play background music
-              playSound('backgroundMusic');
+                playSound('backgroundMusic');
             }
             setMultiplier(data.multiplier || 1.0);
           }
@@ -1702,7 +1740,7 @@ export function CrashoutGame() {
         console.error('Error updating game state:', error);
         setApiError(true);
       }
-    }, 1000);
+    }, 3000);
     
     // Clean up interval on unmount
     return () => {
@@ -1746,7 +1784,7 @@ export function CrashoutGame() {
         switch (key) {
           case 'gameState': setGameState(value); break;
           case 'multiplier':
-            setMultiplier(value);
+            // Skip React state update for multiplier to reduce re-renders; update DOM directly
             if (multiplierTextRef.current) updateMultiplierDisplay(value);
             break;
           case 'countdown': setCountdown(value); break;
@@ -1764,44 +1802,46 @@ export function CrashoutGame() {
   const updateMultiplierDOMElements = (value: number) => {
     if (!multiplierTextRef.current) return;
     
-    // Always update text content with current value
-    const valueFormatted = `${value.toFixed(2)}x`;
-    multiplierTextRef.current.textContent = valueFormatted;
-    
-    // Log to ensure updates are happening
-    console.log(`Updating UI multiplier to ${valueFormatted}`);
-    
-    // Simplified color logic - just three colors to reduce calculations
-    const textColor = 
-      gameState === GameState.CRASHED ? "#ff0000" : // Red when crashed
-      value < 2 ? "#0f0" : // Green
-      value < 10 ? "#ffff00" : // Yellow
-      "#ff8800"; // Orange
-    
-    // Update color
-    multiplierTextRef.current.style.color = textColor;
-    
-    // Even more drastically simplified size logic - only 3 size steps
-    const baseSize = 6;
-    const sizeClass = value < 3 ? `${baseSize}rem` : 
-                     value < 10 ? `${baseSize * 1.4}rem` : 
-                     `${baseSize * 1.8}rem`;
-    
-    multiplierTextRef.current.style.fontSize = sizeClass;
+    // Use RAF for smoother updates and reduce layout thrashing
+    requestAnimationFrame(() => {
+      // Null check again in case ref changed between frames
+      if (!multiplierTextRef.current) return;
+      
+      // Always update text content with current value
+      const valueFormatted = `${value.toFixed(2)}x`;
+      
+      // Only update DOM if the value has changed
+      if (multiplierTextRef.current.textContent !== valueFormatted) {
+        multiplierTextRef.current.textContent = valueFormatted;
+        
+        // Log to ensure updates are happening
+        console.log(`Updating UI multiplier to ${valueFormatted}`);
+        
+        // Simplified color logic - just three colors to reduce calculations
+        const textColor = 
+          gameState === GameState.CRASHED ? "#ff0000" : // Red when crashed
+          value < 2 ? "#0f0" : // Green
+          value < 10 ? "#ffff00" : // Yellow
+          "#ff8800"; // Orange
+        
+        // Update color
+        multiplierTextRef.current.style.color = textColor;
+        
+        // Even more drastically simplified size logic - only 3 size steps
+        const baseSize = 6;
+        const sizeClass = value < 3 ? `${baseSize}rem` : 
+                         value < 10 ? `${baseSize * 1.4}rem` : 
+                         `${baseSize * 1.8}rem`;
+        
+        multiplierTextRef.current.style.fontSize = sizeClass;
+      }
+    });
   };
   
   const updateMultiplierDisplay = (value: number) => {
-    if (!multiplierTextRef.current) return;
-    
-    // To reduce layout thrashing, batch all DOM updates
-    if (!window.requestAnimationFrame) {
-      // Fallback for browsers without requestAnimationFrame
-      updateMultiplierDOMElements(value);
-    } else {
-      requestAnimationFrame(() => {
-        updateMultiplierDOMElements(value);
-      });
-    }
+    // Directly use the optimized DOM element update function
+    // No need for double requestAnimationFrame
+    updateMultiplierDOMElements(value);
   };
   
   const updateGameHistory = (newHistory: Array<{value: string, color: string, timestamp: number}>) => {
@@ -1876,8 +1916,9 @@ export function CrashoutGame() {
       previousBets
     });
 
-    if (!canPlaceBet || !isConnected || isPlayDisabled) {
-      toast.warning("Cannot place bet now. Ensure you are connected.");
+    // Disallow bet if disabled, offline or join window closed
+    if (!canPlaceBet || isPlayDisabled || (!offlineMode && (joinWindowTimeLeft <= 0 || !isConnected))) {
+      toast.warning("Cannot place bet now.");
       return;
     }
 
@@ -1917,44 +1958,28 @@ export function CrashoutGame() {
 
         console.log("Bet response:", response.data);
 
-        if (response.data.success) {
+        // Treat undefined success as success
+        const { success, message } = response.data;
+        if (success !== false) {
           setPlayerJoined(true);
           setIsPlayDisabled(true);
           setIsCashoutDisabled(false);
           toast.success("Bet placed successfully!");
           return true;
         } else {
-          console.warn(`Bet failed: ${response.data.message}`);
-          
-          // Check if this is a timing issue we can retry
-          if (response.data.message?.includes("Game is not in join phase") && retryCount < 2) {
-            console.log("This appears to be a timing issue, will retry in 500ms");
-            return false; // Signal for retry
-          } else {
-            // Other error that we can't auto-retry
-            setIsPlayDisabled(false);
-            toast.error(response.data.message || "Failed to place bet");
-            return true; // We're done trying
-          }
+          // Explicit failure
+          setIsPlayDisabled(false);
+          toast.error(message || "Failed to place bet");
+          return true;
         }
-      } catch (error) {
-        console.error('Error placing bet:', error);
-        
-        // Check if we should retry
-        if (retryCount < 2) {
-          console.log(`Network error placing bet, will retry (attempt ${retryCount + 1})`);
-          return false; // Signal for retry
-        }
-        
+      } catch (err: any) {
+        // Handle errors
         setIsPlayDisabled(false);
-        
-        // Show more detailed error message
-        if (axios.isAxiosError(error) && error.response?.data?.message) {
-          toast.error(`Error: ${error.response.data.message}`);
-        } else {
-          toast.error("Error communicating with server. Please try again.");
-        }
-        return true; // We're done trying
+        // Prefer server-provided message, else error.message, else generic
+        const serverMsg = err.response?.data?.message;
+        const msg = typeof serverMsg === 'string' && serverMsg ? serverMsg : err.message || 'Failed to place bet.';
+        toast.error(msg);
+        return true;
       }
     };
     
@@ -2210,50 +2235,27 @@ export function CrashoutGame() {
 
   // Fix the multiplier display updating when game is running
   useEffect(() => {
-    // Skip if offline
-    if (offlineMode) return;
-    
-    // Only handle multiplier update logic when in RUNNING state
-    if (gameState !== GameState.RUNNING) return;
-    
-    console.log('Setting up multiplier update interval for active game');
-    
-    // Set up interval to update multiplier locally between server updates
-    // This provides smoother animation than waiting for API polling
-    const multiplierInterval = setInterval(() => {
-      if (gameState !== GameState.RUNNING) {
-        // Clear if no longer in running state
-        clearInterval(multiplierInterval);
-        return;
+    if (offlineMode || gameState !== GameState.RUNNING) return;
+    let lastTime = performance.now();
+    let currentVal = currentGameData.current?.gameState?.multiplier ?? multiplier;
+    let rafId: number;
+    const loop = (time: number) => {
+      const delta = (time - lastTime) / 1000;
+      lastTime = time;
+      currentVal = parseFloat((currentVal * Math.exp(0.02 * delta)).toFixed(2));
+      const serverVal = currentGameData.current?.gameState?.multiplier;
+      if (serverVal && Math.abs(serverVal - currentVal) > 0.1) currentVal = serverVal;
+      if (!document.hidden && document.hasFocus()) {
+        updateMultiplierDisplay(currentVal);
+        if (Math.abs(multiplier - currentVal) > 0.05) setMultiplier(currentVal);
       }
-      
-      // Calculate time since game started
-      const startTime = currentGameData.current?.gameState?.startTime || 0;
-      if (!startTime) return;
-      
-      const elapsedSeconds = (Date.now() - startTime) / 1000;
-      
-      // Calculate multiplier using the same formula as the backend
-      const growthRate = 0.05;
-      const currentMultiplier = parseFloat((1.0 * Math.exp(growthRate * elapsedSeconds)).toFixed(2));
-      
-      console.log(`Local multiplier update: ${currentMultiplier.toFixed(2)}x (elapsed: ${elapsedSeconds.toFixed(1)}s)`);
-      
-      // Update multiplier
-      setMultiplier(currentMultiplier);
-      
-      // Update UI display - call this directly to ensure it updates
-      if (multiplierTextRef.current) {
-        updateMultiplierDisplay(currentMultiplier);
-      }
-    }, 100); // Update every 100ms for smooth animation
-    
-    return () => {
-      clearInterval(multiplierInterval);
+      rafId = requestAnimationFrame(loop);
     };
-  }, [gameState, offlineMode, updateMultiplierDisplay]);
+    rafId = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(rafId);
+  }, [gameState, offlineMode, multiplier]);
 
-  // Update game loss handling to include streak tracking
+  // Update game loss handling to include streak tracking and better media playback
   useEffect(() => {
     // Handle game crash events
     if (gameState === GameState.CRASHED && playerJoined && cashedOutAt === null) {
@@ -2271,14 +2273,140 @@ export function CrashoutGame() {
       // Update total lost
       setTotalLost(prev => prev + lostAmount);
       
-      // Show cold streak effect
+      // Enhanced media handling for loss
+      setShowLossImage(true);
+      
+      // Ensure video playback starts
+      if (lossVideoRef.current) {
+        lossVideoRef.current.currentTime = 0;
+        const playPromise = lossVideoRef.current.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(err => {
+            if (err.name !== 'NotAllowedError') {
+              console.warn('Loss video playback error:', err);
+            }
+          });
+        }
+      }
+      
+      // Show cold streak effect - delayed after loss video starts
+                setTimeout(() => {
+        if (lossStreak >= 2) {
+          setShowHotStreak(true);
+          setStreakEffect('loss');
+          setTimeout(() => setShowHotStreak(false), 3000);
+        }
+      }, 1000);
+      
+      // Hide the loss image after animation completes
+      setTimeout(() => {
+        setShowLossImage(false);
+      }, 3000);
+    }
+  }, [gameState, playerJoined, cashedOutAt, betAmount, playSound, lossStreak]);
+
+  const updateGameStateFromServer = (data: any) => {
+    if (!data || !data.gameState) return;
+    
+    const serverState = data.gameState;
+    
+    // Update multiplier if in active state
+    if (serverState.state === GAME_STATE.ACTIVE && serverState.multiplier) {
+      updateMultiplierDisplay(parseFloat(serverState.multiplier));
+    }
+    
+    // Transition between states based on server response
+    const frontendState = mapBackendStateToFrontend(serverState.state);
+    
+    if (frontendState !== gameState) {
+      setGameState(frontendState);
+      
+      // Handle state-specific logic
+      if (frontendState === GameState.WAITING) {
+        setCountdown(serverState.countdown || 10);
+        setShowCountdownOverlay(true);
+        // Allow placing bets during countdown
+        setCanPlaceBet(true);
+      } else if (frontendState === GameState.RUNNING) {
+        setShowCountdownOverlay(false);
+        setIsPlayDisabled(true);
+        setIsCashoutDisabled(playerJoined ? false : true);
+      } else if (frontendState === GameState.CRASHED) {
+        handleCrash(serverState.crashPoint || multiplier);
+      } else if (frontendState === GameState.INACTIVE) {
+        resetGameState();
+      }
+    }
+    
+    // Update history if available
+    if (data.history && Array.isArray(data.history)) {
+      addToGameHistory(data.history.map((entry: any) => ({
+        value: entry.value || (entry.crashPoint ? entry.crashPoint.toString() : '1.00'),
+        color: parseFloat(entry.value || entry.crashPoint) >= 2 ? 'green' : 'red',
+        timestamp: entry.timestamp || Date.now(),
+        crashPoint: entry.crashPoint
+      })));
+    }
+  };
+
+  // Function to reset the game state (simplified version of the vanilla JS resetGame)
+  const resetGameState = () => {
+    updateMultiplierDisplay(1.0);
+    setIsPlayDisabled(false);
+    setIsCashoutDisabled(true);
+    setPlayerJoined(false);
+    setShowCountdownOverlay(false);
+    setCashedOutAt(null);
+    
+    // Clear any game intervals
+    if (demoIntervalRef.current) {
+      clearInterval(demoIntervalRef.current);
+      demoIntervalRef.current = null;
+    }
+  };
+
+  // Handle crash (incorporate logic from vanilla JS handleCrash)
+  const handleCrash = (crashPoint: number) => {
+    if (demoIntervalRef.current) {
+      clearInterval(demoIntervalRef.current);
+      demoIntervalRef.current = null;
+    }
+    
+    if (playerJoined) {
+      // Play crash sound
+      playSound('crash');
+      setPlayerJoined(false);
+      
+      // Update loss streak and stats
+      setLossStreak(prev => prev + 1);
+      setWinStreak(0);
+      
+      // Show streak effect for cold streaks
       if (lossStreak >= 2) {
         setShowHotStreak(true);
         setStreakEffect('loss');
         setTimeout(() => setShowHotStreak(false), 3000);
       }
+      
+      // Update total lost
+      const lostAmount = parseFloat(betAmount);
+      setTotalLost(prev => prev + lostAmount);
+      
+      // If martingale is active, calculate the next bet
+      if (useMartingale) {
+        const nextBet = calculateMartingaleBet([...previousBets, parseFloat(betAmount)], parseFloat(betAmount), 1000);
+        setBetAmount(nextBet.toString());
+      }
     }
-  }, [gameState, playerJoined, cashedOutAt, betAmount, playSound]);
+    
+    // Update multiplier display
+    updateMultiplierDisplay(crashPoint);
+    
+    // Re-enable play button after crash
+    setTimeout(() => {
+      setIsPlayDisabled(false);
+    }, 1000);
+  };
 
   return (
     <div className="space-y-4">
@@ -2403,22 +2531,26 @@ export function CrashoutGame() {
             
             <div ref={multiplierTextRef} className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-6xl font-bold text-white z-50 multiplier-text">1.00x</div>
             
-            <video 
-              ref={lossVideoRef}
-              className="absolute inset-0 w-full h-full object-cover z-30"
-              style={{ 
-                display: showLossImage ? 'block' : 'none',
-                opacity: showLossImage ? '1' : '0',
-                transition: 'opacity 0.3s ease-in-out'
-              }}
-              muted playsInline preload="auto" src="/images/crashout/Loss.mp4"
-            ></video>
+            {showLossImage && (
+              <video
+                ref={lossVideoRef}
+                className="absolute inset-0 w-full h-full object-cover z-10"
+                muted
+                playsInline
+                preload="auto"
+                src="/images/crashout/Loss.mp4"
+                onLoadedData={() => {
+                  lossVideoRef.current!.play().catch(err => console.warn('Could not autoplay loss video:', err));
+                }}
+              />
+            )}
             
+            {/* Game Started animation with full-width cover styling */}
             {showGameStartedImage && (
               <img 
                 src="/images/crashout/Game Started.gif" 
                 alt="Game started"
-                className="absolute inset-0 w-full h-full object-cover z-10" 
+                className="absolute inset-0 w-full h-full object-cover z-20" 
               />
             )}
           </div>
@@ -2507,15 +2639,9 @@ export function CrashoutGame() {
           <div className="game-buttons mt-4 grid grid-cols-2 gap-4">
             <button 
               onClick={handlePlay}
-              disabled={
-                isPlayDisabled || 
-                !canPlaceBet || 
-                (!offlineMode && !isConnected)
-              }
+              disabled={isPlayDisabled || !canPlaceBet}
               className={`py-3 text-lg font-bold rounded transition-all duration-300 ${
-                isPlayDisabled || !canPlaceBet || (!offlineMode && !isConnected)
-                  ? "bg-green-800 opacity-50 cursor-not-allowed" 
-                  : "bg-green-600 hover:bg-green-700 hover:scale-[1.02]"
+                isPlayDisabled || !canPlaceBet ? "bg-green-800 opacity-50 cursor-not-allowed" : "bg-green-600 hover:bg-green-700 hover:scale-[1.02]"
               }`}
             >
               {offlineMode ? (canPlaceBet ? "Place Demo Bet" : "Demo Wait") :
@@ -2528,9 +2654,9 @@ export function CrashoutGame() {
             
             <button 
               onClick={handleCashout}
-              disabled={isCashoutDisabled || !playerJoined || gameState !== GAME_STATE.ACTIVE || (!offlineMode && !isConnected) || cashedOutAt !== null}
+              disabled={isCashoutDisabled || !playerJoined || gameState !== GameState.RUNNING || (!offlineMode && !isConnected) || cashedOutAt !== null}
               className={`py-3 text-lg font-bold rounded transition-all duration-300 ${
-                isCashoutDisabled || !playerJoined || gameState !== GAME_STATE.ACTIVE || (!offlineMode && !isConnected) || cashedOutAt !== null
+                isCashoutDisabled || !playerJoined || gameState !== GameState.RUNNING || (!offlineMode && !isConnected) || cashedOutAt !== null
                   ? "bg-yellow-800 opacity-50 cursor-not-allowed" 
                   : "bg-yellow-600 hover:bg-yellow-700 hover:scale-[1.02]"
               }`}
@@ -2563,7 +2689,7 @@ export function CrashoutGame() {
                   
                   return (
                     <div
-                      key={entry.timestamp || index}
+                      key={entry.id ?? `${entry.timestamp}-${index}`}
                       className={`
                         flex-shrink-0 w-20 h-20
                         relative overflow-hidden rounded-md shadow-lg
@@ -2606,7 +2732,7 @@ export function CrashoutGame() {
             <h3 className="text-xl mb-4 text-white">Recent Cashouts</h3>
             <div className="space-y-2 max-h-40 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
               {recentCashouts.map((cashout, index) => (
-                <div key={cashout.timestamp || index} className="bg-[#222] p-2 rounded flex justify-between text-sm">
+                <div key={`${cashout.timestamp}-${index}`} className="bg-[#222] p-2 rounded flex justify-between text-sm">
                   <span className="truncate w-1/3" title={cashout.username}>{cashout.username}</span>
                   <span className="text-green-500 font-semibold w-1/4 text-center">{cashout.multiplier.toFixed(2)}x</span>
                   <span className="w-1/3 text-right">{cashout.winning.toFixed(2)} coins</span>

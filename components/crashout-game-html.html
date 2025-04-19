@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nooters Farm - Crash Game</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="crashout/crashout-styles.css" rel="stylesheet">
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+    <div class="container mx-auto px-4 py-12">
+        <h1 class="text-4xl font-bold text-green-400 text-center mb-8">Nooters Farm Crash Game</h1>
+        
+        <div class="max-w-4xl mx-auto">
+            <!-- Connection Status -->
+            <div class="flex justify-end mb-4">
+                <div class="flex items-center">
+                    <span class="mr-2">Status:</span>
+                    <span id="connectionStatus" class="text-yellow-500">Connecting...</span>
+                </div>
+            </div>
+            
+            <!-- Game Display -->
+            <div class="game-display bg-gray-800 relative flex items-center justify-center">
+                <div id="countdownOverlay" class="absolute inset-0 flex items-center justify-center bg-black bg-opacity-70 z-10 hidden">
+                    <div id="countdownText" class="text-6xl font-bold text-white">10</div>
+                </div>
+                <div id="multiplierText" class="text-6xl font-bold multiplier-text">1.00x</div>
+                <div id="gameResult" class="absolute bottom-4 text-xl font-semibold"></div>
+            </div>
+            
+            <!-- Game Controls -->
+            <div class="grid grid-cols-2 gap-6 my-6">
+                <div>
+                    <label for="betAmount" class="block mb-2">Bet Amount</label>
+                    <input type="number" id="betAmount" class="w-full bg-gray-700 rounded px-4 py-2 text-white" value="10" min="1">
+                </div>
+                <div>
+                    <label for="autoCashout" class="block mb-2">Auto Cashout</label>
+                    <input type="number" id="autoCashout" class="w-full bg-gray-700 rounded px-4 py-2 text-white" value="2.0" step="0.1" min="1.1">
+                </div>
+            </div>
+            
+            <!-- Game Buttons -->
+            <div class="game-buttons grid grid-cols-2 gap-6 mb-6">
+                <button id="playButton" class="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded transition-all">
+                    Play
+                </button>
+                <button id="cashoutButton" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-3 px-4 rounded transition-all" disabled>
+                    Cashout
+                </button>
+            </div>
+            
+            <!-- Game History -->
+            <div class="mt-8">
+                <h2 class="text-xl font-semibold mb-4">Game History</h2>
+                <div id="historyContainer" class="flex space-x-2 overflow-x-auto py-2"></div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="crashout/game.js"></script>
+</body>
+</html> 

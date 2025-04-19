@@ -626,6 +626,7 @@ const progressGameState = async (redis) => {
           multiplier: 1.0,
           crashPoint: generateCrashPoint(), // Pre-generate crash point
           joinWindowTimeLeft: JOIN_WINDOW_SECONDS, // Full join window time
+          playersInGame: 0,           // Reset bet count for new round
           onlinePlayers: activePlayers,
           startTime: now // Add explicit start time for countdown
         });
