@@ -399,6 +399,9 @@ export function CrashoutGame() {
   // Fix the showCountdownOverlay state
   const [showCountdownOverlay, setShowCountdownOverlay] = useState<boolean>(false);
 
+  // track previous gameState to avoid repeated effects
+  const prevGameStateRef = useRef<GameState>();
+
   const setApiError = useCallback((value: boolean) => {
     apiError.current = value;
   }, []);
@@ -1413,8 +1416,7 @@ export function CrashoutGame() {
               
               // Show game started animation if we just transitioned to running
               if (prevGameState === GAME_STATE.COUNTDOWN) {
-                setShowGameStartedImage(true);
-                setTimeout(() => setShowGameStartedImage(false), 2000);
+                setShowGameStartedImage(true); // keep until crash
               }
               
               setIsCashoutDisabled(!playerJoined || cashedOutAt !== null);
@@ -2201,53 +2203,29 @@ export function CrashoutGame() {
 
   // Update game loss handling to include streak tracking and better media playback
   useEffect(() => {
-    // Handle game crash events
-    if (gameState === GameState.CRASHED && playerJoined && cashedOutAt === null) {
-      // Player lost their bet
-      const lostAmount = parseFloat(betAmount);
-      
-      // Play appropriate loss sound
-      const soundType = playLoseSound(lostAmount);
-      playSound(soundType);
-      
-      // Update loss streak and reset win streak
-      setLossStreak(prev => prev + 1);
+    const prevState = prevGameStateRef.current;
+    if (prevState !== gameState && gameState === GameState.CRASHED && playerJoined && cashedOutAt === null) {
+      setShowGameStartedImage(false);
+      const lostAmt = parseFloat(betAmount);
+      playSound(playLoseSound(lostAmt));
+      setLossStreak(ls => ls + 1);
       setWinStreak(0);
-      
-      // Update total lost
-      setTotalLost(prev => prev + lostAmount);
-      
-      // Enhanced media handling for loss
+      setTotalLost(tl => tl + lostAmt);
       setShowLossImage(true);
-      
-      // Ensure video playback starts
       if (lossVideoRef.current) {
         lossVideoRef.current.currentTime = 0;
-        const playPromise = lossVideoRef.current.play();
-        if (playPromise !== undefined) {
-          playPromise.catch(err => {
-            if (err.name !== 'NotAllowedError') {
-              console.warn('Loss video playback error:', err);
-            }
-          });
-        }
+        lossVideoRef.current.play().catch(e => e.name !== 'NotAllowedError' && console.warn(e));
       }
-      
-      // Show cold streak effect - delayed after loss video starts
-                setTimeout(() => {
-        if (lossStreak >= 2) {
-          setShowHotStreak(true);
-          setStreakEffect('loss');
-          setTimeout(() => setShowHotStreak(false), 3000);
-        }
-      }, 1000);
-      
-      // Hide the loss image after animation completes
-      setTimeout(() => {
-        setShowLossImage(false);
-      }, 3000);
+      // hot streak if new streak >=2
+      if (lossStreak + 1 >= 2) {
+        setShowHotStreak(true);
+        setStreakEffect('loss');
+        setTimeout(() => setShowHotStreak(false), 3000);
+      }
+      setTimeout(() => setShowLossImage(false), 3000);
     }
-  }, [gameState, playerJoined, cashedOutAt, betAmount, playSound, lossStreak]);
+    prevGameStateRef.current = gameState;
+  }, [gameState]);
 
   const updateGameStateFromServer = (data: any) => {
     if (!data || !data.gameState) return;
@@ -2663,7 +2641,7 @@ export function CrashoutGame() {
                           textShadow: "1px 1px 2px rgba(0,0,0,0.5)"
                         }}
                       >
-                        {entry.value === 'N/A' ? "N/A" : entry.value.toFixed(2) + "x"}
+                        {entry.value === 'N/A' ? "N/A" : parseFloat(entry.value).toFixed(2) + "x"}
                         {index === 0 && (
                           <div className="absolute top-0 right-0 bg-blue-600 text-xs px-1 rounded-bl-md">
                             Latest

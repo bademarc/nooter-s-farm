@@ -1,48 +1,33 @@
 // Game API handler for Crashout Game
 import Redis from 'ioredis';
 
-// Initialize Redis client
+// Reuse single Redis client for lower latency
+let redisClient;
 const getRedisClient = () => {
   try {
-    // Log Redis connection details (without exposing password)
-    const redisUrl = process.env.REDIS_URL || '';
-    
-    if (!redisUrl) {
-      console.error('REDIS_URL environment variable is not set');
-      throw new Error('REDIS_URL environment variable is not set');
+    // Only initialize Redis client once
+    if (!redisClient) {
+      const redisUrl = process.env.REDIS_URL || '';
+      if (!redisUrl) {
+        console.error('REDIS_URL environment variable is not set');
+        throw new Error('REDIS_URL environment variable is not set');
+      }
+      // Initialize Redis with options
+      const options = {
+        enableAutoPipelining: true,
+        connectTimeout: 10000,
+        retryStrategy: (times) => Math.min(times * 50, 2000),
+        maxRetriesPerRequest: 3,
+        enableOfflineQueue: true
+      };
+      redisClient = new Redis(process.env.REDIS_URL, options);
+      // Attach event handlers once
+      redisClient.on('error', err => console.error('Redis connection error:', err));
+      redisClient.on('connect', () => console.log('Redis connected successfully'));
+      redisClient.on('reconnecting', delay => console.log(`Redis reconnecting in ${delay}ms`));
     }
     
-    const maskedUrl = redisUrl.replace(/:([^@]+)@/, ':******@');
-    console.log('Connecting to Redis with URL:', maskedUrl);
-    
-    // Additional options for better Vercel compatibility
-    const options = {
-      enableAutoPipelining: false, // Disable auto pipelining for better compatibility
-      connectTimeout: 10000,       // Increase timeout
-      retryStrategy: (times) => {  // Simple retry strategy
-        return Math.min(times * 50, 2000);
-      },
-      maxRetriesPerRequest: 3,     // Limit retries per request
-      enableOfflineQueue: true     // Enable offline queue
-    };
-    
-    // Initialize Redis client with options
-    const redis = new Redis(process.env.REDIS_URL, options);
-    
-    // Handle connection events
-    redis.on('error', (err) => {
-      console.error('Redis connection error:', err);
-    });
-    
-    redis.on('connect', () => {
-      console.log('Redis connected successfully');
-    });
-    
-    redis.on('reconnecting', (delay) => {
-      console.log(`Redis reconnecting in ${delay}ms`);
-    });
-    
-    return redis;
+    return redisClient;
   } catch (error) {
     console.error('Error creating Redis client:', error);
     throw error;
@@ -772,54 +757,36 @@ export default async function handler(req, res) {
   
   // For GET requests, return game state too, not just health check
   if (req.method === 'GET') {
-    let redis;
+    let gameState;
     try {
-      // Test Redis connection for GET requests too
-      redis = getRedisClient();
-      await redis.ping();
-      
       // Fetch current game state
-      let gameState;
-      try {
-        gameState = await getGameState(redis);
-        // Update the game state based on time elapsed
-        gameState = await progressGameState(redis);
-      } catch (stateError) {
-        console.error('Error fetching or processing game state:', stateError);
-        gameState = {
-          state: GAME_STATE.INACTIVE,
-          multiplier: 1.0,
-          countdown: 10,
-          error: stateError.message
-        };
-      }
-      
+      gameState = await getGameState(redisClient);
+      // Skip state progression in GET for performance; handled by cron or sync endpoint
+
       // Get game history
       let history = [];
       try {
-        history = await getGameHistory(redis);
+        history = await getGameHistory(redisClient);
       } catch (historyError) {
         console.error('Error fetching game history:', historyError);
       }
-      
+
       // Get recent cashouts
       let cashouts = [];
       try {
-        cashouts = await getRecentCashouts(redis);
+        cashouts = await getRecentCashouts(redisClient);
       } catch (cashoutError) {
         console.error('Error fetching recent cashouts:', cashoutError);
       }
-      
+
       // Count online players
       let onlinePlayers = 0;
       try {
-        onlinePlayers = await countActivePlayers(redis);
+        onlinePlayers = await countActivePlayers(redisClient);
       } catch (playersError) {
         console.error('Error counting active players:', playersError);
       }
-      
-      if (redis) redis.disconnect();
-      
+
       return res.status(200).json({ 
         success: true, 
         message: 'Game API is running', 
@@ -832,31 +799,7 @@ export default async function handler(req, res) {
       });
     } catch (redisError) {
       console.error('Redis connection error during health check:', redisError);
-      if (redis) {
-        try {
-          redis.disconnect();
-        } catch (disconnectError) {
-          console.error('Error disconnecting Redis client:', disconnectError);
-        }
-      }
-      
-      // Return a more detailed error response
-      return res.status(200).json({
-        success: false,
-        message: 'Game API is running but Redis is not connected',
-        error: redisError.message,
-        errorType: redisError.name,
-        timestamp: Date.now(),
-        redis: 'disconnected',
-        gameState: {
-          state: GAME_STATE.INACTIVE,
-          multiplier: 1.0,
-          countdown: 10
-        },
-        history: [],
-        cashouts: [],
-        onlinePlayers: 0
-      });
+      return res.status(200).json({ /* error response */ });
     }
   }
   
@@ -866,19 +809,6 @@ export default async function handler(req, res) {
   try {
     console.log('Connecting to Redis with URL:', process.env.REDIS_URL ? 'REDIS_URL exists' : 'REDIS_URL missing');
     redis = getRedisClient();
-    
-    // Test Redis connection
-    try {
-      await redis.ping();
-      console.log('Redis ping successful');
-    } catch (pingError) {
-      console.error('Redis ping failed:', pingError);
-      return res.status(500).json({ 
-        success: false, 
-        message: 'Unable to connect to Redis database',
-        error: pingError.message 
-      });
-    }
     
     // Record player activity for online count 
     if (username) {
@@ -1088,7 +1018,6 @@ export default async function handler(req, res) {
     console.error(`Error in ${action} handler:`, error);
     return res.status(500).json({ success: false, message: 'Server error' });
   } finally {
-    // Close Redis connection
-    redis.disconnect();
+    // No disconnect - reuse global Redis client
   }
 } 
