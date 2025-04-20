@@ -667,37 +667,31 @@ export const GameProvider = ({ children }: GameProviderProps) => {
       console.warn('Invalid coin amount:', amount);
       return;
     }
-    
-    // Round to 2 decimal places to prevent floating point issues
     const roundedAmount = Math.round(amount * 100) / 100;
-    
-    if (roundedAmount <= 0) {
-      console.warn('Cannot add negative or zero coins:', roundedAmount);
-      return;
-    }
-
+    if (roundedAmount === 0) return;
     setFarmCoins(prevCoins => {
-      const newTotal = prevCoins + roundedAmount;
-      const rounded = Math.round(newTotal * 100) / 100; // Prevent floating point issues
-      
-      // Update total coins earned stats
-      const newTotalEarned = totalCoinsEarned + roundedAmount;
-      setTotalCoinsEarned(newTotalEarned);
-      
-      // Save to localStorage
-      if (typeof window !== "undefined") {
-        localStorage.setItem("farm-coins", JSON.stringify(rounded));
-        localStorage.setItem("total-coins-earned", JSON.stringify(newTotalEarned));
+      // Prevent negative balance
+      const newTotalRaw = prevCoins + roundedAmount;
+      const newTotal = Math.round(Math.max(newTotalRaw, 0) * 100) / 100;
+      // Update earned stats only for positive increments
+      if (roundedAmount > 0) {
+        const newEarned = totalCoinsEarned + roundedAmount;
+        setTotalCoinsEarned(newEarned);
+        // Show toast for significant earnings
+        if (roundedAmount >= 50) toast.success(`Wow! You earned ${roundedAmount.toFixed(2)} coins!`);
+        else if (roundedAmount >= 10) toast.success(`You earned ${roundedAmount.toFixed(2)} coins!`);
+        // Save to storage
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('farm-coins', JSON.stringify(newTotal));
+          localStorage.setItem('total-coins-earned', JSON.stringify(newEarned));
+        }
+      } else {
+        // Deduction: save new balance only
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('farm-coins', JSON.stringify(newTotal));
+        }
       }
-      
-      // Show toast for significant winnings
-      if (roundedAmount >= 50) {
-        toast.success(`Wow! You earned ${roundedAmount.toFixed(2)} coins!`);
-      } else if (roundedAmount >= 10) {
-        toast.success(`You earned ${roundedAmount.toFixed(2)} coins!`);
-      }
-      
-      return rounded;
+      return newTotal;
     });
   }
 

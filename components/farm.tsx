@@ -3490,7 +3490,7 @@ export function Farm() {
             <h2 className="text-xl font-semibold text-white border-b border-white/10 pb-2 mb-4">
               Crashout Game
             </h2>
-            <CrashoutGame />
+            <CrashoutGame farmCoins={farmCoins} addFarmCoins={addFarmCoins} />
           </div>
         )}
       </div>

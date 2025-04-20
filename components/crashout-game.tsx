@@ -1,2713 +1,1267 @@
-/// components/crashout-game.tsx
-"use client";
+'use client';
+import { useState, useEffect, useRef } from 'react';
+import { toast } from 'react-hot-toast';
+import { ethers } from 'ethers';
 
-// Wrap the global declarations in a proper module declaration to fix TypeScript errors
-// Add TypeScript declaration for window._loggedUrls
-declare module global {
-  interface Window {
-    _loggedUrls?: {[key: string]: boolean};
-    _audioInstances?: {[key: string]: HTMLAudioElement};
-    _crashoutAudioInitialized?: boolean;
-    _ethereumPropertyProtected?: boolean;
-    _propertyAccessAttempts?: {[key: string]: number};
-    _propertyValues?: {[key: string]: any};
-    _earlyWalletInjectionAttempts?: {[key: string]: number};
-    _hiddenDescriptors?: {[key: string]: PropertyDescriptor | null};
-    ethereum?: any; // Add this line to declare ethereum property
+// Blockchain constants
+const ABSTRACT_TESTNET_CHAIN_ID = "0x2b74";
+const ABSTRACT_BLOCK_EXPLORER = "https://explorer.testnet.abs.xyz";
+
+// Game timing constants
+const WAIT_TIME_SECONDS = 30; // Wait time for placing bets
+const CLAIM_TIME_SECONDS = 20; // Time for winners to claim tokens
+
+// Wallet options
+const WALLET_OPTIONS = {
+  AGW: "agw",
+  METAMASK: "metamask" 
+};
+
+// Central payout address that holds tokens for the game
+const PAYOUT_ADDRESS = "0xc2d997A8d858275260BA97bb182C67CbC8B3CBB0";
+
+// Token addresses
+const TOKENS = {
+  NOOT: "0x3d8b869eB751B63b7077A0A93D6b87a54e6C8f56",
+  ABSTER: "0xC3f63f74501D225E0CAA6EceA2c8ee73092B3062",
+  ABBY: "0x529aF9EbFD8612077bA6b0B72F2898EF7be337D1",
+  CHESTER: "0x2460a0068A154C7F2673417dA09f6AE81Ce70e56",
+  DOJO3: "0x46BE8d4a214D6ddecE0b3251d76d42E186927781",
+  FEATHERS: "0xb4e815813875366e2b4e65eA857278Ae5bEceDc3",
+  MOP: "0x45955765a7898f707a523CB1B7a6e3A95DDD5CD7",
+  NUTZ: "0x77D29085727405340946919A88B0Ac6c9Ffb80BD",
+  PAINGU: "0x8033d82e1e0f949C0986F9102a01C405831b784A",
+  PENGUIN: "0x8814046950cDA7aee1B249C1689d070C0db6E58D",
+  PUDGY: "0xEcbC4AB2ed8fce5C04dfB1104947Ca4891597336",
+  RETSBA: "0x26707CE367C4758F73EF09fA9D8d730869a38e10",
+  WOJACT: "0x13D6CbB5f602Df7784bbb9612c5314CDC1ba9d3c",
+  YUP: "0xF5048aD4FB452f4E39472d085E29994f6088d96B"
+};
+
+// Token ABI
+const TOKEN_ABI = [
+  "function balanceOf(address owner) view returns (uint256)",
+  "function transfer(address to, uint256 amount) returns (bool)",
+  "function approve(address spender, uint256 amount) returns (bool)",
+  "function allowance(address owner, address spender) view returns (uint256)"
+];
+
+// ABI for the swap contract that handles token claiming/transfers
+const SWAP_CONTRACT_ABI = [
+  "function transferToken(address tokenAddress, address recipient, uint256 amount) external",
+  "function claimTestTokens(address tokenAddress, uint256 tokenAmount) external",
+  "function swapTokenForFarmCoins(address tokenAddress, uint256 tokenAmount) external returns (uint256)"
+];
+
+// ABI for ERC20 token - minimal version for balance checking
+const ERC20_ABI = [
+  {
+    "constant": true,
+    "inputs": [{"name": "_owner", "type": "address"}],
+    "name": "balanceOf",
+    "outputs": [{"name": "balance", "type": "uint256"}],
+    "type": "function"
   }
+];
+
+interface TokenBalance {
+  symbol: string;
+  balance: number;
+  address: string;
 }
 
-// Use alias for window with proper typing
-const typedWindow = typeof window !== 'undefined' ? (window as any) : undefined;
+interface CrashoutGameProps {
+  farmCoins: number;
+  addFarmCoins: (delta: number) => void;
+  tokenBalances?: Record<string, number>; 
+  updateTokenBalance?: (token: string, amount: number) => void;
+  walletAddress?: string; // Connected wallet address
+  provider?: any; // Web3 provider
+}
 
-// Add immediate protection for ethereum properties before imports
-// This runs as soon as the file is parsed, before any components mount
-if (typeof window !== 'undefined' && !typedWindow._ethereumPropertyProtected) {
-  try {
-    // Initialize tracking objects
-    typedWindow._propertyAccessAttempts = typedWindow._propertyAccessAttempts || {};
-    typedWindow._propertyValues = typedWindow._propertyValues || {};
-    typedWindow._earlyWalletInjectionAttempts = typedWindow._earlyWalletInjectionAttempts || {};
-    typedWindow._hiddenDescriptors = typedWindow._hiddenDescriptors || {};
-    
-    const protectProperty = (propName: string) => {
-      try {
-        // Silently skip if the property is already non-configurable
-        // This prevents console errors in the browser
-        const descriptor = Object.getOwnPropertyDescriptor(window, propName);
-        if (descriptor && !descriptor.configurable) {
-          console.log(`Property ${propName} is not configurable, skipping protection`);
-          return;
-        }
-        
-        // Store current value before we modify anything
-        let currentValue = undefined;
-        try {
-          // Only try to get value if possible without errors
-          if (!descriptor || (descriptor.get && !descriptor.set) || descriptor.value !== undefined) {
-            currentValue = typedWindow[propName];
-          }
-        } catch (err) {
-          // Silently ignore errors when reading current value
-        }
-        
-        // Initialize value store
-        typedWindow._propertyValues[propName] = currentValue;
-        
-        // Only try to redefine properties that don't exist yet or are configurable
-        if (!descriptor || descriptor.configurable) {
-          try {
-            // Use more robust property definition to prevent property access errors
-            Object.defineProperty(window, propName, {
-              configurable: true,
-              enumerable: true,
-              get: function() {
-                // Track access attempts for debugging without logging
-                typedWindow._propertyAccessAttempts[propName] = 
-                  (typedWindow._propertyAccessAttempts[propName] || 0) + 1;
-                return typedWindow._propertyValues[propName];
-              },
-              set: function(newValue) {
-                // Allow setting the property value in our storage
-                typedWindow._propertyValues[propName] = newValue;
-              }
-            });
-          } catch (defineError) {
-            // Silently ignore errors when defining properties
-            console.warn(`Could not redefine property ${propName}:`, defineError);
-          }
-        }
-      } catch (err) {
-        // Silent fail if property is protected
+interface HistoryEntry { 
+  value: string; 
+  bet: number; 
+  token: string;
+}
+
+// Utility to sample crash point from 1× up to 50× with heavy tail
+const sampleCrashPoint = (): number => {
+  // 3% chance to crash instantly at 1×
+  if (Math.random() < 0.03) return 1;
+  // Pareto distribution for tail
+  const alpha = 2; // tail exponent: higher => rarer large jumps
+  const u = Math.random();
+  const x = 1 / Math.pow(u, 1 / alpha);
+  // cap at 50×
+  return Math.min(Math.max(x, 1), 50);
+};
+
+const baseBtnClass = 'inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 px-3 w-full text-xs h-8 bg-white text-black rounded-none hover:bg-white/90 noot-text border border-[rgb(51_51_51_/var(--tw-border-opacity,1))]';
+
+export function CrashoutGame({ 
+  farmCoins, 
+  addFarmCoins, 
+  tokenBalances = {}, 
+  updateTokenBalance,
+  walletAddress = "", 
+  provider = null 
+}: CrashoutGameProps) {
+  // Sync farmCoins with localStorage on mount
+  useEffect(() => {
+    const stored = localStorage.getItem('farmCoins');
+    if (stored !== null) {
+      const storedVal = parseInt(stored, 10);
+      if (storedVal !== farmCoins) {
+        addFarmCoins(storedVal - farmCoins);
       }
-    };
-    
-    // Protect common properties that cause conflicts with browser extensions
-    // This expanded list covers most crypto wallet injections
-    // Try to protect each property, ignoring any errors
-    [
-      'web3', 'solana', 'solflare', 'phantom',
-      'keplr', 'xdefi', 'leap', 'cosmostation', 'terraWallets', 'evmProvider',
-      'ethereum' // Add ethereum explicitly to the list
-    ].forEach(propName => {
-      try {
-        protectProperty(propName);
-      } catch (err) {
-        // Ignore errors for individual properties
-      }
-    });
-    
-    typedWindow._ethereumPropertyProtected = true;
-    
-    // Suppress unhandled promise rejections (e.g., wallet injections) to avoid console spam
-    window.addEventListener('unhandledrejection', event => {
-      event.preventDefault();
-    });
-    
-    // Add error handler for extension security policy access errors
-    window.addEventListener('error', function(event) {
-      if (event.error && event.error.message && 
-          (event.error.message.includes('storage is not allowed') || 
-           event.error.message.includes('security policy violations') ||
-           event.error.message.includes('Failed to set window.ethereum'))) {
-        // Suppress console errors for extension content security policy violations
-        event.preventDefault();
-      }
-    });
-  } catch (e) {
-    // Log any errors
-    console.warn("Error setting up property protection:", e);
-  }
-}
-
-import React, { useState, useEffect, useRef, useContext, useCallback } from 'react';
-import { GameContext } from '@/context/game-context';
-import { toast } from 'sonner';
-import { useTheme } from 'next-themes';
-import './crashout/crashout-styles.css';
-import { FiVolume2, FiVolumeX } from 'react-icons/fi';
-import axios from 'axios';
-
-// silence console for performance
-if (typeof window !== 'undefined') {
-  const noOp = () => {};
-  console.log = noOp;
-  console.info = noOp;
-  console.warn = noOp;
-  console.debug = noOp;
-}
-
-// disable verbose logging for performance
-if (typeof window !== 'undefined') {
-  console.log = () => {};
-  console.info = () => {};
-}
-
-// Define required types and enums
-enum GameState {
-  INACTIVE = 'INACTIVE',
-  WAITING = 'WAITING',
-  RUNNING = 'RUNNING',
-  CRASHED = 'CRASHED'
-}
-
-interface PlayerData {
-  username: string;
-  betAmount: number;
-  // Add tracking for gambling-focused enhancements
-  winStreak: number;
-  lossStreak: number;
-  previousBets: number[];
-  useMartingale: boolean;
-  highestWin: number;
-  totalWon: number;
-  totalLost: number;
-}
-
-interface CashoutData {
-  username: string;
-  multiplier: number;
-  winAmount: number;
-}
-
-interface GameHistoryEntry {
-  id?: string;
-  value: string;
-  color: string;
-  timestamp: number;
-  crashPoint?: number | string;
-}
-
-interface HighScoreEntry {
-  username: string;
-  multiplier: number;
-  winAmount: number;
-  timestamp: number;
-}
-
-// Constants for game states (same as server)
-const GAME_STATE = {
-  INACTIVE: "inactive",
-  COUNTDOWN: "countdown",
-  ACTIVE: "active",
-  CRASHED: "crashed",
-  CASHED_OUT: "cashed_out",
-};
-
-// Map backend states to frontend GameState enum for better type safety
-const mapBackendStateToFrontend = (backendState: string): GameState => {
-  switch(backendState) {
-    case GAME_STATE.ACTIVE:
-      return GameState.RUNNING;
-    case GAME_STATE.COUNTDOWN:
-      return GameState.WAITING;
-    case GAME_STATE.CRASHED:
-      return GameState.CRASHED;
-    case GAME_STATE.INACTIVE:
-    default:
-      return GameState.INACTIVE;
-  }
-};
-
-// Constants
-const MAX_RETRY_ATTEMPTS = 3;
-const API_TIMEOUT_MS = 15000; // 15 seconds - increased from 10 seconds
-const JOIN_WINDOW_SECONDS = 15; // 15 seconds for join window
-const GAME_COUNTDOWN_SECONDS = 15; // 15 seconds for game countdown
-
-// Helper components
-const DemoModeSwitch = ({ enabled, onChange }: { enabled: boolean; onChange: (enabled: boolean) => void }) => {
-  return (
-    <button
-      onClick={() => onChange(!enabled)}
-      className={`relative inline-flex h-5 w-10 items-center rounded-full ${enabled ? 'bg-green-500' : 'bg-gray-700'}`}
-    >
-      <span className="sr-only">Toggle Demo Mode</span>
-      <span 
-        className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${enabled ? 'translate-x-5' : 'translate-x-1'}`} 
-      />
-    </button>
-  );
-};
-
-// Add a utility function to get or create shared audio instances
-const getAudioInstance = (key: string, src: string): HTMLAudioElement => {
-  if (typeof window === 'undefined') return null as unknown as HTMLAudioElement;
-  const typedWindow = window as any;
-  
-  // Initialize the audio instances cache if it doesn't exist
-  if (!typedWindow._audioInstances) {
-    typedWindow._audioInstances = {};
-  }
-  
-  // Return the existing instance if it exists
-  if (typedWindow._audioInstances[key]) {
-    return typedWindow._audioInstances[key];
-  }
-  
-  // Log creation of a new audio instance to help with debugging
-  console.info(`Creating new audio instance for: ${key}`);
-  
-  // Create a new instance if it doesn't exist yet
-  const audio = new Audio(src);
-  
-  // Set up error handling on the audio element
-  audio.addEventListener('error', (e) => {
-    console.warn(`Audio error on ${key}:`, e);
-  });
-  
-  // Store in global cache
-  typedWindow._audioInstances[key] = audio;
-  return audio;
-};
-
-// Add new sound function types
-const playWinSound = (multiplier: number) => {
-  // Play different win sounds based on multiplier amount
-  if (multiplier >= 5.0) {
-    return 'bigWin'; // Big win sound
-  } else if (multiplier >= 2.0) {
-    return 'win'; // Normal win
-  } else {
-    return 'smallWin'; // Small win
-  }
-};
-
-const playLoseSound = (betAmount: number) => {
-  // Play different lose sounds based on bet amount
-  if (betAmount >= 100) {
-    return 'bigLoss'; // Big loss sound
-  } else {
-    return 'crash'; // Normal crash sound
-  }
-};
-
-// Calculate next bet using martingale strategy
-const calculateMartingaleBet = (previousBets: number[], baseBet: number, maxBet: number = 1000): number => {
-  if (!previousBets || previousBets.length === 0) {
-    return baseBet;
-  }
-  
-  // Doubling after a loss is the core martingale strategy
-  const lastBet = previousBets[previousBets.length - 1];
-  const suggestedBet = lastBet * 2;
-  
-  // Cap at max bet to prevent catastrophic losses
-  return Math.min(suggestedBet, maxBet);
-};
-
-export function CrashoutGame() {
-  // Existing local state
-  const { farmCoins, addFarmCoins } = useContext(GameContext);
-  const { theme } = useTheme();
-  
-  // Refs
-  const multiplierTextRef = useRef<HTMLDivElement>(null);
-  const gameResultRef = useRef<HTMLDivElement>(null);
-  const countdownTextRef = useRef<HTMLDivElement>(null);
-  const countdownOverlayRef = useRef<HTMLDivElement>(null);
-  const lossVideoRef = useRef<HTMLVideoElement>(null);
-  
-  // Add didMountRef to prevent double mounting issues
-  const didMountRef = useRef<boolean>(false);
-  
-  // Add intervals and timers refs
-  const demoIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const demoTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const joinWindowRef = useRef<NodeJS.Timeout | null>(null);
-  const apiRetryCountRef = useRef<number>(0);
-  const pollingRateRef = useRef<number>(3000); // Default polling rate (ms)
-  
-  // Audio handling - use shared instances instead of creating new ones
-  const audioRefs = useRef<{[key: string]: HTMLAudioElement | null}>({
-    crash: null,
-    cashout: null,
-    win: null,
-    backgroundMusic: null,
-    bigWin: null,
-    smallWin: null,
-    bigLoss: null
-  });
-  
-  // Audio control state
-  const [volume, setVolume] = useState<number>(() => {
-    if (typeof window !== 'undefined') {
-      return parseFloat(localStorage.getItem('crashoutVolume') || '0.5');
+    } else {
+      localStorage.setItem('farmCoins', farmCoins.toString());
     }
-    return 0.5;
-  });
-  
-  const [muted, setMuted] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('crashoutMuted') === 'true';
-    }
-    return false;
-  });
-  
-  // Game state
-  const [multiplier, setMultiplier] = useState<number>(1);
-  const [gameState, setGameState] = useState<GameState>(GameState.WAITING);
-  const [countdown, setCountdown] = useState<number>(0);
-  const [username, setUsername] = useState<string>('');
-  const [players, setPlayers] = useState<PlayerData[]>([]);
-  const [cashouts, setCashouts] = useState<CashoutData[]>([]);
-  const [gameHistory, setGameHistory] = useState<GameHistoryEntry[]>([]);
-  const [highScores, setHighScores] = useState<HighScoreEntry[]>([]);
-  const [betAmount, setBetAmount] = useState<string>('10');
-  const [autoCashout, setAutoCashout] = useState<string>('2.0');
-  const [playerJoined, setPlayerJoined] = useState<boolean>(false);
-  const [cashedOutAt, setCashedOutAt] = useState<number | null>(null);
-  const [isCashoutDisabled, setIsCashoutDisabled] = useState<boolean>(true);
-  const [isConnected, setIsConnected] = useState<boolean>(false);
-  const [connectionStatus, setConnectionStatus] = useState<string>('Connecting...');
-  const [offlineMode, setOfflineMode] = useState<boolean>(false);
-  
-  // UI state
-  const [isPlayDisabled, setIsPlayDisabled] = useState<boolean>(false);
-  const [showGameStartedImage, setShowGameStartedImage] = useState<boolean>(false);
-  const [showLossImage, setShowLossImage] = useState<boolean>(false);
-  const [joinWindowTimeLeft, setJoinWindowTimeLeft] = useState<number>(0);
-  
-  // Auto-play
-  const [autoPlayEnabled, setAutoPlayEnabled] = useState<boolean>(true);
-  const [canPlaceBet, setCanPlaceBet] = useState<boolean>(true);
-  const [nextGameStartTime, setNextGameStartTime] = useState<number | null>(null);
-  
-  // Online specific state
-  const [onlinePlayersCount, setOnlinePlayersCount] = useState<number>(0);
-  const [playersInGame, setPlayersInGame] = useState<number>(0);
-  const [recentCashouts, setRecentCashouts] = useState<Array<{username: string, multiplier: number, winning: number, timestamp: number}>>([]);
-
-  // Create a currentGameData ref to track state changes without re-renders
-  const currentGameData = useRef<any>(null);
-  const apiError = useRef<boolean>(false);
-  const jsonErrorCountRef = useRef<number>(0);
-  const [redisJsonErrorPersistent, setRedisJsonErrorPersistent] = useState<boolean>(false);
-
-  // Enhanced player state for gambling features
-  const [winStreak, setWinStreak] = useState<number>(0);
-  const [lossStreak, setLossStreak] = useState<number>(0);
-  const [previousBets, setPreviousBets] = useState<number[]>([]);
-  const [useMartingale, setUseMartingale] = useState<boolean>(false);
-  const [highestWin, setHighestWin] = useState<number>(0);
-  const [totalWon, setTotalWon] = useState<number>(0);
-  const [totalLost, setTotalLost] = useState<number>(0);
-  const [showHotStreak, setShowHotStreak] = useState<boolean>(false);
-  const [streakEffect, setStreakEffect] = useState<string>('');
-
-  // Fix the showCountdownOverlay state
-  const [showCountdownOverlay, setShowCountdownOverlay] = useState<boolean>(false);
-
-  // track previous gameState to avoid repeated effects
-  const prevGameStateRef = useRef<GameState>();
-
-  const setApiError = useCallback((value: boolean) => {
-    apiError.current = value;
   }, []);
+  // Persist farmCoins to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('farmCoins', farmCoins.toString());
+  }, [farmCoins]);
+  const [betAmount, setBetAmount] = useState<string>('');
+  const [autoCashout, setAutoCashout] = useState<string>('');
+  const [multiplier, setMultiplier] = useState<number>(1.0);
+  const [gameState, setGameState] = useState<'inactive' | 'active' | 'crashed' | 'approving' | 'claiming'>('inactive');
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [hasCashed, setHasCashed] = useState<boolean>(false);
+  const hasCashedRef = useRef<boolean>(false);
+  const [volume, setVolume] = useState<number>(1);
+  const [muted, setMuted] = useState<boolean>(false);
+  const [timeLeft, setTimeLeft] = useState<number>(30); // Increased to 30 seconds
+  const countdownRef = useRef<number | null>(null);
+  const [betPlaced, setBetPlaced] = useState<boolean>(false);
+  const [approvalPending, setApprovalPending] = useState<boolean>(false);
+  const [hasWon, setHasWon] = useState<boolean>(false);
+  const [winAmount, setWinAmount] = useState<number>(0);
+  const betRef = useRef<number>(0);
+  const [userJoined, setUserJoined] = useState<boolean>(false);
+  const crashPointRef = useRef<number>(1);
+  const intervalRef = useRef<number | null>(null);
+  const bgmRef = useRef<HTMLAudioElement | null>(null);
+  const crashRef = useRef<HTMLAudioElement | null>(null);
+  const cashoutRef = useRef<HTMLAudioElement | null>(null);
+  const winRef = useRef<HTMLAudioElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  
+  // New state for token selection and balances
+  const [selectedToken, setSelectedToken] = useState<string>("FARM");
+  const tokenRef = useRef<string>("FARM");
+  const [availableTokens, setAvailableTokens] = useState<TokenBalance[]>([
+    { symbol: "FARM", balance: farmCoins, address: "" }
+  ]);
+  const [isLoadingBalances, setIsLoadingBalances] = useState<boolean>(false);
+  const [lastBalanceUpdate, setLastBalanceUpdate] = useState<number>(0);
+  
+  // Wallet connection state
+  const [isWalletConnected, setIsWalletConnected] = useState<boolean>(false);
+  const [localWalletAddress, setLocalWalletAddress] = useState<string>(walletAddress);
+  const [activeWallet, setActiveWallet] = useState<string | null>(null);
+  const [metamaskProvider, setMetamaskProvider] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [showWalletOptions, setShowWalletOptions] = useState<boolean>(false);
+  const [txStatus, setTxStatus] = useState<'none' | 'pending' | 'confirming' | 'confirmed' | 'failed'>('none');
+  const [txHash, setTxHash] = useState<string | null>(null);
+  const [showTxDialog, setShowTxDialog] = useState<boolean>(false);
 
-  // Modify the getCurrentGameData function to use the auto-repair endpoint on JSON parsing errors
-  const getCurrentGameData = useCallback(async () => {
+  // Update walletAddress when the prop changes
+  useEffect(() => {
+    if (walletAddress) {
+      setLocalWalletAddress(walletAddress);
+      setIsWalletConnected(true);
+    }
+  }, [walletAddress]);
+
+  // Connect wallet and fetch token balances
+  const connectWallet = async (walletType?: string) => {
     try {
-      console.log('Fetching current game data...');
-      const response = await axios.get('/api/game', {
-        headers: { 
-          'Cache-Control': 'no-cache',
-          'Accept': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest'
-        },
-        transformResponse: [
-          // Add custom transform to handle malformed JSON before axios tries to parse it
-          (data) => {
-            if (typeof data !== 'string') return data;
-            
-            try {
-              return JSON.parse(data);
-            } catch (err: any) {
-              console.warn('JSON parse error in response:', err.message);
-              
-              // Track JSON parsing errors for diagnostic purposes
-              const jsonErrorData = {
-                message: err.message,
-                sample: data.slice(0, 100),
-                timestamp: Date.now()
-              };
-              
-              // Trigger auto-repair when JSON errors are detected
-              if (err.message.includes('JSON')) {
-                console.log('Triggering auto-repair due to JSON parse error');
-                // Send the request to auto-repair endpoint asynchronously 
-                // We don't await this to avoid delaying the current operation
-                axios.post('/api/game/auto-repair', {
-                  errorData: jsonErrorData
-                }).then(repairResult => {
-                  console.log('Auto-repair completed:', repairResult.data);
-                  if (repairResult.data.repaired) {
-                    toast.success('Game data has been automatically repaired');
-                  }
-                }).catch(repairErr => {
-                  console.error('Auto-repair failed:', repairErr);
-                });
-              }
-              
-              // Try to clean the response
-              if (data.startsWith('{') && data.includes('error')) {
-                try {
-                  // Extract the error message directly
-                  const errorMatch = data.match(/error["']?\s*:\s*["']([^"']+)["']/i);
-                  const errorMsg = errorMatch ? errorMatch[1] : 'Unknown JSON parse error';
-                  
-                  // Return a valid fallback object
-                  return {
-                    success: false,
-                    message: 'Error parsing game data',
-                    error: errorMsg,
-                    redis: 'disconnected',
-                    timestamp: Date.now(),
-                    jsonError: true,
-                    autoRepairTriggered: true
-                  };
-                } catch (e) {
-                  // Last resort fallback
-                  return {
-                    success: false,
-                    message: 'Invalid JSON from API',
-                    error: String(err),
-                    redis: 'disconnected',
-                    jsonError: true,
-                    autoRepairTriggered: true
-                  };
-                }
-              }
-              
-              // Return a standard error object 
-              return {
-                success: false,
-                message: 'API returned invalid data',
-                error: String(err),
-                redis: 'disconnected',
-                jsonError: true,
-                autoRepairTriggered: true
-              };
-            }
-          }
-        ]
-      });
+      setIsLoading(true);
       
-      console.log('Game data response status:', response.status);
-      
-      // Make sure we have data
-      if (!response.data) {
-        console.error('API returned empty data');
-        return null;
-      }
-      
-      // Check if the response is potentially invalid JSON that was already parsed
-      if (response.data && typeof response.data === 'object' && response.data.error && 
-          response.data.error.includes("JSON")) {
-        console.warn('JSON parse error detected from API response:', response.data.error);
-        
-        // If auto-repair wasn't already triggered, do it now
-        if (!response.data.autoRepairTriggered) {
-          console.log('Triggering delayed auto-repair for JSON error');
-          axios.post('/api/game/auto-repair', {
-            errorData: {
-              message: response.data.error,
-              timestamp: Date.now()
-            }
-          }).catch(err => console.error('Error calling auto-repair:', err));
-        }
-        
-        // Return a safe fallback object
-        return {
-          state: GAME_STATE.INACTIVE,
-          multiplier: 1.0,
-          countdown: 0,
-          message: "API returned invalid JSON",
-          error: response.data.error,
-          redis: "disconnected",
-          players: [],
-          onlinePlayers: 0,
-          recentCashouts: []
-        };
-      }
-      
-      // If the response contains gameState data, use it directly
-      if (response.data.gameState) {
-        console.log('Received game state data from API:', response.data.gameState.state);
-        return {
-          ...response.data.gameState,
-          onlinePlayers: response.data.onlinePlayers,
-          history: response.data.history,
-          recentCashouts: response.data.cashouts
-        };
-      }
-      
-      // If the response contains a message but no game state data, 
-      // let's create a default state to avoid undefined errors
-      if (response.data.message && response.data.message === "Game API is running" && !response.data.gameState) {
-        console.warn('API returned connection message without game state, creating default state');
-        
-        // Create a basic default state
-        return {
-          state: GAME_STATE.INACTIVE,
-          multiplier: 1.0,
-          countdown: 0,
-          redis: response.data.redis || "unknown",
-          message: response.data.message || "Game API is running",
-          // Add any other default fields we need
-          players: [],
-          onlinePlayers: 0,
-          recentCashouts: []
-        };
-      }
-      
-      return response.data;
-    } catch (error: any) { // Type assertion to handle axios error properties
-      console.error('Error fetching game data:', error);
-      
-      // Provide detailed error information
-      if (error.response) {
-        // Server responded with non-2xx status
-        console.error('Server error response:', error.response.status, error.response.data);
-        
-        // Check if the error is a JSON parsing error
-        const errorData = error.response.data;
-        if (typeof errorData === 'string' && errorData.includes('JSON')) {
-          console.warn('Possible JSON parse error in response');
-          
-          // Trigger auto-repair
-          axios.post('/api/game/auto-repair', {
-            errorData: {
-              message: 'Error in response data: ' + (error.response.statusText || 'Unknown error'),
-              sample: typeof errorData === 'string' ? errorData.slice(0, 100) : 'Non-string data',
-              status: error.response.status,
-              timestamp: Date.now()
-            }
-          }).catch(repairErr => console.error('Auto-repair request failed:', repairErr));
-        }
-      } else if (error.request) {
-        // Request was made but no response received
-        console.error('No response received from server');
-      } else {
-        // Something happened in setting up the request
-        console.error('Request setup error:', error.message);
-      }
-      
-      // Return a fallback state object
-      return {
-        state: GAME_STATE.INACTIVE,
-        multiplier: 1.0,
-        countdown: 0,
-        message: "Error connecting to game API",
-        error: error.message,
-        redis: "disconnected",
-        players: [],
-        onlinePlayers: 0,
-        recentCashouts: []
-      };
-    }
-  }, []);
-
-  // Utility function for fetching game history
-  const getGameHistory = useCallback(async () => {
-    try {
-      const response = await axios.get('/api/game/history', {
-        headers: { 'Cache-Control': 'no-cache' }
-      });
-      return response.data;
-    } catch (error) {
-      console.error('Error fetching game history:', error);
-      return [];
-    }
-  }, []);
-
-  // Define timer functions before they're used
-  const clearJoinWindowTimer = useCallback(() => {
-    if (joinWindowRef.current) {
-      clearInterval(joinWindowRef.current);
-      joinWindowRef.current = null;
-    }
-  }, []);
-
-  const startJoinWindowTimer = useCallback((seconds: number) => {
-    clearJoinWindowTimer();
-    setJoinWindowTimeLeft(seconds);
-    joinWindowRef.current = setInterval(() => {
-      setJoinWindowTimeLeft(prev => {
-        const newValue = prev - 1;
-        if (newValue <= 0) {
-          clearJoinWindowTimer();
-          return 0;
-        }
-        return newValue;
-      });
-    }, 1000);
-  }, [clearJoinWindowTimer]);
-  
-  // Initialize audio with shared instances to avoid too many media players
-  const initializeAudio = useCallback(() => {
-    if (typeof window === 'undefined') return;
-    const typedWindow = window as any;
-    
-    // Only initialize once to prevent multiple instances
-    if (typedWindow._crashoutAudioInitialized) {
-      console.info('Audio already initialized, reusing instances');
-      
-      // Update references to existing audio instances
-      if (typedWindow._audioInstances) {
-        audioRefs.current.crash = typedWindow._audioInstances['crashout_crash'] || null;
-        audioRefs.current.cashout = typedWindow._audioInstances['crashout_cashout'] || null;
-        audioRefs.current.win = typedWindow._audioInstances['crashout_win'] || null;
-        audioRefs.current.backgroundMusic = typedWindow._audioInstances['crashout_bgm'] || null;
-        // Add new gambling-focused sound effects
-        audioRefs.current.bigWin = typedWindow._audioInstances['crashout_bigwin'] || null;
-        audioRefs.current.smallWin = typedWindow._audioInstances['crashout_smallwin'] || null;
-        audioRefs.current.bigLoss = typedWindow._audioInstances['crashout_bigloss'] || null;
-        
-        // Update volume settings on existing instances
-        if (audioRefs.current.backgroundMusic) {
-          audioRefs.current.backgroundMusic.volume = muted ? 0 : volume * 0.3;
-        }
-      }
-      return;
-    }
-    
-    console.info('Initializing audio for Crashout game');
-    typedWindow._crashoutAudioInitialized = true;
-    
-    // Preload all audio files with a single instance each
-    audioRefs.current.crash = getAudioInstance('crashout_crash', '/sounds/crash.mp3');
-    audioRefs.current.cashout = getAudioInstance('crashout_cashout', '/sounds/cashout.mp3');
-    audioRefs.current.win = getAudioInstance('crashout_win', '/sounds/win.mp3');
-    // Add new gambling-focused sound effects
-    audioRefs.current.bigWin = getAudioInstance('crashout_bigwin', '/sounds/win.mp3');
-    audioRefs.current.smallWin = getAudioInstance('crashout_smallwin', '/sounds/win.mp3');
-    audioRefs.current.bigLoss = getAudioInstance('crashout_bigloss', '/sounds/crash.mp3');
-    
-    const bgMusic = getAudioInstance('crashout_bgm', '/sounds/background_music.mp3');
-    bgMusic.loop = true;
-    bgMusic.volume = muted ? 0 : volume * 0.3;
-    audioRefs.current.backgroundMusic = bgMusic;
-    
-    // Set up instances to handle auto-play restrictions
-    Object.values(audioRefs.current).forEach(audio => {
-      if (audio) {
-        // Set initial volume for all audio elements
-        audio.volume = audio === audioRefs.current.backgroundMusic ? volume * 0.3 : volume;
-        // Pre-mute if needed
-        audio.muted = muted;
-      }
-    });
-  }, [muted, volume]);
-  
-  // Modified playSound function to handle errors better
-  const playSound = useCallback((type: string) => {
-    if (!audioRefs.current[type] || muted) return;
-    
-    try {
-      const audio = audioRefs.current[type];
-      if (!audio) return;
-      
-      // Update volume before playing
-      audio.volume = type === 'backgroundMusic' ? volume * 0.3 : volume;
-      audio.muted = muted;
-      
-      // Handle background music specially to avoid resetting position
-      if (type === 'backgroundMusic') {
-        if (audio.paused) {
-          const playPromise = audio.play();
-          if (playPromise !== undefined) {
-            playPromise.catch(e => {
-              if (e.name !== 'AbortError' && e.name !== 'NotAllowedError') {
-                console.warn(`Could not play background music:`, e);
-              }
-            });
-          }
-        }
-        // Don't reset currentTime for background music
+      // If no wallet type specified, show wallet options dialog
+      if (!walletType) {
+        setShowWalletOptions(true);
+        setIsLoading(false);
         return;
       }
       
-      // For sound effects, reset position and play
-      audio.currentTime = 0;
-      
-      // Use a promise with proper error handling
-      const playPromise = audio.play();
-      if (playPromise !== undefined) {
-        playPromise.catch(e => {
-          if (e.name !== 'AbortError' && e.name !== 'NotAllowedError') {
-            console.warn(`Could not play ${type} sound:`, e);
-          }
-        });
-      }
-    } catch (err) {
-      console.warn(`Error playing sound: ${type}`, err);
-    }
-  }, [muted, volume]);
-  
-  // Modify the checkApiAvailability function to be more robust
-  const checkApiAvailability = useCallback(async () => {
-    try {
-      console.log('Checking API availability...');
-      apiRetryCountRef.current = 0; // Reset retry count
-      
-      // Try up to 5 retries with increasing timeout
-      for (let attempt = 1; attempt <= 5; attempt++) {
-        console.log(`API check attempt ${attempt}/5...`);
-        
-        try {
-          // Set a timeout that increases with each retry
-          const timeout = API_TIMEOUT_MS * (1 + (attempt * 0.5));
-          console.log(`Using timeout of ${timeout}ms`);
-          
-          // Create axios instance with timeout
-          const axiosInstance = axios.create({
-            timeout: timeout
-          });
-          
-          // Add more debug info in the request headers
-          const response = await axiosInstance.get('/api/game', {
-            headers: { 
-              'Cache-Control': 'no-cache',
-              'X-Debug-Client': 'crashout-game-component',
-              'X-Debug-Timestamp': Date.now().toString(),
-              'X-Debug-Attempt': attempt.toString()
-            }
-          });
-          
-          console.log('API game endpoint response:', response.data);
-          
-          // Check if we got any response at all
-          if (!response.data) {
-            console.warn('Empty response from game API');
-            continue; // Try again
-          }
-          
-          // Check if connected to Redis
-          if (response.data.redis === 'connected') {
-            console.log('Redis connected successfully');
-            
-            // Force remove any demo mode flags
-            if (typeof window !== 'undefined') {
-              localStorage.removeItem('crashoutDemoMode');
-            }
-            
-            return true;
-          } else if (response.data.redis === 'disconnected' || response.data.status === 'error') {
-            const errorMsg = response.data.error || 'Unknown Redis error';
-            console.error('Redis error in game check:', errorMsg);
-            
-            // Don't show toast on every retry - only on final attempt
-            if (attempt === 5) {
-              toast.error(`Game connection error: ${errorMsg}`);
-            }
-            
-            // Try a direct call to health endpoint before giving up
-            if (attempt === 5) {
-              try {
-                const healthResponse = await axiosInstance.get('/api/health', {
-                  headers: { 'Cache-Control': 'no-cache' }
-                });
-                
-                console.log('Health check response:', healthResponse.data);
-                
-                if (healthResponse.data.redis?.status === 'connected') {
-                  console.log('Redis connected via health endpoint');
-                  return true;
-                }
-              } catch (healthErr) {
-                console.error('Health endpoint failed:', healthErr);
-              }
-            }
-            
-            continue; // Try again with next attempt
-          }
-          
-          // If we got here with a valid response but no explicit redis status,
-          // let's try to infer connection from presence of game state data
-          if (response.data.state || response.data.gameHistory || response.data.onlinePlayers) {
-            console.log('Inferring Redis connection from valid game data');
-            return true;
-          }
-          
-          // Continue to next attempt if we're not sure
-          console.log('Ambiguous response, continuing to next attempt...');
-        } catch (attemptError) {
-          console.warn(`Attempt ${attempt} failed:`, attemptError);
-          
-          // Wait before next retry, with increasing backoff
-          const backoffMs = 1000 * attempt;
-          console.log(`Waiting ${backoffMs}ms before next attempt...`);
-          await new Promise(resolve => setTimeout(resolve, backoffMs));
-        }
+      switch (walletType) {
+        case WALLET_OPTIONS.METAMASK:
+          await connectMetaMask();
+          break;
+        default:
+          console.error("Unknown wallet type");
       }
       
-      // One final direct check to really make sure
-      try {
-        console.log('Making final direct check to /api/redis-status endpoint...');
-        const finalCheck = await axios.get('/api/redis-status', {
-          timeout: API_TIMEOUT_MS * 2
-        });
-        
-        if (finalCheck.data && finalCheck.data.connected) {
-          console.log('Final redis check succeeded');
-          return true;
-        }
-      } catch (finalError) {
-        console.error('Final redis check failed:', finalError);
-      }
-      
-      // If we got here, all attempts failed
-      console.error('All API connection attempts failed after retries');
-      toast.error('Could not connect to game server. Starting in demo mode.');
-      return false;
+      setShowWalletOptions(false);
     } catch (error) {
-      console.error('API availability check failed:', error);
-      toast.error(`API availability check failed: ${error instanceof Error ? error.message : String(error)}`);
+      console.error(`Error connecting to wallet:`, error);
+      toast.error(`Failed to connect wallet. Please try again.`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Connect to MetaMask
+  const connectMetaMask = async () => {
+    if (!window.ethereum) {
+      toast.error("MetaMask not detected. Please install MetaMask extension.");
+      throw new Error("MetaMask not available");
+    }
+    
+    try {
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      
+      if (accounts.length > 0) {
+        setIsWalletConnected(true);
+        setActiveWallet(WALLET_OPTIONS.METAMASK);
+        setLocalWalletAddress(accounts[0]);
+        setMetamaskProvider(window.ethereum);
+        
+        // Switch to Abstract Testnet
+        await switchToAbstractTestnet(window.ethereum);
+        
+        // Fetch token balances
+        fetchTokenBalances();
+        toast.success("Connected to MetaMask");
+      } else {
+        throw new Error("No accounts found after connecting MetaMask");
+      }
+    } catch (error) {
+      console.error("MetaMask connection error:", error);
+      throw error;
+    }
+  };
+  
+  // Disconnect wallet
+  const handleDisconnect = async () => {
+    try {
+      // Reset connection state
+      setIsWalletConnected(false);
+      setActiveWallet(null);
+      setLocalWalletAddress('');
+      
+      toast.success("Wallet disconnected");
+      
+      // Reset token balances except Farm Coins
+      setAvailableTokens([
+        { symbol: "FARM", balance: farmCoins, address: "" }
+      ]);
+    } catch (error) {
+      console.error("Error disconnecting wallet:", error);
+      toast.error("Failed to disconnect wallet");
+    }
+  };
+  
+  // Switch to Abstract Testnet
+  const switchToAbstractTestnet = async (provider: any = null) => {
+    // Use provided provider or get current provider
+    const targetProvider = provider || window.ethereum;
+    
+    if (!targetProvider) {
+      toast.error("No wallet provider detected");
       return false;
     }
-  }, []);
-
-  // Modified startDemoMode function to prevent infinite loops
-  const startDemoMode = useCallback(() => {
-    console.log("Starting demo mode");
-    setOfflineMode(true);
-    setIsConnected(true);
-    setConnectionStatus('Demo Mode');
     
-    // Load demo username from localStorage or use default
-    const storedUsername = localStorage.getItem('crashoutUsername') || 'Player' + Math.floor(Math.random() * 1000);
-    setUsername(storedUsername);
-    localStorage.setItem('crashoutUsername', storedUsername);
-    localStorage.setItem('crashoutDemoMode', 'true');
-    
-    // Reset game state
-    setGameState(GameState.WAITING);
-    setMultiplier(1);
-    setCountdown(5);
-    setPlayers([]);
-    setCashouts([]);
-    setPlayerJoined(false);
-    setCashedOutAt(null);
-    setIsCashoutDisabled(true);
-    
-    // Sample game history
-    setGameHistory([
-      { 
-        id: '1', 
-        value: '1.25', 
-        color: parseFloat('1.25') >= 2.0 ? 'green' : 'red',
-        timestamp: Date.now() - 50000,
-        crashPoint: 1.25
-      },
-      { 
-        id: '2', 
-        value: '2.5', 
-        color: parseFloat('2.5') >= 2.0 ? 'green' : 'red',
-        timestamp: Date.now() - 40000,
-        crashPoint: 2.5
-      },
-      { 
-        id: '3', 
-        value: '1.1', 
-        color: parseFloat('1.1') >= 2.0 ? 'green' : 'red',
-        timestamp: Date.now() - 30000,
-        crashPoint: 1.1
-      },
-      { 
-        id: '4', 
-        value: '5.2', 
-        color: parseFloat('5.2') >= 2.0 ? 'green' : 'red',
-        timestamp: Date.now() - 20000,
-        crashPoint: 5.2
-      },
-      { 
-        id: '5', 
-        value: '1.9', 
-        color: parseFloat('1.9') >= 2.0 ? 'green' : 'red',
-        timestamp: Date.now() - 10000,
-        crashPoint: 1.9
-      }
-    ]);
-    
-    // Clear any existing intervals/timers
-    if (demoIntervalRef.current) {
-      clearInterval(demoIntervalRef.current);
-      demoIntervalRef.current = null;
-    }
-    
-    if (demoTimerRef.current) {
-      clearTimeout(demoTimerRef.current);
-      demoTimerRef.current = null;
-    }
-    
-    // Start the demo game cycle
-    let demoGameState = GameState.WAITING;
-    let demoMultiplier = 1;
-    let demoCountdown = 5;
-    let demoCrashPoint = 1 + Math.random() * 10;
-    
-    // Use a separate variable to track countdown - don't modify state directly in intervals
-    let countdownValue = demoCountdown;
-    
-    // Update countdown during WAITING state - using proper state updates
-    const countdownInterval = setInterval(() => {
-      countdownValue--;
-      // Update state safely
-      setCountdown(countdownValue);
-      
-      if (countdownValue <= 0) {
-        clearInterval(countdownInterval);
-      }
-    }, 1000);
-    
-    // Switch to RUNNING state after countdown
-    demoTimerRef.current = setTimeout(() => {
-      // Switch to RUNNING state after countdown
-      demoGameState = GameState.RUNNING;
-      setGameState(GameState.RUNNING);
-      setIsCashoutDisabled(false);
-      
-      // Update multiplier at intervals during RUNNING state
-      demoIntervalRef.current = setInterval(() => {
-        demoMultiplier = parseFloat((demoMultiplier * 1.05).toFixed(2));
-        setMultiplier(demoMultiplier);
-        
-        // Check if we should crash
-        if (demoMultiplier >= demoCrashPoint) {
-          if (demoIntervalRef.current) {
-            clearInterval(demoIntervalRef.current);
-            demoIntervalRef.current = null;
-          }
-          
-          // Crash the game
-          setGameState(GameState.CRASHED);
-          playSound('crash');
-          
-          // Add to history
-          const newHistoryEntry: GameHistoryEntry = {
-            id: Date.now().toString(),
-            value: demoMultiplier.toFixed(2),
-            color: demoMultiplier >= 2.0 ? 'green' : 'red',
-            timestamp: Date.now(),
-            crashPoint: demoMultiplier
-          };
-          setGameHistory(prev => [newHistoryEntry, ...prev.slice(0, 9)]);
-          
-          // If player joined but didn't cash out, they lost
-          if (playerJoined && cashedOutAt === null) {
-            toast.error(`Game crashed at ${demoMultiplier.toFixed(2)}x. You lost ${betAmount} Farm Coins.`);
-          }
-          
-          // Reset for next round - delay to avoid multiple state updates
-          setTimeout(() => {
-            if (!offlineMode) return; // Only restart if still in demo mode
-            startDemoMode();
-          }, 5000);
-        }
-      }, 100);
-    }, demoCountdown * 1000);
-    
-    toast.success("Started demo mode! You have 1000 Farm Coins to play with.");
-  }, [playSound, betAmount, cashedOutAt, playerJoined, setOfflineMode, setIsConnected, setConnectionStatus, setUsername, setGameState, setMultiplier, setCountdown, setPlayers, setCashouts, setPlayerJoined, setCashedOutAt, setIsCashoutDisabled, setGameHistory, offlineMode]);
-
-  // Add a new endpoint check function
-  const checkEndpoint = useCallback(async (url: string, timeout: number = API_TIMEOUT_MS) => {
     try {
-      const response = await axios.get(url, {
-        timeout: timeout,
-        headers: { 'Cache-Control': 'no-cache' }
+      // Check current network
+      const chainId = await targetProvider.request({ method: 'eth_chainId' });
+      console.log("Current chain ID:", chainId);
+      
+      // Already on Abstract Testnet
+      if (chainId === ABSTRACT_TESTNET_CHAIN_ID) {
+        return true;
+      }
+      
+      // Try to switch to Abstract Testnet
+      await targetProvider.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: ABSTRACT_TESTNET_CHAIN_ID }],
       });
-      return { success: true, data: response.data };
-    } catch (error) {
-      return { success: false, error };
-    }
-  }, []);
-  
-  // Helper function to update game history with proper validation
-  const addToGameHistory = (newHistory: GameHistoryEntry[]) => {
-    // Filter out invalid entries
-    const validEntries = newHistory.filter(entry => {
-      // Ensure we have a valid value
-      const value = typeof entry.value === 'string' ? 
-        parseFloat(entry.value) : 
-        (typeof entry.crashPoint === 'number' ? entry.crashPoint : 0);
       
-      // Log invalid entries for debugging
-      if (isNaN(value) || value <= 0) {
-        console.warn('Filtering out invalid history entry:', entry);
+      toast.success("Successfully switched to Abstract Testnet");
+      return true;
+    } catch (switchError: any) {
+      // This error code indicates the chain has not been added to the wallet
+      if (switchError.code === 4902 || (switchError.data && switchError.data.originalError && switchError.data.originalError.code === 4902)) {
+        try {
+          console.log("Chain not added to wallet. Attempting to add it now...");
+          await targetProvider.request({
+            method: 'wallet_addEthereumChain',
+            params: [{
+              chainId: ABSTRACT_TESTNET_CHAIN_ID,
+              chainName: 'Abstract Testnet',
+              nativeCurrency: {
+                name: 'Abstract ETH',
+                symbol: 'ETH',
+                decimals: 18
+              },
+              rpcUrls: ['https://api.testnet.abs.xyz', 'https://rpc.testnet.abs.xyz'],
+              blockExplorerUrls: [ABSTRACT_BLOCK_EXPLORER],
+              iconUrls: []
+            }]
+          });
+          toast.success("Abstract Testnet added to your wallet");
+          return true;
+        } catch (addError) {
+          console.error("Error adding chain:", addError);
+          toast.error("Could not add Abstract Testnet to your wallet");
+          return false;
+        }
+      } else {
+        console.error("Error switching network:", switchError);
+        toast.error("Failed to switch to Abstract Testnet. Please switch manually in your wallet.");
+        return false;
+      }
+    }
+  };
+
+  // Monitor transaction status
+  const monitorTransaction = async (hash: string): Promise<boolean> => {
+    try {
+      setTxStatus("pending");
+      setTxHash(hash);
+      setShowTxDialog(true);
+      
+      const currentProvider = metamaskProvider || window.ethereum;
+      const provider = new ethers.BrowserProvider(currentProvider);
+      
+      // Wait for transaction to be mined with timeout
+      let attempts = 0;
+      const maxAttempts = 30; // 30 attempts with 2 second delay = 60 seconds max wait
+      let tx = null;
+      
+      while (attempts < maxAttempts) {
+        tx = await provider.getTransaction(hash);
+        if (tx) break;
+        
+        // Wait 2 seconds before retrying
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        attempts++;
+      }
+      
+      if (!tx) {
+        setTxStatus("failed");
+        toast.error("Transaction not found after multiple attempts. Please check the block explorer.");
         return false;
       }
       
-      // Entry is valid
-      return true;
-    });
-    
-    // Format entries consistently
-    const formattedEntries = validEntries.map(entry => {
-      const value = typeof entry.value === 'string' ? 
-        parseFloat(entry.value) : 
-        (typeof entry.crashPoint === 'number' ? entry.crashPoint : 1.01);
-      
-      return {
-        ...entry,
-        value: value.toFixed(2),
-        color: value >= 2.0 ? 'green' : 'red',
-        timestamp: entry.timestamp || Date.now()
-      };
-    });
-    
-    // Only update if we have valid entries
-    if (formattedEntries.length > 0) {
-      setGameHistory(prev => [...formattedEntries, ...prev.slice(0, 49-formattedEntries.length)]);
-    }
-  };
-  
-  // More reliable fetch with retries
-  const fetchGameStateWithRetry = async (retryCount = 0): Promise<any> => {
-    try {
-      const data = await getCurrentGameData();
-      if (data) {
-        // Check if we have a JSON parse error
-        if (data.error && typeof data.error === 'string' && data.error.includes('JSON')) {
-          console.warn(`JSON parse error in API response: ${data.error}`);
-          
-          // Increment issue counter for tracking persistent issues
-          jsonErrorCountRef.current++;
-          
-          // If we still have retries, try again
-          if (retryCount < 2) {
-            console.log(`JSON parse error, retry ${retryCount + 1}/3`);
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            return fetchGameStateWithRetry(retryCount + 1);
-          }
-          
-          // Check if we're getting persistent JSON errors (5+ in a row)
-          if (jsonErrorCountRef.current > 5) {
-            console.warn('Persistent JSON parsing errors detected, considering fallback to demo mode');
-            
-            // First try the health endpoint to validate Redis status
-            try {
-              const healthResponse = await axios.get('/api/health', {
-                headers: { 'Cache-Control': 'no-cache' }
-              });
-              
-              if (healthResponse.data && healthResponse.data.redis?.status === 'connected') {
-                console.log('Redis is connected via health endpoint despite JSON errors');
-                jsonErrorCountRef.current = 0; // Reset counter since Redis appears to be working
-                // Use fallback data but don't switch to demo mode
-                return data;
-              }
-            } catch (healthErr) {
-              console.error('Health endpoint also failed:', healthErr);
-            }
-            
-            // If health check also fails, consider switching to demo mode
-            setRedisJsonErrorPersistent(true);
-          }
-          
-          // If we're out of retries, use the fallback data
-          return data;
-        }
-        
-        // Reset error counters on successful request
-        if (apiError.current) {
-          console.log('API connection restored');
-          setApiError(false);
-        }
-        
-        // Reset JSON error counter on successful request without JSON errors
-        if (jsonErrorCountRef.current > 0) {
-          jsonErrorCountRef.current = 0;
-        }
-        
-        // Reset persistent JSON error flag if set
-        if (redisJsonErrorPersistent) {
-          setRedisJsonErrorPersistent(false);
-        }
-        
-        return data;
-      }
-      
-      // If we get an empty response but still have retries left
-      if (retryCount < 2) {
-        console.log(`Empty game data, retry ${retryCount + 1}/3`);
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        return fetchGameStateWithRetry(retryCount + 1);
-      }
-      
-      return null;
-    } catch (error) {
-      console.error('Error fetching game state:', error);
-      
-      // Retry a few times before giving up
-      if (retryCount < 2) {
-        console.log(`Request failed, retry ${retryCount + 1}/3`);
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        return fetchGameStateWithRetry(retryCount + 1);
-      }
-      
-      setApiError(true);
-      return null;
-    }
-  };
-  
-  // Modify setupPolling function to be more reliable
-  const setupPolling = useCallback(() => {
-    console.log("Setting up polling for game state");
-    
-    // Clear any existing polling interval
-    if (pollingIntervalRef.current) {
-      clearInterval(pollingIntervalRef.current);
-      pollingIntervalRef.current = null;
-    }
-    
-    // Make sure demo mode is completely disabled
-    if (demoIntervalRef.current) {
-      clearInterval(demoIntervalRef.current);
-      demoIntervalRef.current = null;
-    }
-    
-    if (demoTimerRef.current) {
-      clearTimeout(demoTimerRef.current);
-      demoTimerRef.current = null;
-    }
-    
-    // Track reconnection attempts to avoid flickering
-    const reconnectAttemptsRef = { count: 0 };
-    
-    // Set initial state immediately to avoid flickering
-    setIsConnected(true);
-    setConnectionStatus('Connected');
-    setOfflineMode(false);
-    
-    // Force remove demo mode flag from localStorage
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('crashoutDemoMode');
-    }
-    
-    console.log('Online mode activated - synchronizing with server');
-    
-    // Function to fetch and update game state
-    const fetchGameState = async () => {
-      // If already in offline mode, don't attempt to reconnect
-      if (offlineMode) {
-        return;
-      }
+      setTxStatus("confirming");
       
       try {
-        // Check if we've detected persistent JSON errors and need to switch to demo mode
-        if (redisJsonErrorPersistent) {
-          console.log("Persistent JSON errors detected, switching to demo mode");
-          if (!offlineMode) {
-            startDemoMode();
-          }
-          return;
-        }
+        // Wait for transaction confirmation
+        const receipt = await provider.waitForTransaction(hash);
         
-        // Only show reconnecting status after multiple consecutive failures
-        const handleConnectionIssue = () => {
-          reconnectAttemptsRef.count++;
-          
-          if (reconnectAttemptsRef.count === 1) {
-            // First failure - silently try to reconnect without UI change
-            console.log("Connection issue detected, silently attempting to reconnect");
-            // Don't update UI state yet
-          } else if (reconnectAttemptsRef.count < 5) {
-            // After second failure, show reconnecting status
-            console.log(`Connection issue persists (attempt ${reconnectAttemptsRef.count}), showing reconnecting status`);
-            setIsConnected(false);
-            setConnectionStatus('Reconnecting...');
-          } else {
-            // After multiple failures, switch to demo mode
-            console.log("Multiple reconnection attempts failed, switching to demo mode");
-            startDemoMode();
-          }
-        };
-        
-        // Handle successful connection
-        const handleSuccessfulConnection = () => {
-          if (reconnectAttemptsRef.count > 0) {
-            console.log("Connection restored after issues");
-          }
-          
-          // Reset reconnection counter
-          reconnectAttemptsRef.count = 0;
-          
-          // Update connection status if needed
-          if (!isConnected) {
-            setIsConnected(true);
-            setConnectionStatus('Connected');
-            toast.success("Connection restored! Back online.");
-          }
-        };
-        
-        if (apiError.current) {
-          // If we had an API error, try to reconnect
-          console.log("Attempting to reconnect to API after error");
-          const isAvailable = await checkApiAvailability();
-          
-          if (!isAvailable) {
-            handleConnectionIssue();
-            return;
-          } else {
-            // Successfully reconnected
-            setApiError(false);
-            handleSuccessfulConnection();
-          }
-        }
-        
-        // Use the sync action to get comprehensive game data
-        const response = await axios.post('/api/game', {
-          action: 'sync',
-          username: username || 'guest'
-        }, {
-          headers: { 'Cache-Control': 'no-cache' }
-        });
-        
-        const data = response.data;
-        
-        if (!data || !data.gameState) {
-          console.warn('No game data received during polling');
-          handleConnectionIssue();
-          return;
-        }
-        
-        // We got data successfully - handle restored connection
-        handleSuccessfulConnection();
-        
-        // Check if we have a connection issue reported in the data
-        if (data.success === false || data.gameState.error) {
-          const errorMsg = data.gameState.error || 'Unknown Redis error';
-          console.error('Redis connection issue during polling:', errorMsg);
-          
-          // Special handling for JSON parse errors - these might be recoverable
-          if (errorMsg.includes('JSON')) {
-            console.warn('JSON parse error detected - will retry in next poll cycle');
-            setApiError(true);
-            return;
-          }
-          
-          // Try a direct health check before setting api error
-          try {
-            const healthResponse = await axios.get('/api/health', {
-              headers: { 'Cache-Control': 'no-cache' }
-            });
-            
-            if (healthResponse.data && healthResponse.data.redis && 
-                healthResponse.data.redis.status === 'connected') {
-              console.log('Redis is actually connected via health endpoint - continuing');
-              // Reset connection status to connected if health check passes
-              handleSuccessfulConnection();
-              return;
-            }
-          } catch (healthErr) {
-            console.error('Health check failed during polling:', healthErr);
-          }
-          
-          setApiError(true);
-          handleConnectionIssue();
-          return;
-        }
-        
-        // Always update game history from server to ensure consistency across devices
-        if (data.history && Array.isArray(data.history) && data.history.length > 0) {
-          addToGameHistory(data.history);
-        }
-        
-        // Check if the state has changed - store previous state for comparison
-        const prevGameState = currentGameData.current?.gameState?.state;
-        const dataChanged = !currentGameData.current || 
-          JSON.stringify(data.gameState) !== JSON.stringify(currentGameData.current.gameState);
-        
-        // Update the current game data reference
-        currentGameData.current = data;
-        
-        // Extract the game state for easier access
-        const gameStateData = data.gameState;
-        
-        // Check if state is undefined and provide a fallback
-        if (gameStateData.state === undefined) {
-          console.warn('Server returned undefined game state, using INACTIVE as fallback');
-          gameStateData.state = GAME_STATE.INACTIVE;
-        }
-        
-        // Always update these critical fields regardless of change detection
-        // to ensure consistency across all clients
-        if (gameStateData.state) {
-          console.log(`Setting game state to: ${gameStateData.state}`);
-          
-          // Use the mapping function for consistency
-          const mappedState = mapBackendStateToFrontend(gameStateData.state);
-          
-          // Only update if state has changed to avoid unnecessary re-renders
-          if (gameState !== mappedState) {
-            console.log(`Mapped state from ${gameStateData.state} to enum value: ${mappedState}`);
-            setGameState(mappedState);
-          }
-        }
-        
-        if (gameStateData.multiplier !== undefined) {
-          setMultiplier(gameStateData.multiplier);
-        } else if (gameStateData.state === GAME_STATE.ACTIVE) {
-          // If in active state but no multiplier provided, use a default
-          console.warn('No multiplier provided but game is active, using 1.0 as fallback');
-          setMultiplier(1.0);
-        }
-        
-        if (gameStateData.countdown !== undefined) {
-          setCountdown(gameStateData.countdown);
-        } else if (gameStateData.timeLeft !== undefined) {
-          // Support alternative property name
-          setCountdown(gameStateData.timeLeft);
-        }
-        
-        // If player data is available, update player state
-        if (data.playerData) {
-          // Check if player has joined the current game
-          if (data.playerData.joined && !playerJoined) {
-            setPlayerJoined(true);
-          }
-          
-          // Check if player has cashed out
-          if (data.playerData.cashedOut && data.playerData.cashedOutAt && !cashedOutAt) {
-            setCashedOutAt(data.playerData.cashedOutAt);
-          }
-        }
-        
-        // If significant data changed, process all state updates
-        if (dataChanged) {
-          console.log('Game state updated from server:', gameStateData.state);
-          
-          // Handle game state specific logic
-          switch (gameStateData.state) {
-            case GAME_STATE.COUNTDOWN:
-              if (gameStateData.timeLeft) {
-                setCountdown(gameStateData.timeLeft);
-              }
-              
-              // Use JOIN_WINDOW_SECONDS for join window with fallback to gameStateData.joinWindowTimeLeft
-              const joinWindowTime = gameStateData.joinWindowTimeLeft !== undefined ? 
-                gameStateData.joinWindowTimeLeft : JOIN_WINDOW_SECONDS;
-              
-              if (joinWindowTime && !joinWindowRef.current) {
-                startJoinWindowTimer(joinWindowTime);
-              }
-              
-              if (gameStateData.players) {
-                setPlayersInGame(gameStateData.players.length);
-                setPlayers(gameStateData.players);
-              }
-              
-              // Always allow placing bets during countdown state
-              setCanPlaceBet(true);
-              setIsPlayDisabled(false);
-              setIsCashoutDisabled(true);
-              
-              // Ensure join window is open
-              setJoinWindowTimeLeft(joinWindowTime);
-              break;
-              
-            case GAME_STATE.ACTIVE:
-              if (gameStateData.multiplier) {
-                setMultiplier(gameStateData.multiplier);
-              }
-              
-              // Show game started animation if we just transitioned to running
-              if (prevGameState === GAME_STATE.COUNTDOWN) {
-                setShowGameStartedImage(true); // keep until crash
-              }
-              
-              setIsCashoutDisabled(!playerJoined || cashedOutAt !== null);
-              setCanPlaceBet(false); // Can't place bet during active game
-              break;
-              
-            case GAME_STATE.CRASHED:
-              // Handle game crash
-              if (gameStateData.crashPoint) {
-                playSound('crash');
-                
-                // Create a new history entry if it doesn't exist already
-                const crashPointStr = gameStateData.crashPoint.toString();
-                const existingEntry = gameHistory.find(entry => 
-                  entry.value === crashPointStr && 
-                  Math.abs(entry.timestamp - Date.now()) < 5000
-                );
-                
-                if (!existingEntry) {
-                  const newEntry: GameHistoryEntry = {
-                    value: crashPointStr,
-                    color: parseFloat(crashPointStr) >= 2.0 ? 'green' : 'red',
-                    timestamp: Date.now(),
-                    crashPoint: gameStateData.crashPoint
-                  };
-                  
-                  // Add to history
-                  addToGameHistory([newEntry]);
-                }
-              }
-              
-              // Check if player lost
-              if (playerJoined && cashedOutAt === null) {
-                toast.error(`Game crashed at ${gameStateData.crashPoint}x. You lost ${betAmount} Farm Coins.`);
-                // Show loss animation
-                setShowLossImage(true);
-                setTimeout(() => setShowLossImage(false), 3000);
-              }
-              
-              setCanPlaceBet(false);
-              setIsCashoutDisabled(true);
-              break;
-              
-            case GAME_STATE.INACTIVE:
-              // Game is inactive, waiting for next round
-              if (gameStateData.nextGameTime) {
-                setNextGameStartTime(gameStateData.nextGameTime);
-              }
-              
-              // Only reset player's game status if the game just ended
-              if (prevGameState === GAME_STATE.CRASHED || prevGameState === GAME_STATE.ACTIVE) {
-                setPlayerJoined(false);
-                setCashedOutAt(null);
-              }
-              
-              setCanPlaceBet(false);
-              setIsCashoutDisabled(true);
-              break;
-          }
-          
-          // Update online players
-          if (data.onlinePlayers) {
-            setOnlinePlayersCount(data.onlinePlayers);
-          }
-          
-          // Update recent cashouts
-          if (data.cashouts) {
-            setRecentCashouts(data.cashouts);
-          }
+        if (receipt && receipt.status === 1) {
+          setTxStatus("confirmed");
+          return true;
+        } else {
+          setTxStatus("failed");
+          toast.error("Transaction failed. Please check the block explorer for details.");
+          return false;
         }
       } catch (error) {
-        console.error('Error in polling loop:', error);
-        setApiError(true);
-        
-        // Use the same reconnection handling for any errors
-        reconnectAttemptsRef.count++;
-        
-        if (reconnectAttemptsRef.count < 5) {
-          setIsConnected(false);
-          setConnectionStatus('Reconnecting...');
-        } else {
-          console.log(`Max reconnection attempts (${reconnectAttemptsRef.count}) reached, switching to demo mode`);
-          if (!offlineMode) {
-            startDemoMode();
-          }
-        }
+        console.error("Error waiting for transaction:", error);
+        setTxStatus("failed");
+        return false;
       }
-    };
+    } catch (error) {
+      console.error("Error monitoring transaction:", error);
+      setTxStatus("failed");
+      return false;
+    }
+  };
+
+  // Helper function to get checksummed address
+  const getChecksumAddress = (address: string): string => {
+    try {
+      return ethers.getAddress(address);
+    } catch (error) {
+      console.error("Invalid address format:", error);
+      return address;
+    }
+  };
+
+  // Fetch token balances from the blockchain
+  const fetchTokenBalances = async () => {
+    if (!metamaskProvider && !window.ethereum) return;
+    if (!localWalletAddress) return;
     
-    // Do an initial fetch right away
-    fetchGameState().then(() => {
-      toast.success('Connected to game server! Play with other players in real-time.');
-    }).catch(err => {
-      console.error('Initial game state fetch failed:', err);
-      // Show error toast but don't immediately go to demo mode - let the polling cycle handle reconnection
-      toast.error('Connection issue detected. Attempting to reconnect...');
-      setIsConnected(false);
-      setConnectionStatus('Reconnecting...');
-    });
+    setIsLoadingBalances(true);
     
-    // Use a more reasonable polling rate to avoid constant reloading
-    const onlinePollingRate = 3000; // Poll every 3 seconds for online mode
-    console.log(`Setting up polling at ${onlinePollingRate}ms intervals`);
-    
-    // Start polling at the specified rate
-    pollingIntervalRef.current = setInterval(fetchGameState, onlinePollingRate);
-    
+    try {
+      const currentProvider = metamaskProvider || window.ethereum;
+      const provider = new ethers.BrowserProvider(currentProvider);
+      const tokens: TokenBalance[] = [
+        { symbol: "FARM", balance: farmCoins, address: "" }
+      ];
+      
+      // Use Promise.all to fetch all token balances in parallel
+      const balancePromises = Object.entries(TOKENS).map(async ([symbol, address]) => {
+        try {
+          // Create token contract
+          const tokenContract = new ethers.Contract(
+            getChecksumAddress(address), 
+            TOKEN_ABI, 
+            provider
+          );
+          
+          // Get balance
+          const balance = await tokenContract.balanceOf(getChecksumAddress(localWalletAddress));
+          const formattedBalance = parseFloat(ethers.formatUnits(balance, 18));
+          
+          return {
+            symbol,
+            balance: formattedBalance,
+            address
+          };
+        } catch (error) {
+          console.error(`Error fetching balance for ${symbol}:`, error);
+          return {
+            symbol,
+            balance: 0,
+            address
+          };
+        }
+      });
+      
+      const tokenBalances = await Promise.all(balancePromises);
+      setAvailableTokens([...tokens, ...tokenBalances]);
+      
+    } catch (error) {
+      console.error("Error fetching token balances:", error);
+    } finally {
+      setIsLoadingBalances(false);
+      setLastBalanceUpdate(Date.now());
+    }
+  };
+
+  // Fetch balances when wallet or provider changes
+  useEffect(() => {
+    if (isWalletConnected && localWalletAddress) {
+      fetchTokenBalances();
+    }
+  }, [isWalletConnected, localWalletAddress, metamaskProvider]);
+
+  // Update FARM token balance when farmCoins changes
+  useEffect(() => {
+    setAvailableTokens(prev => 
+      prev.map(token => 
+        token.symbol === "FARM" 
+          ? { ...token, balance: farmCoins } 
+          : token
+      )
+    );
+  }, [farmCoins]);
+
+  // Refetch balances every minute to keep them updated
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      if (isWalletConnected && localWalletAddress && (metamaskProvider || window.ethereum) && Date.now() - lastBalanceUpdate > 60000) {
+        fetchTokenBalances();
+      }
+    }, 60000);
+
+    return () => clearInterval(intervalId);
+  }, [isWalletConnected, localWalletAddress, metamaskProvider, lastBalanceUpdate]);
+
+  useEffect(() => {
+    // preload sounds
+    bgmRef.current = new Audio('/sounds/background_music.mp3');
+    bgmRef.current.volume = volume;
+    bgmRef.current.muted = muted;
+    bgmRef.current.loop = true;
+    cashoutRef.current = new Audio('/sounds/cashout.mp3');
+    cashoutRef.current.volume = volume;
+    cashoutRef.current.muted = muted;
+    crashRef.current = new Audio('/sounds/crash.mp3');
+    crashRef.current.volume = volume;
+    crashRef.current.muted = muted;
+    winRef.current = new Audio('/sounds/win.mp3');
+    winRef.current.volume = volume;
+    winRef.current.muted = muted;
     return () => {
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-        pollingIntervalRef.current = null;
-      }
+      bgmRef.current?.pause();
+      if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [
-    checkApiAvailability,
-    getCurrentGameData, 
-    offlineMode, 
-    setApiError, 
-    startDemoMode,
-    addToGameHistory,
-    playerJoined, 
-    cashedOutAt, 
-    betAmount, 
-    playSound, 
-    startJoinWindowTimer,
-    isConnected,
-    setIsConnected,
-    setConnectionStatus,
-    setOfflineMode,
-    setGameState,
-    setCountdown,
-    setPlayersInGame,
-    setPlayers,
-    setCanPlaceBet,
-    setIsCashoutDisabled,
-    setMultiplier,
-    setShowGameStartedImage,
-    setGameHistory,
-    setShowLossImage,
-    setNextGameStartTime,
-    setPlayerJoined,
-    setCashedOutAt,
-    setOnlinePlayersCount,
-    setRecentCashouts,
-    redisJsonErrorPersistent,
-    setRedisJsonErrorPersistent,
-    gameState,
-    gameHistory,
-    username
-  ]);
-
-  // Add media preloading function
-  const preloadMediaResources = useCallback(() => {
-    if (typeof window === 'undefined') return;
-    
-    // Preload Game Started GIF
-    const gameStartedImg = new Image();
-    gameStartedImg.src = '/images/crashout/Game Started.gif';
-    
-    // Preload Loss video
-    if (!lossVideoRef.current) return;
-    lossVideoRef.current.preload = 'auto';
-    
-    // Attempt to load video without playing
-    fetch('/images/crashout/Loss.mp4')
-      .then(response => response.blob())
-      .then(blob => {
-        const url = URL.createObjectURL(blob);
-        if (lossVideoRef.current) {
-          lossVideoRef.current.src = url;
-          lossVideoRef.current.load();
-        }
-      })
-      .catch(err => console.warn('Error preloading loss video:', err));
-
   }, []);
 
-  // Call preloadMediaResources in the setup effect
   useEffect(() => {
-    console.log('CrashoutGame component mounted - Running setup effect');
-    
-    // Mark as mounted to prevent useEffect from running twice in development mode
-    if (didMountRef.current) {
-      console.log('[Dev Only/StrictMode] Skipping duplicate setup effect run.');
-      return;
-    }
-    didMountRef.current = true;
-    
-    // Set default username from localStorage or generate a new one
-    const storedUsername = localStorage.getItem('crashoutUsername');
-    if (!storedUsername) {
-      const randomUsername = 'Player' + Math.floor(Math.random() * 10000);
-      localStorage.setItem('crashoutUsername', randomUsername);
-      setUsername(randomUsername);
-    } else {
-      setUsername(storedUsername);
-    }
-    
-    // Initialize audio with shared instances
-    initializeAudio();
-    
-    // Preload media resources for faster display
-    preloadMediaResources();
-
-    // Never force demo mode - always try online first
-    console.log("Always trying to connect to online mode first");
-    
-    // Increase number of retries before falling back to demo mode
-    const MAX_CONNECTION_ATTEMPTS = 5;
-    let connectionAttempts = 0;
-    
-    const tryConnection = async () => {
-      connectionAttempts++;
-      console.log(`Connection attempt ${connectionAttempts}/${MAX_CONNECTION_ATTEMPTS}`);
-      
-      // Try to connect to server and check API availability
-      try {
-        const isAvailable = await checkApiAvailability();
-        if (isAvailable) {
-          console.log("API available, starting online mode");
-          // Make sure offline mode is false before setting up polling
-          setOfflineMode(false);
-          if (typeof window !== 'undefined') {
-            localStorage.removeItem('crashoutDemoMode');
-          }
-          setupPolling();
-        } else if (connectionAttempts < MAX_CONNECTION_ATTEMPTS) {
-          // Try again with exponential backoff
-          const delay = Math.min(2000 * Math.pow(1.5, connectionAttempts - 1), 10000);
-          console.log(`Retrying connection in ${Math.round(delay/1000)}s`);
-          setTimeout(tryConnection, delay);
-        } else {
-          console.log("Maximum connection attempts reached, starting demo mode");
-          startDemoMode();
-        }
-      } catch (error) {
-        console.error("API check error:", error);
-        if (connectionAttempts < MAX_CONNECTION_ATTEMPTS) {
-          const delay = Math.min(2000 * Math.pow(1.5, connectionAttempts - 1), 10000);
-          setTimeout(tryConnection, delay);
-        } else {
-          console.log("Maximum connection attempts reached after errors, starting demo mode");
-          startDemoMode();
-        }
-      }
-    };
-    
-    // Start connection attempts
-    tryConnection();
-
-    // Cleanup function
-    return () => {
-      console.log('CrashoutGame setup cleanup running.');
-      clearJoinWindowTimer();
-      
-      // Clear polling interval
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-        pollingIntervalRef.current = null;
-      }
-      
-      // Clean up local timers and intervals
-      if (demoIntervalRef.current) clearInterval(demoIntervalRef.current);
-      if (demoTimerRef.current) clearTimeout(demoTimerRef.current);
-      
-      // Cleanup audio
-      if (audioRefs.current.backgroundMusic) {
-        audioRefs.current.backgroundMusic.pause();
-      }
-    };
-  }, []); // Empty dependency array to only run once - necessary to prevent reconnection loops
-
-  // Handle background music based on game state with proper dependency tracking
-  useEffect(() => {
-    // Only manage audio playback when dependencies change
-    if (audioRefs.current.backgroundMusic) {
-      const bgMusic = audioRefs.current.backgroundMusic;
-      
-      // Update volume
-      bgMusic.volume = muted ? 0 : volume * 0.3;
-      
-      // Handle playing/pausing based on game state
-      if (gameState === GameState.RUNNING && !muted) {
-        const playPromise = bgMusic.play();
-        if (playPromise !== undefined) {
-          playPromise.catch(err => {
-            if (err.name !== 'NotAllowedError') {
-              console.warn('Background music playback error:', err);
-            }
-          });
-        }
-      } else {
-        bgMusic.pause();
-      }
-    }
-  }, [gameState, muted, volume]);
-
-  // Store volume in localStorage when it changes
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('crashoutVolume', volume.toString());
-      
-      // Update volume for all audio elements
-      Object.values(audioRefs.current).forEach(audio => {
-        if (audio) {
-          audio.volume = audio === audioRefs.current.backgroundMusic ? volume * 0.3 : volume;
-        }
-      });
-    }
-  }, [volume]);
-
-  // Store muted state in localStorage when it changes
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('crashoutMuted', muted ? 'true' : 'false');
-      
-      // Update muted state for all audio elements
-      Object.values(audioRefs.current).forEach(audio => {
-        if (audio) {
-          audio.muted = muted;
-        }
-      });
-    }
-  }, [muted]);
-
-  // --- Helper Functions ---
-
-  const batchUpdate = (updates: { [key: string]: any }) => {
-    window.requestAnimationFrame(() => {
-      Object.entries(updates).forEach(([key, value]) => {
-        switch (key) {
-          case 'gameState': setGameState(value); break;
-          case 'multiplier':
-            // Skip React state update for multiplier to reduce re-renders; update DOM directly
-            if (multiplierTextRef.current) updateMultiplierDisplay(value);
-            break;
-          case 'countdown': setCountdown(value); break;
-          case 'playersInGame': setPlayersInGame(value); break;
-          case 'canPlaceBet': setCanPlaceBet(value); break;
-          case 'isCashoutDisabled': setIsCashoutDisabled(value); break;
-          case 'showGameStartedImage': setShowGameStartedImage(value); break;
-          case 'showLossImage': setShowLossImage(value); break;
-          case 'joinWindowTimeLeft': setJoinWindowTimeLeft(value); break;
-        }
-      });
-    });
-  };
-  
-  const updateMultiplierDOMElements = (value: number) => {
-    if (!multiplierTextRef.current) return;
-    
-    // Use RAF for smoother updates and reduce layout thrashing
-    requestAnimationFrame(() => {
-      // Null check again in case ref changed between frames
-      if (!multiplierTextRef.current) return;
-      
-      // Always update text content with current value
-      const valueFormatted = `${value.toFixed(2)}x`;
-      
-      // Only update DOM if the value has changed
-      if (multiplierTextRef.current.textContent !== valueFormatted) {
-        multiplierTextRef.current.textContent = valueFormatted;
-        
-        // Log to ensure updates are happening
-        console.log(`Updating UI multiplier to ${valueFormatted}`);
-        
-        // Simplified color logic - just three colors to reduce calculations
-        const textColor = 
-          gameState === GameState.CRASHED ? "#ff0000" : // Red when crashed
-          value < 2 ? "#0f0" : // Green
-          value < 10 ? "#ffff00" : // Yellow
-          "#ff8800"; // Orange
-        
-        // Update color
-        multiplierTextRef.current.style.color = textColor;
-        
-        // Even more drastically simplified size logic - only 3 size steps
-        const baseSize = 6;
-        const sizeClass = value < 3 ? `${baseSize}rem` : 
-                         value < 10 ? `${baseSize * 1.4}rem` : 
-                         `${baseSize * 1.8}rem`;
-        
-        multiplierTextRef.current.style.fontSize = sizeClass;
+    // sync mute/volume changes to all audio refs
+    [bgmRef, cashoutRef, crashRef, winRef].forEach(r => {
+      if (r.current) {
+        r.current.volume = volume;
+        r.current.muted = muted;
       }
     });
-  };
-  
-  const updateMultiplierDisplay = (value: number) => {
-    // Directly use the optimized DOM element update function
-    // No need for double requestAnimationFrame
-    updateMultiplierDOMElements(value);
-  };
-  
-  const updateGameHistory = (newHistory: Array<{value: string, color: string, timestamp: number}>) => {
-    const uniqueHistory = newHistory.reduce((acc, current) => {
-      const exists = acc.some(
-        (item) =>
-        Math.abs(item.timestamp - current.timestamp) < 5000 // Within 5 seconds
-      );
-      if (!exists) {
-        acc.push(current);
-      }
-      return acc;
-    }, [] as Array<{value: string, color: string, timestamp: number}>);
+  }, [volume, muted]);
+
+  // Approve token spending and place bet
+  const approveAndPlaceBet = async () => {
+    const bet = parseFloat(betAmount);
+    if (!bet || bet <= 0) return;
     
-    // Limit history size
-    const limitedHistory = uniqueHistory.slice(0, 50); // Keep latest 50
-
-    setGameHistory(limitedHistory);
-  };
-  
-  // Handle placing a bet with martingale system support
-  const handlePlay = useCallback(async () => {
-    if (offlineMode) {
-      // Handle offline bet with martingale option
-      if (!canPlaceBet || isPlayDisabled) {
-        toast.warning("Cannot place demo bet now.");
-        return;
-      }
-      
-      // Calculate bet amount based on martingale system if enabled
-      let bet = parseFloat(betAmount);
-      if (useMartingale && lossStreak > 0 && previousBets.length > 0) {
-        // Calculate martingale bet
-        bet = calculateMartingaleBet(previousBets, bet);
-        // Update UI to match the calculated bet
-        setBetAmount(bet.toString());
-      }
-      
-      if (isNaN(bet) || bet <= 0) { 
-        toast.error("Invalid bet amount."); 
-        return; 
-      }
-      
-      // Store the bet for martingale tracking
-      setPreviousBets(prev => [...prev, bet]);
-
-      setPlayerJoined(true);
-      setIsPlayDisabled(true);
-      setIsCashoutDisabled(false);
-      toast.info(`Demo bet placed: ${bet} coins${useMartingale ? ' (Martingale active)' : ''}`);
+    const selectedTokenBalance = availableTokens.find(t => t.symbol === selectedToken)?.balance || 0;
+    
+    if (bet > selectedTokenBalance) {
+      toast.error(`Not enough ${selectedToken}!`);
       return;
     }
 
-    // Ensure user has a username
-    if (!username || username.trim() === '') {
-      const randomUsername = 'Player' + Math.floor(Math.random() * 10000);
-      setUsername(randomUsername);
-      localStorage.setItem('crashoutUsername', randomUsername);
-      toast.info(`Using random username: ${randomUsername}`);
-    }
-
-    // Log the values for debugging
-    console.log("Attempting to place bet with:", {
-      canPlaceBet,
-      isConnected,
-      joinWindowTimeLeft,
-      gameState,
-      isPlayDisabled,
-      username: username || 'not set',
-      useMartingale,
-      lossStreak,
-      previousBets
-    });
-
-    // Disallow bet if disabled, offline or join window closed
-    if (!canPlaceBet || isPlayDisabled || (!offlineMode && (joinWindowTimeLeft <= 0 || !isConnected))) {
-      toast.warning("Cannot place bet now.");
+    if (!isWalletConnected || !localWalletAddress) {
+      toast.error("Please connect your wallet first");
       return;
     }
-
-    // Calculate bet amount with martingale if enabled
-    let bet = parseFloat(betAmount);
-    if (useMartingale && lossStreak > 0 && previousBets.length > 0) {
-      // Calculate martingale bet and update UI
-      bet = calculateMartingaleBet(previousBets, parseFloat(betAmount));
-      setBetAmount(bet.toString());
-    }
-    
-    const cashoutTarget = parseFloat(autoCashout);
-
-    if (isNaN(bet) || bet <= 0) { toast.error("Invalid bet amount."); return; }
-    if (isNaN(cashoutTarget) || cashoutTarget < 1.01) { toast.error("Invalid auto cashout multiplier (must be >= 1.01)."); return; }
-
-    // Store the bet for martingale tracking
-    setPreviousBets(prev => [...prev, bet]);
-    setIsPlayDisabled(true);
-    toast.info(`Placing bet: ${bet} coins${useMartingale ? ' (Martingale active)' : ''}`);
-    
-    // Create a function that we can retry
-    const attemptPlaceBet = async (retryCount = 0): Promise<boolean> => {
-      try {
-        console.log(`Sending bet to server (attempt ${retryCount + 1}):`, {
-          username,
-          betAmount: bet,
-          autoCashout: cashoutTarget
-        });
-
-        const response = await axios.post('/api/game', {
-          action: 'placeBet',
-          username: username || 'Guest' + Math.floor(Math.random() * 1000),
-          betAmount: bet,
-          autoCashout: cashoutTarget
-        });
-
-        console.log("Bet response:", response.data);
-
-        // Treat undefined success as success
-        const { success, message } = response.data;
-        if (success !== false) {
-          setPlayerJoined(true);
-          setIsPlayDisabled(true);
-          setIsCashoutDisabled(false);
-          toast.success("Bet placed successfully!");
-          return true;
-        } else {
-          // Explicit failure
-          setIsPlayDisabled(false);
-          toast.error(message || "Failed to place bet");
-          return true;
-        }
-      } catch (err: any) {
-        // Handle errors
-        setIsPlayDisabled(false);
-        // Prefer server-provided message, else error.message, else generic
-        const serverMsg = err.response?.data?.message;
-        const msg = typeof serverMsg === 'string' && serverMsg ? serverMsg : err.message || 'Failed to place bet.';
-        toast.error(msg);
-        return true;
-      }
-    };
-    
-    // Try to place the bet with retries
-    let attempt = 0;
-    let done = false;
-    
-    while (!done && attempt < 3) {
-      done = await attemptPlaceBet(attempt);
-      if (!done) {
-        // Wait before retry
-        await new Promise(resolve => setTimeout(resolve, 500));
-        attempt++;
-      }
-    }
-    
-    if (!done) {
-      // If we exhausted all retries
-      setIsPlayDisabled(false);
-      toast.error("Unable to place bet after multiple attempts. Please try again.");
-    }
-  }, [
-    canPlaceBet, isConnected, betAmount, autoCashout, joinWindowTimeLeft, isPlayDisabled, offlineMode, gameState, username,
-    // Add dependencies for gambling enhancements
-    useMartingale, lossStreak, previousBets, setPreviousBets, setBetAmount
-  ]);
-
-  // Handle cashing out with enhanced gambling features
-  const handleCashout = useCallback(async () => {
-    if (offlineMode) {
-      // Handle offline cashout with streak tracking
-      if (!playerJoined || gameState !== GameState.RUNNING || isCashoutDisabled || cashedOutAt !== null) {
-          toast.warning("Cannot cashout demo game now.");
-          return;
-      }
-      const winAmount = parseFloat(betAmount) * multiplier;
-      setCashedOutAt(multiplier);
-      setIsCashoutDisabled(true);
-      
-      // Play appropriate win sound based on multiplier
-      const soundType = playWinSound(multiplier);
-      playSound(soundType);
-      
-      // Update win streak and reset loss streak
-      setWinStreak(prev => prev + 1);
-      setLossStreak(0);
-      
-      // Update highest win if applicable
-      if (winAmount > highestWin) {
-        setHighestWin(winAmount);
-      }
-      
-      // Update total won
-      setTotalWon(prev => prev + winAmount);
-      
-      // Show streak effect for hot streaks
-      if (winStreak >= 2) {
-        setShowHotStreak(true);
-        setStreakEffect('win');
-        setTimeout(() => setShowHotStreak(false), 3000);
-      }
-      
-      // Use the correct number of arguments
-      addFarmCoins(winAmount);
-      toast.success(`Demo Cashout at ${multiplier.toFixed(2)}x! Won ${winAmount.toFixed(2)} coins!`);
-
-      if (demoIntervalRef.current !== null) {
-          clearInterval(demoIntervalRef.current);
-          demoIntervalRef.current = null;
-      }
-      return;
-    }
-
-    console.log("Cashout requested with state:", {
-      playerJoined,
-      gameState,
-      isConnected,
-      isCashoutDisabled,
-      cashedOutAt,
-      multiplier,
-      winStreak,
-      lossStreak
-    });
-
-    if (!playerJoined || gameState !== GameState.RUNNING || !isConnected || isCashoutDisabled || cashedOutAt !== null) {
-      toast.warning("Cannot cash out now.");
-      return;
-    }
-
-    setIsCashoutDisabled(true);
-    toast.info("Cashing out...");
-
-    // Create a function that we can retry
-    const attemptCashout = async (retryCount = 0): Promise<boolean> => {
-      try {
-        console.log(`Sending cashout to server (attempt ${retryCount + 1}) for ${username} at multiplier ${multiplier.toFixed(2)}`);
-        
-        const response = await axios.post('/api/game', {
-          action: 'cashout',
-          username
-        });
-
-        console.log("Cashout response:", response.data);
-
-        if (response.data.success) {
-          setCashedOutAt(response.data.multiplier);
-          
-          // Play win sound based on multiplier
-          const soundType = playWinSound(response.data.multiplier);
-          playSound(soundType);
-          
-          // Update win streak and reset loss streak
-          setWinStreak(prev => prev + 1);
-          setLossStreak(0);
-          
-          if (response.data.winAmount) {
-            // Update stats
-            if (response.data.winAmount > highestWin) {
-              setHighestWin(response.data.winAmount);
-            }
-            setTotalWon(prev => prev + response.data.winAmount);
-            
-            // Show hot streak effect
-            if (winStreak >= 2) {
-              setShowHotStreak(true);
-              setStreakEffect('win');
-              setTimeout(() => setShowHotStreak(false), 3000);
-            }
-            
-            addFarmCoins(response.data.winAmount);
-            toast.success(`Cashed out at ${response.data.multiplier.toFixed(2)}x! Won ${response.data.winAmount.toFixed(2)} coins!`);
-          } else {
-            toast.success(`Cashed out at ${response.data.multiplier.toFixed(2)}x!`);
-          }
-          return true;
-        } else {
-          console.warn(`Cashout failed: ${response.data.message}`);
-          
-          // Check if this is a timing issue we can retry
-          if (response.data.message === "Cannot cash out - game is not active." && retryCount < 2) {
-            console.log("This appears to be a timing issue, will retry cashout in 200ms");
-            return false; // Signal for retry
-          } else {
-            // Other error that we can't auto-retry
-            setIsCashoutDisabled(!playerJoined);
-            toast.error(response.data.message || "Failed to cash out");
-            return true; // We're done trying
-          }
-        }
-      } catch (error) {
-        console.error('Error cashing out:', error);
-        
-        // Check if we should retry
-        if (retryCount < 2) {
-          console.log(`Network error cashing out, will retry (attempt ${retryCount + 1})`);
-          return false; // Signal for retry
-        }
-        
-        setIsCashoutDisabled(!playerJoined);
-        
-        // Use proper TypeScript type checking
-        if (axios.isAxiosError(error) && error.response?.data?.message) {
-          toast.error(`Error: ${error.response.data.message}`);
-        } else {
-          toast.error("Error communicating with server. Please try again.");
-        }
-        return true; // We're done trying
-      }
-    };
-    
-    // Try to cashout with retries
-    let attempt = 0;
-    let done = false;
-    
-    while (!done && attempt < 3) {
-      done = await attemptCashout(attempt);
-      if (!done) {
-        // Wait before retry - shorter wait for cashout since timing is more critical
-        await new Promise(resolve => setTimeout(resolve, 200));
-        attempt++;
-      }
-    }
-    
-    if (!done) {
-      // If we exhausted all retries
-      setIsCashoutDisabled(!playerJoined);
-      toast.error("Unable to cash out after multiple attempts. Please try again.");
-    }
-  }, [
-    playerJoined, gameState, isConnected, isCashoutDisabled, cashedOutAt, offlineMode, multiplier, betAmount, addFarmCoins, playSound, username,
-    // Add dependencies for gambling enhancements
-    winStreak, setWinStreak, lossStreak, setLossStreak, highestWin, setHighestWin, setTotalWon, setShowHotStreak, setStreakEffect
-  ]);
-
-  // Handle changing username
-  const changeUsername = useCallback(async (newUsername: string) => {
-    if (offlineMode) {
-      // Handle offline username change
-      if (!newUsername || newUsername.trim().length === 0 || newUsername.length > 20) {
-          toast.error("Invalid username (1-20 characters).");
-          return;
-      }
-      const trimmedUsername = newUsername.trim();
-      setUsername(trimmedUsername);
-      if (typeof window !== 'undefined') {
-          localStorage.setItem('crashoutUsername', trimmedUsername);
-      }
-      toast.success("Demo username updated!");
-      return;
-    }
-
-    if (!isConnected) {
-      toast.error("Cannot change username while offline.");
-      return;
-    }
-    
-    if (!newUsername || newUsername.trim().length === 0 || newUsername.length > 20) {
-      toast.error("Invalid username (1-20 characters).");
-      return;
-    }
-
-    const trimmedUsername = newUsername.trim();
-    const oldUsername = username;
-    
-    // Update locally first for responsive UI
-    setUsername(trimmedUsername);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('crashoutUsername', trimmedUsername);
-    }
-    toast.info("Updating username...");
 
     try {
-      // Notify the server
-      await axios.post('/api/game', {
-        action: 'playerActivity',
-        username: trimmedUsername,
-        oldUsername,
-        betAmount: parseFloat(betAmount) || 10,
-        autoCashout: parseFloat(autoCashout) || 2.0
-      });
+      // Handle Farm coins locally
+      if (selectedToken === "FARM") {
+        updateLocalTokenBalance("FARM", -bet);
+        setBetPlaced(true);
+        toast.success(`Bet placed: ${bet} Farm Coins`);
+        return;
+      }
+      setApprovalPending(true);
+      const tokenAddress = Object.entries(TOKENS).find(([symbol]) => symbol === selectedToken)?.[1];
       
-      toast.success("Username updated successfully!");
+      if (!tokenAddress) {
+        toast.error(`Token ${selectedToken} not found`);
+        setApprovalPending(false);
+        return;
+      }
+
+      const currentProvider = metamaskProvider || window.ethereum;
+      const provider = new ethers.BrowserProvider(currentProvider);
+      const signer = await provider.getSigner();
+      
+      // Create token contract
+      const tokenContract = new ethers.Contract(
+        getChecksumAddress(tokenAddress),
+        TOKEN_ABI,
+        signer
+      );
+      
+      // Check if we already have approval
+      const currentAllowance = await tokenContract.allowance(
+        getChecksumAddress(localWalletAddress),
+        getChecksumAddress(PAYOUT_ADDRESS)
+      );
+      
+      // Calculate token amount with proper decimals (18 decimals assumed)
+      const betAmountWei = ethers.parseUnits(bet.toString(), 18);
+      
+      // If allowance is less than bet amount, request approval
+      if (parseInt(currentAllowance.toString()) < parseInt(betAmountWei.toString())) {
+        toast.loading("Waiting for bet approval...");
+        
+        // Request approval for a large amount (MAX_UINT256) to avoid multiple approvals
+        const approveTx = await tokenContract.approve(
+          getChecksumAddress(PAYOUT_ADDRESS),
+          ethers.MaxUint256
+        );
+        
+        const approved = await monitorTransaction(approveTx.hash);
+        
+        if (!approved) {
+          toast.error("Failed to approve token spending");
+          setApprovalPending(false);
+          return;
+        }
+        
+        toast.success("Token approved for betting");
+      }
+      
+      // If betting with a non-FARM token, swap tokens for Farm coins
+      if (selectedToken !== "FARM") {
+        toast.loading("Swapping tokens for Farm coins...");
+        const swapContract = new ethers.Contract(
+          getChecksumAddress(PAYOUT_ADDRESS),
+          SWAP_CONTRACT_ABI,
+          signer
+        );
+        // Static call to get expected Farm coins out
+        const farmCoinOutWei = await (swapContract as any).callStatic.swapTokenForFarmCoins(
+          getChecksumAddress(tokenAddress),
+          betAmountWei
+        );
+        const farmCoinOut = parseFloat(ethers.formatUnits(farmCoinOutWei, 18));
+        // Execute swap
+        const tx = await (swapContract as any).swapTokenForFarmCoins(
+          getChecksumAddress(tokenAddress),
+          betAmountWei
+        );
+        const success = await monitorTransaction(tx.hash);
+        if (!success) {
+          toast.error("Swap transaction failed");
+          setApprovalPending(false);
+          return;
+        }
+        // Reflect balances: deduct token, add Farm coins
+        updateLocalTokenBalance(selectedToken, -bet);
+        updateLocalTokenBalance("FARM", farmCoinOut);
+        setBetPlaced(true);
+        toast.success(`Swapped ${bet} ${selectedToken} for ${farmCoinOut.toFixed(2)} Farm Coins`);
+        return;
+      }
+      // FARM coins: deduct locally
+      updateLocalTokenBalance("FARM", -bet);
+      setBetPlaced(true);
+      toast.success(`Bet placed: ${bet} ${selectedToken}`);
+      
     } catch (error) {
-      console.error('Error updating username:', error);
-      // Revert on failure
-      setUsername(oldUsername);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('crashoutUsername', oldUsername);
-      }
-      toast.error("Failed to update username on server.");
+      console.error("Error approving tokens:", error);
+      toast.error("Failed to approve tokens for betting");
+    } finally {
+      setApprovalPending(false);
     }
-  }, [isConnected, username, offlineMode, betAmount, autoCashout]);
+  };
 
-  // Per-frame smoothing removed; use server-driven multiplier updates
+  // Reset the game
+  const resetGame = () => {
+    setGameState('inactive');
+    setMultiplier(1.0);
+    setUserJoined(false);
+    setHasCashed(false);
+    setBetPlaced(false);
+    setHasWon(false);
+    setWinAmount(0);
+    setTimeLeft(30);
+  };
 
-  // Update game loss handling to include streak tracking and better media playback
+  // End game with the final multiplier
+  const endGame = (won: boolean, finalMul: number) => {
+    setGameState('crashed');
+    bgmRef.current?.pause();
+    crashRef.current?.play().catch(() => {});
+
+    const bet = betRef.current;
+    const token = tokenRef.current;
+    const newEntry: HistoryEntry = { value: finalMul.toFixed(2), bet, token };
+    setHistory(prev => [newEntry, ...prev].slice(0, 5));
+
+    if (won) {
+      setHasWon(true);
+      setWinAmount(bet * finalMul);
+      setTimeout(() => {
+        setGameState('active');
+        setTimeLeft(CLAIM_TIME_SECONDS);
+      }, 3000);
+    } else {
+      setTimeout(resetGame, 4000);
+    }
+    
+    // Show crash video
+    if (videoRef.current) {
+      videoRef.current.currentTime = 0;
+      videoRef.current.play().catch(() => {});
+    }
+  };
+
+  // Begin the actual crash game round
+  const beginRound = () => {
+    // Check if user has placed a bet
+    const bet = parseFloat(betAmount);
+    if (betPlaced && bet > 0) {
+      // Deduct tokens only now that the game is starting
+      updateLocalTokenBalance(selectedToken, -bet);
+      betRef.current = bet;
+      tokenRef.current = selectedToken;
+      setUserJoined(true);
+    } else {
+      betRef.current = 0;
+      setUserJoined(false);
+    }
+    
+    setGameState('active');
+    setMultiplier(1.0);
+    setHasCashed(false);
+    hasCashedRef.current = false;
+    crashPointRef.current = sampleCrashPoint();
+    bgmRef.current?.play().catch(() => {});
+    
+    if (countdownRef.current) clearInterval(countdownRef.current);
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    
+    intervalRef.current = window.setInterval(() => {
+      setMultiplier(prev => {
+        const growth = 0.005 + Math.random() * 0.02;
+        let next = prev * (1 + growth);
+        const target = parseFloat(autoCashout);
+        if (!hasCashedRef.current && target && next >= target && userJoined) {
+          setHasCashed(true);
+          hasCashedRef.current = true;
+          cashoutRef.current?.play().catch(() => {});
+          const winnings = betRef.current * target;
+          setHasWon(true);
+          setWinAmount(winnings);
+        }
+        const cp = crashPointRef.current;
+        if (next >= cp) {
+          next = cp;
+          if (intervalRef.current) clearInterval(intervalRef.current);
+          endGame(hasCashedRef.current, next);
+        }
+        return next;
+      });
+    }, 100);
+  };
+
+  // Start the game (now just triggers bet approval)
+  const startGame = () => {
+    if (gameState !== 'inactive') return;
+    approveAndPlaceBet();
+  };
+
+  // Manual cashout
+  const handleCashout = () => {
+    if (gameState !== 'active' || hasCashed || !userJoined) return;
+    
+    setHasCashed(true);
+    hasCashedRef.current = true;
+    cashoutRef.current?.play().catch(() => {});
+    
+    // Calculate winnings
+    const winnings = betRef.current * multiplier;
+    setHasWon(true);
+    setWinAmount(winnings);
+  };
+
+  // Claim tokens after winning
+  const claimTokens = async () => {
+    if (!hasWon || winAmount <= 0) return;
+    
+    const success = await processPayout(tokenRef.current, winAmount);
+    
+    if (success) {
+      setHasWon(false);
+      setWinAmount(0);
+      resetGame();
+    }
+  };
+
+  // Game state management with countdowns
   useEffect(() => {
-    const prevState = prevGameStateRef.current;
-    if (prevState !== gameState && gameState === GameState.CRASHED && playerJoined && cashedOutAt === null) {
-      setShowGameStartedImage(false);
-      const lostAmt = parseFloat(betAmount);
-      playSound(playLoseSound(lostAmt));
-      setLossStreak(ls => ls + 1);
-      setWinStreak(0);
-      setTotalLost(tl => tl + lostAmt);
-      setShowLossImage(true);
-      if (lossVideoRef.current) {
-        lossVideoRef.current.currentTime = 0;
-        lossVideoRef.current.play().catch(e => e.name !== 'NotAllowedError' && console.warn(e));
-      }
-      // hot streak if new streak >=2
-      if (lossStreak + 1 >= 2) {
-        setShowHotStreak(true);
-        setStreakEffect('loss');
-        setTimeout(() => setShowHotStreak(false), 3000);
-      }
-      setTimeout(() => setShowLossImage(false), 3000);
-    }
-    prevGameStateRef.current = gameState;
-  }, [gameState]);
-
-  const updateGameStateFromServer = (data: any) => {
-    if (!data || !data.gameState) return;
-    
-    const serverState = data.gameState;
-    
-    // Update multiplier if in active state
-    if (serverState.state === GAME_STATE.ACTIVE && serverState.multiplier) {
-      updateMultiplierDisplay(parseFloat(serverState.multiplier));
-    }
-    
-    // Transition between states based on server response
-    const frontendState = mapBackendStateToFrontend(serverState.state);
-    
-    if (frontendState !== gameState) {
-      setGameState(frontendState);
+    if (gameState === 'inactive') {
+      // Countdown to start game
+      setTimeLeft(30);
+      if (countdownRef.current) clearInterval(countdownRef.current);
       
-      // Handle state-specific logic
-      if (frontendState === GameState.WAITING) {
-        setCountdown(serverState.countdown || 10);
-        setShowCountdownOverlay(true);
-        // Allow placing bets during countdown
-        setCanPlaceBet(true);
-      } else if (frontendState === GameState.RUNNING) {
-        setShowCountdownOverlay(false);
-        setIsPlayDisabled(true);
-        setIsCashoutDisabled(playerJoined ? false : true);
-      } else if (frontendState === GameState.CRASHED) {
-        handleCrash(serverState.crashPoint || multiplier);
-      } else if (frontendState === GameState.INACTIVE) {
-        resetGameState();
-      }
-    }
-    
-    // Update history if available
-    if (data.history && Array.isArray(data.history)) {
-      addToGameHistory(data.history.map((entry: any) => ({
-        value: entry.value || (entry.crashPoint ? entry.crashPoint.toString() : '1.00'),
-        color: parseFloat(entry.value || entry.crashPoint) >= 2 ? 'green' : 'red',
-        timestamp: entry.timestamp || Date.now(),
-        crashPoint: entry.crashPoint
-      })));
-    }
-  };
-
-  // Function to reset the game state (simplified version of the vanilla JS resetGame)
-  const resetGameState = () => {
-    updateMultiplierDisplay(1.0);
-    setIsPlayDisabled(false);
-    setIsCashoutDisabled(true);
-    setPlayerJoined(false);
-    setShowCountdownOverlay(false);
-    setCashedOutAt(null);
-    
-    // Clear any game intervals
-    if (demoIntervalRef.current) {
-      clearInterval(demoIntervalRef.current);
-      demoIntervalRef.current = null;
-    }
-  };
-
-  // Handle crash (incorporate logic from vanilla JS handleCrash)
-  const handleCrash = (crashPoint: number) => {
-    if (demoIntervalRef.current) {
-      clearInterval(demoIntervalRef.current);
-      demoIntervalRef.current = null;
-    }
-    
-    if (playerJoined) {
-      // Play crash sound
-      playSound('crash');
-      setPlayerJoined(false);
-      
-      // Update loss streak and stats
-      setLossStreak(prev => prev + 1);
-      setWinStreak(0);
-      
-      // Show streak effect for cold streaks
-      if (lossStreak >= 2) {
-        setShowHotStreak(true);
-        setStreakEffect('loss');
-        setTimeout(() => setShowHotStreak(false), 3000);
-      }
-      
-      // Update total lost
-      const lostAmount = parseFloat(betAmount);
-      setTotalLost(prev => prev + lostAmount);
-      
-      // If martingale is active, calculate the next bet
-      if (useMartingale) {
-        const nextBet = calculateMartingaleBet([...previousBets, parseFloat(betAmount)], parseFloat(betAmount), 1000);
-        setBetAmount(nextBet.toString());
-      }
-    }
-    
-    // Update multiplier display
-    updateMultiplierDisplay(crashPoint);
-    
-    // Re-enable play button after crash
-    setTimeout(() => {
-      setIsPlayDisabled(false);
-    }, 1000);
-  };
-
-  // After setupPolling usage in useEffect mount:
-  useEffect(() => {
-    // smooth multiplier between server ticks
-    if (gameState === GameState.RUNNING) {
-      let frameId: number;
-      let last = performance.now();
-      let displayed = multiplier;
-      const step = (now: number) => {
-        const dt = now - last;
-        last = now;
-        displayed = displayed * Math.pow(1.02, dt / 1000);
-        updateMultiplierDisplay(displayed);
-        frameId = requestAnimationFrame(step);
-      };
-      frameId = requestAnimationFrame(step);
-      return () => cancelAnimationFrame(frameId);
-    }
-  }, [gameState]);
-
-  return (
-    <div className="space-y-4">
-      <h2 className="text-xl font-semibold text-white border-b border-white/10 pb-2 flex justify-between">
-        <span>Farm Crashout Game {offlineMode && <span className="text-xs bg-yellow-600 text-white px-2 py-1 rounded-full ml-2">Demo Mode</span>}</span>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={() => setMuted(prev => !prev)} 
-              className="text-white hover:text-green-400 transition-colors"
-              title={muted ? "Unmute" : "Mute"}
-            >
-              {muted ? <FiVolumeX size={20} /> : <FiVolume2 size={20} />}
-            </button>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.01"
-              value={volume}
-              onChange={(e) => setVolume(parseFloat(e.target.value))}
-              className="w-20 accent-green-500"
-              disabled={muted}
-            />
-          </div>
-          {!offlineMode && (
-            <button
-              onClick={startDemoMode}
-              className="text-xs bg-yellow-600 hover:bg-yellow-700 text-white px-2 py-1 rounded-full"
-              title="Switch to offline demo mode"
-            >
-              Demo Mode
-            </button>
-          )}
-          <span className={`text-sm ${
-            isConnected ? 'text-green-500' :
-            connectionStatus === 'Reconnecting...' ? 'text-yellow-500' :
-            connectionStatus === 'Disconnected' ? 'text-gray-500' :
-            offlineMode ? 'text-yellow-500' :
-            'text-red-500'
-          }`}>
-            {isConnected ? `Online (${onlinePlayersCount} players)` :
-             connectionStatus === 'Reconnecting...' ? 'Reconnecting...' :
-             connectionStatus === 'Disconnected' ? 'Disconnected' :
-             offlineMode ? 'Demo Mode' :
-             'Connection Error'
+      countdownRef.current = window.setInterval(() => {
+        setTimeLeft(prev => {
+          if (prev <= 1) {
+            clearInterval(countdownRef.current!);
+            countdownRef.current = null;
+            
+            // Start game only if at least one player has placed a bet
+            if (betPlaced) {
+              beginRound();
+            } else {
+              // If no bets, reset timer and stay in inactive state
+              setTimeLeft(30);
+              return 30;
             }
-          </span>
-        </div>
-      </h2>
+            
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else if (gameState === 'active') {
+      // Countdown for claiming tokens
+      if (countdownRef.current) clearInterval(countdownRef.current);
       
-      <div className="container mx-auto p-4 max-w-2xl bg-[#111] rounded-lg shadow-xl">
-        <div className="game-container">            
-          <div className="game-display relative h-80 bg-[#222] rounded-lg mb-6 overflow-hidden">
-            <div className="absolute top-0 left-0 right-0 bg-blue-600 text-white px-3 py-1 text-center font-semibold z-10">
-              {gameState === GAME_STATE.INACTIVE && nextGameStartTime && !offlineMode && (
-                <div>Next game starting automatically in {Math.max(0, Math.floor((nextGameStartTime - Date.now()) / 1000))}s</div>
-              )}
-                {gameState === GAME_STATE.INACTIVE && offlineMode && (
-                    <div>Demo inactive. Next round starts soon.</div>
-                )}
-               {gameState === GAME_STATE.COUNTDOWN && (
-                  <div>
-                     Game starting in {countdown}s - Players: {playersInGame}
-                     {joinWindowTimeLeft > 0 && !offlineMode ? (
-                         <span className="ml-2 text-yellow-300">Join window: {joinWindowTimeLeft}s</span>
-                     ) : !offlineMode ? (
-                         <span className="ml-2 text-red-300">Join window closed</span>
-                     ) : null}
-                  </div>
-               )}
-               {gameState === GAME_STATE.ACTIVE && (
-                 <div>
-                   {playerJoined
-                     ? "Game in progress - Good luck!"
-                     : "Game in progress - Join next round!"}
-                    {offlineMode && <span className="text-xs bg-yellow-500 px-1 rounded ml-1">Demo</span>}
-                 </div>
-               )}
-               {gameState === GAME_STATE.CRASHED && (
-                 <div>Game over! {offlineMode ? 'Demo restarts soon.' : 'Next round starts automatically.'}</div>
-               )}
+      countdownRef.current = window.setInterval(() => {
+        setTimeLeft(prev => {
+          if (prev <= 1) {
+            clearInterval(countdownRef.current!);
+            countdownRef.current = null;
+            resetGame();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    
+    return () => {
+      if (countdownRef.current) clearInterval(countdownRef.current);
+    };
+  }, [gameState, betPlaced]);
+
+  // Get the current balance of selected token
+  const getSelectedTokenBalance = () => {
+    return availableTokens.find(t => t.symbol === selectedToken)?.balance || 0;
+  };
+
+  // Refresh balances manually
+  const handleRefreshBalances = () => {
+    if (isWalletConnected && localWalletAddress) {
+      fetchTokenBalances();
+    }
+  };
+
+  // Update local token balance state
+  const updateLocalTokenBalance = (token: string, amount: number) => {
+    if (token === "FARM") {
+      addFarmCoins(amount);
+    } else if (updateTokenBalance) {
+      updateTokenBalance(token, amount);
+    }
+    
+    // Update local state
+    setAvailableTokens(prev => 
+      prev.map(t => 
+        t.symbol === token 
+          ? { ...t, balance: t.balance + amount } 
+          : t
+      )
+    );
+  };
+
+  // Process a payout from the central payout address to the user
+  const processPayout = async (token: string, amount: number): Promise<boolean> => {
+    if (token === "FARM") {
+      // Just update farm coins locally
+      addFarmCoins(amount);
+      return true;
+    }
+
+    if (!isWalletConnected || !localWalletAddress) {
+      console.error("Cannot process payout: no wallet connected");
+      // Still reflect the balance change in UI (simulated)
+      updateLocalTokenBalance(token, amount);
+      return false;
+    }
+
+    try {
+      const currentProvider = metamaskProvider || window.ethereum;
+      
+      if (!currentProvider) {
+        console.error("No provider available for token transfer");
+        updateLocalTokenBalance(token, amount);
+        return false;
+      }
+      
+      // Get token address
+      const tokenAddress = Object.entries(TOKENS).find(([symbol]) => symbol === token)?.[1];
+      
+      if (!tokenAddress) {
+        console.error(`Token ${token} not found in available tokens`);
+        return false;
+      }
+
+      const provider = new ethers.BrowserProvider(currentProvider);
+      const signer = await provider.getSigner();
+      
+      // Create contract instances
+      const swapContract = new ethers.Contract(
+        getChecksumAddress(PAYOUT_ADDRESS), 
+        SWAP_CONTRACT_ABI, 
+        signer
+      );
+      
+      // Calculate token amount with proper decimals (18 decimals assumed)
+      const tokenAmount = ethers.parseUnits(amount.toString(), 18);
+      
+      console.log(`Processing payout of ${amount} ${token} tokens from ${PAYOUT_ADDRESS} to ${localWalletAddress}`);
+      
+      // Calculate gas limit based on token amount - larger transfers need more gas
+      let gasLimit = 1000000; // Default
+      if (token === 'MOP' || amount >= 10000) {
+        gasLimit = 2500000; // Increase gas limit for large token amounts
+        console.log("Using higher gas limit for high-value token transfer");
+      }
+        
+      // Try to use transferToken method first
+      try {
+        const tx = await swapContract.transferToken(
+          getChecksumAddress(tokenAddress),
+          getChecksumAddress(localWalletAddress),
+          tokenAmount,
+          { gasLimit }
+        );
+        
+        toast.loading(`Processing token transfer...`);
+        
+        // Monitor the transaction
+        const success = await monitorTransaction(tx.hash);
+        
+        if (success) {
+          // Update local balance
+          updateLocalTokenBalance(token, amount);
+          winRef.current?.play().catch(() => {});
+          
+          toast.success(`Successfully received ${amount} ${token} tokens!`);
+          
+          // After a successful payout, refresh balances from blockchain
+          setTimeout(() => fetchTokenBalances(), 3000);
+          
+          return true;
+        } else {
+          toast.error("Token transfer failed.");
+          return false;
+        }
+      } catch (transferError) {
+        console.error("Direct token transfer failed, trying claimTestTokens:", transferError);
+        
+        // If transferToken isn't available, try the claimTestTokens function as fallback
+        try {
+          toast.loading(`Trying alternative claim method...`);
+          
+          // Try claimTestTokens as fallback
+          const tx = await swapContract.claimTestTokens(
+            getChecksumAddress(tokenAddress),
+            tokenAmount,
+            { gasLimit }
+          );
+          
+          toast.loading(`Processing token claim...`);
+          
+          // Monitor the transaction
+          const success = await monitorTransaction(tx.hash);
+          
+          if (success) {
+            // Update local balance
+            updateLocalTokenBalance(token, amount);
+            winRef.current?.play().catch(() => {});
+            
+            toast.success(`Successfully received ${amount} ${token} tokens!`);
+            
+            // After a successful payout, refresh balances from blockchain
+            setTimeout(() => fetchTokenBalances(), 3000);
+            
+            return true;
+          } else {
+            toast.error("Token claim failed.");
+            return false;
+          }
+        } catch (claimError) {
+          console.error("Both token transfer methods failed:", claimError);
+          toast.error("Token payout failed. Please try again later.");
+          return false;
+        }
+      }
+    } catch (error) {
+      console.error(`Error processing ${token} payout:`, error);
+      toast.error("Token payout failed. Please try again later.");
+      return false;
+    }
+  };
+
+  // Wallet options dialog
+  const WalletOptionsDialog = () => (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
+      <div className="border border-[rgb(51_51_51_/var(--tw-border-opacity,1))] rounded-lg p-8 max-w-md w-full shadow-xl">
+        <div className="mb-6 text-center">
+          <h3 className="text-xl font-bold text-white mb-2">Connect Your Wallet</h3>
+          <p className="text-gray-400 text-sm">Select a wallet to continue</p>
+        </div>
+        
+        <div className="flex flex-col space-y-4">
+          <button
+            onClick={() => connectWallet(WALLET_OPTIONS.METAMASK)}
+            className="flex items-center justify-between p-4 bg-black text-white border border-gray-700 rounded-lg hover:bg-white hover:text-black transition-all duration-200"
+          >
+            <div className="flex items-center">
+              <div className="bg-black p-2 rounded-full mr-3">
+                <img src="/metamask-fox.svg" alt="MetaMask" width={28} height={28} />
+              </div>
+              <div>
+                <p className="font-medium">MetaMask</p>
+                <p className="text-xs opacity-70">Connect using MetaMask</p>
+              </div>
             </div>
-            
-            {gameState !== GAME_STATE.INACTIVE && (
-              <div className={`absolute top-8 left-0 right-0 px-3 py-1 text-center font-semibold text-sm z-10
-                ${playerJoined ? 'bg-green-600' : 'bg-red-600'} transition-colors duration-300`}>
-                {playerJoined
-                  ? `Playing ${cashedOutAt ? `(Cashed out at ${cashedOutAt.toFixed(2)}x)` : ''}`
-                  : (connectionStatus === 'Reconnecting...' ? "Reconnecting..." : "Not playing")}
-                    {offlineMode && playerJoined && <span className="text-xs bg-yellow-500 px-1 rounded ml-1">Demo Bet</span>}
-              </div>
-            )}
-            
-            {/* Add streak indicator */}
-            {(winStreak > 0 || lossStreak > 0) && (
-              <div className={`absolute top-16 left-0 right-0 px-3 py-1 text-center font-semibold text-xs z-10
-                ${winStreak > 0 ? 'bg-green-700' : 'bg-red-700'} transition-colors duration-300`}>
-                {winStreak > 0 ? 
-                  `🔥 Win Streak: ${winStreak} ${winStreak >= 3 ? '- HOT! 🔥' : ''}` : 
-                  `❄️ Loss Streak: ${lossStreak} ${lossStreak >= 3 ? '- DUE FOR A WIN? 🍀' : ''}`}
-              </div>
-            )}
-            
-            {/* Hot/cold streak effect overlay */}
-            {showHotStreak && (
-              <div className={`absolute inset-0 z-20 bg-gradient-to-br ${
-                streakEffect === 'win' ? 'from-green-500/30 to-yellow-500/30' : 'from-red-500/30 to-purple-500/30'
-              } animate-pulse`}>
-                {streakEffect === 'win' && winStreak >= 3 && (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="text-yellow-300 text-4xl font-bold animate-bounce">HOT STREAK! 🔥</div>
-                  </div>
-                )}
-                {streakEffect === 'loss' && lossStreak >= 3 && (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="text-red-300 text-4xl font-bold animate-pulse">COLD STREAK! ❄️</div>
-                  </div>
-                )}
-              </div>
-            )}
-            
-            <div ref={multiplierTextRef} className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-6xl font-bold text-white z-50 multiplier-text">1.00x</div>
-            
-            {showLossImage && (
-              <video
-                ref={lossVideoRef}
-                className="absolute inset-0 w-full h-full object-cover z-10"
-                muted
-                playsInline
-                preload="auto"
-                src="/images/crashout/Loss.mp4"
-                onLoadedData={() => {
-                  lossVideoRef.current!.play().catch(err => console.warn('Could not autoplay loss video:', err));
-                }}
-              />
-            )}
-            
-            {/* Game Started animation with full-width cover styling */}
-            {showGameStartedImage && (
-              <img 
-                src="/images/crashout/Game Started.gif" 
-                alt="Game started"
-                className="absolute inset-0 w-full h-full object-cover z-20" 
-              />
-            )}
-          </div>
-          
-          <div className="hidden">
-            {/* No need to create audio elements here anymore */}
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div className="bet-section">
-              <label htmlFor="betAmount" className="block mb-2 text-white flex justify-between">
-                <span>Bet Amount (Farm Coins)</span>
-                {gameState === GAME_STATE.COUNTDOWN && !offlineMode && (
-                  <span className={`text-xs ${joinWindowTimeLeft > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    {joinWindowTimeLeft > 0 ? `Join window: ${joinWindowTimeLeft}s` : "Join window closed"}
-                  </span>
-                )}
-              </label>
-              <input 
-                type="number" 
-                id="betAmount" 
-                value={betAmount}
-                onChange={(e) => setBetAmount(e.target.value)}
-                className={`w-full p-2 bg-[#333] rounded border ${canPlaceBet && (offlineMode || joinWindowTimeLeft > 0) ? 'border-green-500' : 'border-red-900 opacity-80'} 
-                  text-white transition-all duration-300`}
-                placeholder="Enter bet amount"
-                min="1"
-                step="1"
-                disabled={!canPlaceBet || (!offlineMode && !isConnected) || (!offlineMode && joinWindowTimeLeft <= 0) || isPlayDisabled}
-              />
-              {/* Add Martingale system toggle */}
-              <div className="flex items-center mt-2 text-white text-sm">
-                <input
-                  type="checkbox"
-                  id="martingale"
-                  checked={useMartingale}
-                  onChange={() => setUseMartingale(!useMartingale)}
-                  className="mr-2"
-                />
-                <label htmlFor="martingale" className="cursor-pointer">
-                  Use Martingale System (Double after loss)
-                </label>
-                {useMartingale && lossStreak > 0 && (
-                  <span className="ml-2 text-yellow-400">
-                    Next bet will be: {calculateMartingaleBet(previousBets, parseFloat(betAmount)).toFixed(0)}
-                  </span>
-                )}
-              </div>
+            <svg className="w-4 h-4 rotate-180" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M19 12H5M12 5L5 12L12 19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+        </div>
+        
+        <button
+          onClick={() => setShowWalletOptions(false)}
+          className="mt-6 py-2 px-4 border border-gray-700 rounded-lg text-white w-full hover:bg-gray-800 transition-colors"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+
+  // Transaction dialog
+  const TransactionDialog = () => (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
+      <div className="bg-gray-900 border border-gray-700 rounded-lg p-8 max-w-md w-full shadow-xl">
+        <div className="text-center mb-6">
+          <h3 className="text-xl font-bold text-white mb-2">Transaction Status</h3>
+          <p className="text-gray-400 text-sm">
+            {txStatus === 'pending' && 'Finding transaction...'}
+            {txStatus === 'confirming' && 'Waiting for confirmation...'}
+            {txStatus === 'confirmed' && 'Transaction confirmed!'}
+            {txStatus === 'failed' && 'Transaction failed'}
+          </p>
+        </div>
+        
+        <div className="flex justify-center mb-4">
+          {txStatus === 'pending' && (
+            <div className="animate-spin w-16 h-16 border-4 border-gray-700 border-t-green-400 rounded-full"></div>
+          )}
+          {txStatus === 'confirming' && (
+            <div className="animate-pulse w-16 h-16 flex items-center justify-center rounded-full bg-blue-500/20">
+              <svg className="w-10 h-10 text-blue-500" fill="none" viewBox="0 0 24 24">
+                <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+              </svg>
             </div>
-            
-            <div className="auto-cashout-section">
-              <label htmlFor="autoCashout" className="block mb-2 text-white">Auto Cashout Multiplier</label>
-              <input 
-                type="number" 
-                id="autoCashout" 
-                value={autoCashout}
-                onChange={(e) => setAutoCashout(e.target.value)}
-                className="w-full p-2 bg-[#333] rounded border border-[#444] text-white"
-                placeholder="Auto cashout at"
-                min="1.01"
-                step="0.01"
-                disabled={!canPlaceBet || (!offlineMode && !isConnected) || isPlayDisabled}
-              />
-              {/* Add stats display */}
-              <div className="mt-2 text-xs text-gray-300">
-                <div className="flex justify-between">
-                  <span>Highest Win:</span>
-                  <span className="text-green-400">{highestWin.toFixed(2)} coins</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Total Won:</span>
-                  <span className="text-green-400">{totalWon.toFixed(2)} coins</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Total Lost:</span>
-                  <span className="text-red-400">{totalLost.toFixed(2)} coins</span>
-                </div>
-              </div>
+          )}
+          {txStatus === 'confirmed' && (
+            <div className="w-16 h-16 flex items-center justify-center rounded-full bg-green-500/20">
+              <svg className="w-10 h-10 text-green-500" fill="none" viewBox="0 0 24 24">
+                <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+              </svg>
             </div>
-          </div>
-          
-          <div className="farm-coins mb-4 text-center">
-            <p className="text-lg">Available Farm Coins: <span className="font-bold">{farmCoins}</span></p>
-          </div>
-          
-          <div className="game-buttons mt-4 grid grid-cols-2 gap-4">
-            <button 
-              onClick={handlePlay}
-              disabled={isPlayDisabled || !canPlaceBet}
-              className={`py-3 text-lg font-bold rounded transition-all duration-300 ${
-                isPlayDisabled || !canPlaceBet ? "bg-green-800 opacity-50 cursor-not-allowed" : "bg-green-600 hover:bg-green-700 hover:scale-[1.02]"
-              }`}
+          )}
+          {txStatus === 'failed' && (
+            <div className="w-16 h-16 flex items-center justify-center rounded-full bg-red-500/20">
+              <svg className="w-10 h-10 text-red-500" fill="none" viewBox="0 0 24 24">
+                <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </div>
+          )}
+        </div>
+        
+        {txHash && (
+          <div className="mt-6 p-4 bg-black/40 rounded-lg flex items-center justify-between overflow-hidden border border-gray-800">
+            <div className="truncate text-sm text-gray-400">{txHash}</div>
+            <a 
+              href={`${ABSTRACT_BLOCK_EXPLORER}/tx/${txHash}`} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="ml-2 flex items-center gap-1 text-white hover:text-gray-300 transition-colors"
             >
-              {offlineMode ? (canPlaceBet ? "Place Demo Bet" : "Demo Wait") :
-              gameState === GameState.WAITING ? (joinWindowTimeLeft > 0 ? `Place Bet (${joinWindowTimeLeft}s)` : "Join Window Closed") :
-              (canPlaceBet ? "Place Bet" : "Wait for Next Round")}
-              {useMartingale && lossStreak > 0 && canPlaceBet && (
-                <span className="block text-xs">Martingale: {calculateMartingaleBet(previousBets, parseFloat(betAmount)).toFixed(0)} coins</span>
-              )}
-            </button>
-            
-            <button 
-              onClick={handleCashout}
-              disabled={isCashoutDisabled || !playerJoined || gameState !== GameState.RUNNING || (!offlineMode && !isConnected) || cashedOutAt !== null}
-              className={`py-3 text-lg font-bold rounded transition-all duration-300 ${
-                isCashoutDisabled || !playerJoined || gameState !== GameState.RUNNING || (!offlineMode && !isConnected) || cashedOutAt !== null
-                  ? "bg-yellow-800 opacity-50 cursor-not-allowed" 
-                  : "bg-yellow-600 hover:bg-yellow-700 hover:scale-[1.02]"
-              }`}
-            >
-              {cashedOutAt ? `Cashed Out (${cashedOutAt.toFixed(2)}x)` : "Cashout Now"}
-            </button>
+              <span>View</span>
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+            </a>
           </div>
-          
-          <div className="game-history mt-6">
-            <h3 className="text-xl mb-4 text-white flex items-center">
-              <span>Game History</span>
-              <div className="h-[1px] flex-grow ml-3 bg-gradient-to-r from-white/10 to-transparent"></div>
-            </h3>
-            
-            <div className="relative overflow-hidden">
-              <div className="flex space-x-3 overflow-x-auto py-2 scrollbar-hide history-scroll" 
-                   style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                {gameHistory.slice(0,10).map((entry,index) => {
-                  // no debug logs
-                  return (
-                    <div
-                      key={entry.id ?? `${entry.timestamp}-${index}`}
-                      className={`
-                        flex-shrink-0 w-20 h-20
-                        relative overflow-hidden rounded-md shadow-lg
-                        transition-all duration-300 transform
-                        ${entry.value === 'N/A' ? 'animate-bounce-slow' : entry.color === "green" ? 'animate-pulse' : ''}
-                      `}
-                    >
-                      <div
-                        className={`
-                          w-full h-full
-                          flex items-center justify-center text-center font-bold text-lg
-                          ${entry.value === 'N/A' ? "bg-gray-700" : // Use gray for invalid values 
-                            entry.color === "green" 
-                            ? "bg-gradient-to-br from-emerald-400 to-green-600" 
-                            : "bg-gradient-to-br from-red-400 to-red-700"}
-                        `}
-                        style={{ 
-                          color: "#fff",
-                          textShadow: "1px 1px 2px rgba(0,0,0,0.5)"
-                        }}
-                      >
-                        {entry.value === 'N/A' ? "N/A" : parseFloat(entry.value).toFixed(2) + "x"}
-                        {index === 0 && (
-                          <div className="absolute top-0 right-0 bg-blue-600 text-xs px-1 rounded-bl-md">
-                            Latest
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-                {gameHistory.length === 0 && (
-                   <div className="text-gray-500 text-center w-full">No game history yet.</div>
-                )}
-              </div>
-            </div>
-          </div>
-          
-          <div className="recent-cashouts mt-6">
-            <h3 className="text-xl mb-4 text-white">Recent Cashouts</h3>
-            <div className="space-y-2 max-h-40 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
-              {recentCashouts.map((cashout, index) => (
-                <div key={`${cashout.timestamp}-${index}`} className="bg-[#222] p-2 rounded flex justify-between text-sm">
-                  <span className="truncate w-1/3" title={cashout.username}>{cashout.username}</span>
-                  <span className="text-green-500 font-semibold w-1/4 text-center">{cashout.multiplier.toFixed(2)}x</span>
-                  <span className="w-1/3 text-right">{cashout.winning.toFixed(2)} coins</span>
+        )}
+        
+        <button
+          onClick={() => setShowTxDialog(false)}
+          className="mt-8 py-3 px-4 bg-white text-black hover:bg-gray-200 rounded-lg transition-all duration-200 w-full font-medium"
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  );
+  
+  return (
+    <div className="max-w-xl mx-auto p-2 rounded-xl shadow-xl border-[#100] border-b">
+      {/* Wallet connection dialogs */}
+      {showWalletOptions && <WalletOptionsDialog />}
+      {showTxDialog && <TransactionDialog />}
+      
+      {/* volume control */}
+      <div className="flex items-center space-x-2 mb-4">
+        <button onClick={() => setMuted(m => !m)} className="text-white">
+          {muted ? '🔇' : '🔊'}
+        </button>
+        <input
+          type="range"
+          min="0" max="1" step="0.01"
+          value={muted ? 0 : volume}
+          onChange={e => { setMuted(false); setVolume(parseFloat(e.target.value)); }}
+          className="w-full"
+        />
+      </div>
+      
+      {/* Wallet connection section */}
+      <div className="mb-4">
+        {!isWalletConnected ? (
+          <button
+            onClick={() => connectWallet()}
+            className={baseBtnClass + ' mb-2'}
+          >
+            {isLoading ? 'Connecting...' : 'Connect Wallet'}
+          </button>
+        ) : (
+          <div className="w-full py-2 px-3 mb-3 bg-black/30 text-white border border-gray-800 rounded-lg">
+            <div className="flex justify-between items-center">
+              <div className="flex items-center">
+                <div className="h-7 w-7 rounded-full bg-white text-black flex items-center justify-center mr-2 text-xs font-bold">
+                  {activeWallet === WALLET_OPTIONS.AGW ? 'A' : 'M'}
                 </div>
-              ))}
-              {recentCashouts.length === 0 && (
-                <div className="text-gray-500 text-center">No recent cashouts</div>
-              )}
-            </div>
-          </div>
-          
-          <div className="username-editor mt-6 bg-[#222] p-4 rounded">
-            <h3 className="text-xl mb-2 text-white">Your Profile</h3>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className="flex-1 p-2 bg-[#333] rounded border border-[#444] text-white"
-                placeholder="Your username"
-                maxLength={20}
-              />
-              <button
-                onClick={() => changeUsername(username)}
-                className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={!isConnected && !offlineMode}
+                <div>
+                  <p className="text-xs text-gray-400">Connected with {activeWallet === WALLET_OPTIONS.AGW ? 'AGW' : 'MetaMask'}</p>
+                  <p className="text-sm font-medium">{localWalletAddress.substring(0, 6)}...{localWalletAddress.substring(localWalletAddress.length - 4)}</p>
+                </div>
+              </div>
+              <button 
+                onClick={handleDisconnect}
+                className="p-1.5 hover:bg-gray-800 rounded-full transition-colors"
               >
-                Update
+                <svg className="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
               </button>
             </div>
           </div>
-          
-          <div className="game-info mt-6 bg-[#222] p-4 rounded text-sm text-white/70">
-            <h4 className="font-bold mb-2">How to Play:</h4>
-            <ol className="list-decimal pl-5 space-y-1">
-              <li>Enter your bet amount in farm coins</li>
-              <li>Set an auto-cashout multiplier (optional)</li>
-              <li>Click "Place Bet" during the join window to play the next round</li>
-              <li>Wait for the multiplier to increase</li>
-              <li>Click "Cashout Now" before the game crashes to win</li>
-              <li>If you wait too long, you'll lose your bet!</li>
-              <li>Play against other players in real-time (when connected)</li>
-            </ol>
+        )}
+      </div>
+      
+      {/* Token selection and balance */}
+      <div className="mb-4">
+        <div className="flex justify-between items-center mb-2">
+          <label className="text-white font-medium">Select Token:</label>
+          <div className="flex items-center">
+            <span className="text-white font-medium mr-2">
+              Balance: {getSelectedTokenBalance().toFixed(2)} {selectedToken}
+            </span>
+            {isWalletConnected && (
+              <button 
+                onClick={handleRefreshBalances} 
+                disabled={isLoadingBalances}
+                className="text-white hover:text-green-400 transition-colors"
+                title="Refresh Balances"
+              >
+                {isLoadingBalances ? '⟳' : '↻'}
+              </button>
+            )}
           </div>
         </div>
+        <select
+          value={selectedToken}
+          onChange={(e) => setSelectedToken(e.target.value)}
+          disabled={gameState !== 'inactive'}
+          className="w-full p-3 bg-gray-800 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-green-400"
+        >
+          {availableTokens.map(token => (
+            <option key={token.symbol} value={token.symbol}>
+              {token.symbol} ({token.balance.toFixed(2)})
+            </option>
+          ))}
+        </select>
+      </div>
+      
+      <div className="relative w-full h-56 bg-black rounded-xl overflow-hidden mb-6">
+        <img
+          src="/images/crashout/Game%20Started.gif"
+          alt="Starting"
+          className={'absolute top-0 left-0 w-full h-full object-cover transition-opacity' + (gameState === 'crashed' ? ' opacity-0' : ' opacity-100')}
+        />
+        <video
+          ref={videoRef}
+          src="/images/crashout/Loss.mp4"
+          muted
+          playsInline
+          className={'absolute top-0 left-0 w-full h-full object-cover transition-opacity' + (gameState === 'crashed' ? ' opacity-100' : ' opacity-0')}
+        />
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className={'text-7xl font-extrabold tracking-wide ' + (gameState === 'crashed' ? 'text-red-500' : 'text-green-400')}>
+            {multiplier.toFixed(2)}x
+          </span>
+        </div>
+      </div>
+      <div className="space-y-4 mb-6">
+        <div>
+          <label className="block text-white mb-1">Bet Amount</label>
+          <input
+            type="number"
+            value={betAmount}
+            onChange={e => setBetAmount(e.target.value)}
+            disabled={gameState !== 'inactive' || betPlaced}
+            className="w-full p-3 bg-gray-800 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-green-400"
+            placeholder="0.01"
+            min="0.01"
+            step="0.01"
+          />
+        </div>
+        <div>
+          <label className="block text-white mb-1">Auto Cashout</label>
+          <input
+            type="number"
+            value={autoCashout}
+            onChange={e => setAutoCashout(e.target.value)}
+            disabled={gameState !== 'inactive' || betPlaced}
+            className="w-full p-3 bg-gray-800 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-green-400"
+            placeholder="1.01"
+            min="1.01"
+            step="0.01"
+          />
+        </div>
+      </div>
+      <div className="flex space-x-4 mb-6">
+        {/* Game state indicators and actions */}
+        {gameState === 'inactive' && (
+          <div className="flex-1 mb-4 text-white font-medium">
+            <div className="mb-2">Place your bet: {timeLeft}s</div>
+            <div className="flex space-x-2">
+              <button
+                onClick={startGame}
+                disabled={approvalPending || betPlaced}
+                className={baseBtnClass + ' flex-1'}
+              >
+                {approvalPending ? 'Approving...' : betPlaced ? 'Bet Placed' : 'Place Bet'}
+              </button>
+            </div>
+          </div>
+        )}
+        
+        {gameState === 'active' && (
+          <div className="flex-1 flex">
+            <button
+              onClick={handleCashout}
+              disabled={hasCashed || !userJoined}
+              className={baseBtnClass + ' flex-1'}
+            >
+              {hasCashed ? 'Cashed Out' : 'Cashout'}
+            </button>
+          </div>
+        )}
+        
+        {gameState === 'claiming' && (
+          <div className="flex-1">
+            <div className="text-white text-center mb-2">
+              You won: {winAmount.toFixed(2)} {tokenRef.current}!
+            </div>
+            <div className="text-white text-center mb-2">
+              Claim within: {timeLeft}s
+            </div>
+            <button
+              onClick={claimTokens}
+              className={baseBtnClass}
+            >
+              Claim Tokens
+            </button>
+          </div>
+        )}
+      </div>
+      <div className="grid grid-cols-5 gap-2 mt-4">
+        {history.map((entry, idx) => {
+          const mul = parseFloat(entry.value);
+          const bet = entry.bet;
+          const token = entry.token;
+          // 1–1.4× always red
+          let bgClass = '';
+          if (mul <= 1.4) bgClass = 'bg-red-500';
+          else if (mul <= 2) bgClass = 'bg-orange-500';
+          else if (mul <= 5) bgClass = 'bg-yellow-400';
+          else if (mul <= 10) bgClass = 'bg-green-500';
+          else if (mul <= 20) bgClass = 'bg-blue-400';
+          else bgClass = 'bg-purple-500';
+          return (
+            <div
+              key={idx}
+              className={`p-2 rounded text-center ${bgClass} text-white`}
+              title={`Crash at ${entry.value}x - Bet: ${bet.toFixed(2)} ${token}`}
+            >
+              {entry.value}x
+            </div>
+          );
+        })}
       </div>
     </div>
   );
