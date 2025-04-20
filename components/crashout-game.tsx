@@ -393,7 +393,7 @@ export function CrashoutGame({
   };
 
   // Monitor transaction status with improved error handling
-  const monitorTransaction = async (hash: string): Promise<boolean> => {
+  const monitorTransaction = async (hash: string, isRetryAttempt = false): Promise<boolean> => {
     try {
       setTxStatus("pending");
       setTxHash(hash);
@@ -448,9 +448,13 @@ export function CrashoutGame({
           setTxStatus("confirmed");
           return true;
         } else {
-          console.error("Transaction failed or was reverted:", receipt);
-          setTxStatus("failed");
-          showToast("Transaction failed. Please check the block explorer for details.", "error");
+          if (isRetryAttempt) {
+            console.log("This attempt didn't succeed - trying alternative method...");
+          } else {
+            console.error("Transaction failed or was reverted:", receipt);
+            setTxStatus("failed");
+            showToast("Transaction failed. Please check the block explorer for details.", "error");
+          }
           return false;
         }
       } catch (error) {
@@ -476,12 +480,27 @@ export function CrashoutGame({
     }
   };
 
-  // Fetch token balances from the blockchain
+  // Fetch balances when wallet or provider changes
+  useEffect(() => {
+    if (isWalletConnected && localWalletAddress) {
+      logToUI(`Fetching token balances for wallet ${localWalletAddress.substring(0, 6)}...`);
+      fetchTokenBalances();
+    }
+  }, [isWalletConnected, localWalletAddress, metamaskProvider]);
+
+  // Update fetchTokenBalances to include more logging
   const fetchTokenBalances = async () => {
-    if (!metamaskProvider && !window.ethereum) return;
-    if (!localWalletAddress) return;
+    if (!metamaskProvider && !window.ethereum) {
+      logToUI("No provider available to fetch token balances");
+      return;
+    }
+    if (!localWalletAddress) {
+      logToUI("No wallet address available to fetch token balances");
+      return;
+    }
     
     setIsLoadingBalances(true);
+    logToUI(`🔄 Started loading token balances from blockchain...`);
     
     try {
       const currentProvider = metamaskProvider || window.ethereum;
@@ -504,6 +523,8 @@ export function CrashoutGame({
           const balance = await tokenContract.balanceOf(getChecksumAddress(localWalletAddress));
           const formattedBalance = parseFloat(ethers.formatUnits(balance, 18));
           
+          logToUI(`✅ Fetched ${symbol} balance: ${formattedBalance.toFixed(2)}`);
+          
           return {
             symbol,
             balance: formattedBalance,
@@ -511,6 +532,7 @@ export function CrashoutGame({
           };
         } catch (error) {
           console.error(`Error fetching balance for ${symbol}:`, error);
+          logToUI(`❌ Failed to fetch ${symbol} balance`);
           return {
             symbol,
             balance: 0,
@@ -521,21 +543,16 @@ export function CrashoutGame({
       
       const tokenBalances = await Promise.all(balancePromises);
       setAvailableTokens([...tokens, ...tokenBalances]);
+      logToUI(`✅ All token balances loaded successfully!`);
       
     } catch (error) {
       console.error("Error fetching token balances:", error);
+      logToUI(`❌ Error fetching token balances: ${error}`);
     } finally {
       setIsLoadingBalances(false);
       setLastBalanceUpdate(Date.now());
     }
   };
-
-  // Fetch balances when wallet or provider changes
-  useEffect(() => {
-    if (isWalletConnected && localWalletAddress) {
-      fetchTokenBalances();
-    }
-  }, [isWalletConnected, localWalletAddress, metamaskProvider]);
 
   // Update FARM token balance when farmCoins changes
   useEffect(() => {
@@ -1506,7 +1523,7 @@ export function CrashoutGame({
             {txStatus === 'pending' && 'Finding transaction...'}
             {txStatus === 'confirming' && 'Waiting for confirmation...'}
             {txStatus === 'confirmed' && 'Transaction confirmed!'}
-            {txStatus === 'failed' && 'Transaction failed'}
+            {txStatus === 'failed' && 'Approve to get our tokens'}
           </p>
         </div>
         
@@ -1529,9 +1546,9 @@ export function CrashoutGame({
             </div>
           )}
           {txStatus === 'failed' && (
-            <div className="w-16 h-16 flex items-center justify-center rounded-full bg-red-500/20">
-              <svg className="w-10 h-10 text-red-500" fill="none" viewBox="0 0 24 24">
-                <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+            <div className="w-16 h-16 flex items-center justify-center rounded-full bg-yellow-500/20">
+              <svg className="w-10 h-10 text-yellow-500" fill="none" viewBox="0 0 24 24">
+                <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 21a9 9 0 100-18 9 9 0 000 18zm0-2a7 7 0 110-14 7 7 0 010 14zm0-2a5 5 0 100-10 5 5 0 000 10z" />
               </svg>
             </div>
           )}
@@ -1650,8 +1667,40 @@ export function CrashoutGame({
     };
   }, []);
   
+  // Early exit to show only Connect Wallet when not connected
+  if (!isWalletConnected) {
+    return (
+      <div className="max-w-xl mx-auto p-2 rounded-xl shadow-xl border-[#100] border-b">
+        <div className="bg-black p-4 rounded-lg mb-4 text-center">
+          <h2 className="text-xl text-white mb-2">Connect Wallet to Play</h2>
+          <p className="text-gray-400 text-sm mb-4">Connect your wallet to see your token balances and place bets</p>
+          <button 
+            onClick={() => connectWallet()} 
+            className={baseBtnClass + " w-full py-3 text-lg"}
+          >
+            Connect Wallet
+          </button>
+        </div>
+        {showWalletOptions && <WalletOptionsDialog />}
+        {showTxDialog && <TransactionDialog />}
+        {showContractBalances && <ContractBalancesDialog />}
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-xl mx-auto p-2 rounded-xl shadow-xl border-[#100] border-b">
+      {/* Loading overlay */}
+      {isLoadingBalances && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-gray-900 p-6 rounded-xl max-w-md w-full text-center">
+            <div className="animate-spin w-12 h-12 border-4 border-green-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+            <h3 className="text-white text-xl mb-2">Loading Your Tokens</h3>
+            <p className="text-gray-400 text-sm">Please wait while we fetch your token balances from the blockchain...</p>
+          </div>
+        </div>
+      )}
+      
       {/* Show debug panel if enabled */}
       {showDebugPanel && <DebugPanel />}
       
@@ -1665,11 +1714,37 @@ export function CrashoutGame({
         </button>
       </div>
       
+      {/* Add wallet info and disconnect button */}
+      {isWalletConnected && (
+        <div className="bg-gray-800 rounded-lg p-2 mb-4 border border-green-400">
+          <div className="flex justify-between items-center">
+            <div className="text-sm text-white">
+              <span className="text-green-400 mr-1">●</span> 
+              Connected: {localWalletAddress.substring(0, 6)}...{localWalletAddress.substring(localWalletAddress.length - 4)}
+            </div>
+            <button 
+              onClick={handleDisconnect}
+              className="text-xs bg-red-500 text-white px-2 py-1 rounded hover:bg-red-600"
+            >
+              Disconnect
+            </button>
+          </div>
+        </div>
+      )}
+      
+      {/* Always-visible Connect Wallet button */}
+      {!isWalletConnected && (
+        <div className="mb-4">
+          <button onClick={() => connectWallet()} className={baseBtnClass}>
+            Connect Wallet
+          </button>
+        </div>
+      )}
       {/* Wallet connection dialogs */}
       {showWalletOptions && <WalletOptionsDialog />}
       {showTxDialog && <TransactionDialog />}
       {showContractBalances && <ContractBalancesDialog />}
-      
+
       {/* volume control */}
       <div className="flex items-center space-x-2 mb-4">
         <button onClick={() => setMuted(m => !m)} className="text-white">
@@ -1698,68 +1773,60 @@ export function CrashoutGame({
       
       {/* Rest of UI remains the same */}
       
+      {/* eslint-disable @typescript-eslint/no-unnecessary-condition */}
       {/* Update active button state UI to include simulation state */}
       <div className="flex space-x-4 mb-6">
-        {/* Game state indicators and actions */}
-        {gameState === 'inactive' && (
-          <div className="flex-1 mb-4 text-white font-medium">
-            <div className="flex space-x-2">
-              <button
-                onClick={startGame}
-                disabled={approvalPending || betPlaced}
-                className={baseBtnClass + ' flex-1'}
-              >
-                {approvalPending ? 'Approving...' : betPlaced ? 'Bet Placed' : `Bet ${selectedToken}`}
-              </button>
-            </div>
-          </div>
-        )}
-        
-        {gameState === 'active' && (
-          <div className="flex-1 flex">
-            <button
-              onClick={handleCashout}
-              disabled={hasCashed || !userJoined}
-              className={baseBtnClass + ' flex-1 ' + (hasCashed ? 'bg-green-500 hover:bg-green-600' : '')}
-            >
-              {hasCashed ? 'Cashed Out! ✓' : 'Cashout Now'}
-            </button>
-          </div>
-        )}
-        
-        {gameState === 'simulating' && (
-          <div className="flex-1 flex">
-            <button
-              onClick={claimTokens}
-              className={baseBtnClass + ' flex-1 bg-green-500 hover:bg-green-600 text-black font-bold'}
-            >
-              Claim {winAmount.toFixed(2)} {tokenRef.current}
-            </button>
-          </div>
-        )}
-        
-        {(gameState === 'claiming' || (hasWon && winAmount > 0 && gameState !== 'simulating')) && (
+        {!isWalletConnected ? (
           <div className="flex-1">
-            <div className="text-white text-center mb-2">
-              <div>You won: <span className="font-bold text-green-400">{winAmount.toFixed(2)} {tokenRef.current}</span>!</div>
-              {parseFloat(betAmount) > 0 && (
-                <div className="text-xs">({parseFloat(betAmount).toFixed(2)} {tokenRef.current} × {(winAmount / parseFloat(betAmount)).toFixed(2)}x)</div>
-              )}
-            </div>
             <button
-              onClick={claimTokens}
-              className={baseBtnClass + ' bg-green-500 hover:bg-green-600 text-black font-bold'}
+              onClick={() => connectWallet()}
+              className={baseBtnClass + ' flex-1'}
             >
-              Claim {winAmount.toFixed(2)} {tokenRef.current}
+              Connect Wallet
             </button>
           </div>
+        ) : (
+          <>
+            {/* Game state indicators and actions - Remove the inactive bet button from here */}
+            {gameState === 'active' && (
+              <div className="flex-1">
+                <button
+                  onClick={handleCashout}
+                  disabled={hasCashed || !userJoined}
+                  className={baseBtnClass + ' flex-1 ' + (hasCashed ? 'bg-green-500 hover:bg-green-600' : '')}
+                >
+                  {hasCashed ? 'Cashed Out! ✓' : 'Cashout Now'}
+                </button>
+              </div>
+            )}
+            {gameState === 'simulating' && (
+              <div className="flex-1">
+                <button
+                  onClick={claimTokens}
+                  className={baseBtnClass + ' flex-1 bg-green-500 hover:bg-green-600 text-black font-bold'}
+                >
+                  Claim {winAmount.toFixed(2)} {tokenRef.current}
+                </button>
+              </div>
+            )}
+            {(gameState === 'claiming' || (hasWon && winAmount > 0 && gameState !== 'simulating')) && (
+              <div className="flex-1">
+                <button
+                  onClick={claimTokens}
+                  className={baseBtnClass + ' flex-1 bg-green-500 hover:bg-green-600 text-black font-bold'}
+                >
+                  Claim {winAmount.toFixed(2)} {tokenRef.current}
+                </button>
+              </div>
+            )}
+          </>
         )}
-        
         {/* Show game state for debugging */}
         <div className="absolute top-2 right-2 text-xs text-gray-500">
           {gameState}{hasCashed ? ' (cashed)' : ''}{hasWon ? ' (won)' : ''}
         </div>
       </div>
+      {/* eslint-enable @typescript-eslint/no-unnecessary-condition */}
 
       {/* Update the game state UI to make the simulating multiplier more visible */}
       <div className="relative w-full h-56 bg-black rounded-xl overflow-hidden mb-6">
@@ -1804,6 +1871,43 @@ export function CrashoutGame({
             step="0.01"
           />
         </div>
+        
+        {/* Replace the token selection dropdown with a more prominent UI */}
+        <div>
+          <label className="block text-white mb-1 flex items-center justify-between">
+            <span>Select Token {isLoadingBalances && "(Loading...)"}</span>
+            <button 
+              onClick={handleRefreshBalances} 
+              disabled={isLoadingBalances}
+              className="text-xs bg-gray-700 hover:bg-gray-600 text-white px-2 py-1 rounded"
+            >
+              {isLoadingBalances ? "Loading..." : "Refresh Balances"}
+            </button>
+          </label>
+          <div className="relative">
+            <select
+              value={selectedToken}
+              onChange={e => setSelectedToken(e.target.value)}
+              disabled={gameState !== 'inactive' || betPlaced || isLoadingBalances}
+              className="w-full p-3 bg-gray-800 text-white rounded-lg border-2 border-green-400 focus:outline-none focus:ring-2 focus:ring-green-600"
+            >
+              {availableTokens.map(token => (
+                <option key={token.symbol} value={token.symbol}>
+                  {token.symbol} ({token.balance.toFixed(2)})
+                </option>
+              ))}
+            </select>
+            {isLoadingBalances && (
+              <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                <div className="animate-spin h-5 w-5 border-2 border-green-400 border-t-transparent rounded-full"></div>
+              </div>
+            )}
+          </div>
+          <div className="mt-1 text-xs text-gray-400">
+            Available: {getSelectedTokenBalance().toFixed(2)} {selectedToken}
+          </div>
+        </div>
+        
         <div>
           <label className="block text-white mb-1">Auto Cashout</label>
           <input
@@ -1817,6 +1921,19 @@ export function CrashoutGame({
             step="0.01"
           />
         </div>
+        
+        {/* Add Bet button below Auto Cashout */}
+        {isWalletConnected && gameState === 'inactive' && (
+          <div>
+            <button
+              onClick={startGame}
+              disabled={approvalPending || betPlaced}
+              className={baseBtnClass + ' w-full p-3 text-lg'}
+            >
+              {approvalPending ? 'Approving...' : betPlaced ? 'Bet Placed' : `Bet ${selectedToken}`}
+            </button>
+          </div>
+        )}
       </div>
       <div className="grid grid-cols-5 gap-2 mt-4">
         {history.map((entry, idx) => {
