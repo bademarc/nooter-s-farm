@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { toast } from 'react-hot-toast';
 import { ethers } from 'ethers';
+import confetti from 'canvas-confetti';
 
 // Blockchain constants
 const ABSTRACT_TESTNET_CHAIN_ID = "0x2b74";
@@ -43,7 +44,7 @@ const TOKEN_ABI = [
   "function balanceOf(address owner) view returns (uint256)",
   "function transfer(address to, uint256 amount) returns (bool)",
   "function approve(address spender, uint256 amount) returns (bool)",
-  "function allowance(address owner, address spender) view returns (uint256)",
+  "function allowance(address owner, address spender) view returns (uint256)", // <<< Fixed uint250 typo >>>
   "function transferFrom(address from, address to, uint256 value) returns (bool)"
 ];
 
@@ -86,6 +87,7 @@ interface HistoryEntry {
   value: string; 
   bet: number; 
   token: string;
+  cashoutMultiplier?: number | null; // Added: Multiplier user cashed out at
 }
 
 // Token value mapping for conversion when swapTokenForFarmCoins fails
@@ -118,8 +120,6 @@ const sampleCrashPoint = (): number => {
   return Math.min(Math.max(x, 1), 50);
 };
 
-const baseBtnClass = 'inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 px-3 w-full text-xs h-8 bg-white text-black rounded-none hover:bg-white/90 noot-text border border-[rgb(51_51_51_/var(--tw-border-opacity,1))]';
-
 // Add toast configuration to ensure notifications disappear
 const showToast = (message: string, type: 'success' | 'error' | 'loading' = 'success') => {
   // Dismiss any existing toasts first
@@ -135,7 +135,7 @@ const showToast = (message: string, type: 'success' | 'error' | 'loading' = 'suc
   }
 };
 
-export function CrashoutGame({ 
+function CrashoutGame({ 
   farmCoins, 
   addFarmCoins, 
   tokenBalances = {}, 
@@ -143,18 +143,6 @@ export function CrashoutGame({
   walletAddress = "", 
   provider = null 
 }: CrashoutGameProps) {
-  // Sync farmCoins with localStorage on mount
-  useEffect(() => {
-    const stored = localStorage.getItem('farmCoins');
-    if (stored !== null) {
-      const storedVal = parseInt(stored, 10);
-      if (storedVal !== farmCoins) {
-        addFarmCoins(storedVal - farmCoins);
-      }
-    } else {
-      localStorage.setItem('farmCoins', farmCoins.toString());
-    }
-  }, []);
   // Persist farmCoins to localStorage whenever it changes
   useEffect(() => {
     localStorage.setItem('farmCoins', farmCoins.toString());
@@ -190,14 +178,12 @@ export function CrashoutGame({
   const hasCashedRef = useRef<boolean>(false);
   const [volume, setVolume] = useState<number>(1);
   const [muted, setMuted] = useState<boolean>(false);
-  const [timeLeft, setTimeLeft] = useState<number>(20); // Increased to 30 seconds
-  const countdownRef = useRef<number | null>(null);
   const [betPlaced, setBetPlaced] = useState<boolean>(false);
   const [approvalPending, setApprovalPending] = useState<boolean>(false);
   const [hasWon, setHasWon] = useState<boolean>(false);
   const [winAmount, setWinAmount] = useState<number>(0);
   const betRef = useRef<number>(0);
-  const [userJoined, setUserJoined] = useState<boolean>(false);
+  const userJoinedRef = useRef<boolean>(false); // Use ref instead of state for interval closure
   const crashPointRef = useRef<number>(1);
   const intervalRef = useRef<number | null>(null);
   const bgmRef = useRef<HTMLAudioElement | null>(null);
@@ -234,6 +220,13 @@ export function CrashoutGame({
   const [showDebugPanel, setShowDebugPanel] = useState<boolean>(false);
   const [simulatedMultiplier, setSimulatedMultiplier] = useState<number | null>(null);
   const simulationIntervalRef = useRef<number | null>(null);
+  // Add ref to store cashout multiplier for history
+  const cashoutMultiplierRef = useRef<number | null>(null);
+  // Add celebrate state for pop visuals on win
+  const [celebrate, setCelebrate] = useState<boolean>(false);
+  // Add new state to track if auto cashout has completed and claiming is ready
+  const [autoClaimReady, setAutoClaimReady] = useState<boolean>(false);
+  const backgroundVideoRef = useRef<HTMLVideoElement | null>(null); // Moved here
 
   // Add a custom log function that stores logs in the UI
   const logToUI = (message: string) => {
@@ -645,7 +638,18 @@ export function CrashoutGame({
         tokenRef.current = "FARM";
         console.log(`Bet placed: ${bet} Farm Coins, betRef.current=${betRef.current}`);
         showToast(`Bet placed: ${bet} Farm Coins`, "success");
-        return;
+        
+        // --- FIX: Immediately start the round for FARM coins --- 
+        logToUI("🚀 Starting round immediately for FARM coin bet.");
+        // Short delay to allow toast to show before state change
+        setTimeout(() => {
+          if (gameState === 'inactive') { // Only start if inactive
+             beginRound();
+          }
+        }, 100);
+        // ----------------------------------------------------------
+
+        return; // Important: Skip blockchain logic for FARM
       }
       
       setApprovalPending(true);
@@ -746,11 +750,13 @@ export function CrashoutGame({
           showToast(`Bet placed: ${bet} ${selectedToken}`, "success");
           
           // Auto-start round immediately after successful bet
-          setTimeout(() => {
-            if (gameState === 'inactive') {
-              beginRound();
-            }
-          }, 1000);
+          // Removed setTimeout for more direct start
+          if (gameState === 'inactive') {
+            logToUI("🚀 Starting round immediately after successful token bet.");
+            beginRound();
+          } else {
+            logToUI(`⚠️ Round not started immediately, gameState is: ${gameState}`);
+          }
         } else {
           showToast("Token transfer failed", "error");
           setApprovalPending(false);
@@ -778,23 +784,38 @@ export function CrashoutGame({
 
   // Reset the game
   const resetGame = () => {
+    logToUI("🔄 Resetting game state..."); // Added log
     if (simulationIntervalRef.current) {
+      logToUI("Clearing active simulation interval during reset."); // Added log
       clearInterval(simulationIntervalRef.current);
       simulationIntervalRef.current = null;
     }
-    
+
+    // --- Ensure simulation interval is cleared again just in case ---
+    if (simulationIntervalRef.current) {
+       clearInterval(simulationIntervalRef.current);
+       simulationIntervalRef.current = null;
+    }
+    // ------------------------------------------------------------
+
     setGameState('inactive');
     setMultiplier(1.0);
     setSimulatedMultiplier(null);
-    setUserJoined(false);
+    setAutoClaimReady(false);
+    userJoinedRef.current = false; // Reset ref directly
     setHasCashed(false);
     hasCashedRef.current = false;
     setHasWon(false);
     setWinAmount(0);
-    setBetPlaced(false);
-    setTimeLeft(30);
+    setBetPlaced(false); // <<< Explicitly reset betPlaced state >>>
+    // betRef.current = 0; // <<< Reset betRef >>>
+    // tokenRef.current = 'FARM'; // <<< Reset tokenRef (optional, defaults to FARM on selection change) >>>
+    setBetAmount(''); // Clear bet amount input
+    setAutoCashout(''); // Clear auto cashout input
+    setApprovalPending(false); // Ensure approval state is always reset
     // Reset token selection to the last used token
     // This allows continuous play with the same token
+    logToUI("✅ Game reset complete. State set to inactive."); // Added log
   };
 
   // End game with the final multiplier
@@ -808,7 +829,7 @@ export function CrashoutGame({
 
     const bet = betRef.current;
     const token = tokenRef.current;
-    const newEntry: HistoryEntry = { value: finalMul.toFixed(2), bet, token };
+    const newEntry: HistoryEntry = { value: finalMul.toFixed(2), bet, token, cashoutMultiplier: null }; // No cashout on loss
     setHistory(prev => [newEntry, ...prev].slice(0, 5));
 
     if (won) {
@@ -837,24 +858,38 @@ export function CrashoutGame({
         
         // Show win notification
         showToast(`You won ${winAmount.toFixed(2)} ${token}!`, "success");
+        // --- Use Enhanced Confetti --- 
+        triggerWinConfetti();
+        // trigger scale pop effect
+        setCelebrate(true);
+        setTimeout(() => setCelebrate(false), 1000);
       }
       
       // Transition to claiming state directly for auto cashout
       // or after a short delay for crash events
-      const delay = hasCashedRef.current && autoCashout ? 1000 : 3000;
-      
+      // --- FIX: Wrap state updates and toast in setTimeout to avoid render warning --- 
       setTimeout(() => {
-        setGameState('claiming');
-        setTimeLeft(CLAIM_TIME_SECONDS);
-      }, delay);
+        // Show crash video
+        if (videoRef.current) {
+          videoRef.current.currentTime = 0;
+          videoRef.current.play().catch((error) => {
+             // --- FIX: Log playback errors ---
+             logToUI(`Error playing crash video: ${error}`);
+             console.error("Crash video playback error:", error);
+             // --------------------------------
+        });
+        }
+        if (won) {
+          showToast(`You won ${winAmount.toFixed(2)} ${token}!`, "success");
+          setGameState('claiming');
+        } else {
+           showToast(`Crashed at ${finalMul.toFixed(2)}x`, "error"); // Show crash toast too
+           resetGame();
+        }
+      }, 0); // Use 0 delay for faster visual feedback, but keep async nature
     } else {
+      // Already crashed, maybe a race condition, just ensure reset happens
       setTimeout(resetGame, 4000);
-    }
-    
-    // Show crash video
-    if (videoRef.current) {
-      videoRef.current.currentTime = 0;
-      videoRef.current.play().catch(() => {});
     }
   };
 
@@ -862,26 +897,17 @@ export function CrashoutGame({
   const triggerAutoCashout = (target: number) => {
     logToUI(`⭐ AUTO CASHOUT TRIGGERED at ${target.toFixed(2)}x`);
     
-    // Make sure we have a valid bet amount
-    const bet = betRef.current;
+    // --- FIX: Strict check for valid bet amount from ref --- 
+    const bet = betRef.current; // Declare bet here, getting value from ref
     if (!bet || bet <= 0) {
-      logToUI(`❌ ERROR: Invalid bet amount ${bet} detected during auto cashout!`);
-      
-      // Attempt to recover the bet amount from the input
-      const recoveredBet = parseFloat(betAmount);
-      if (recoveredBet && recoveredBet > 0) {
-        logToUI(`🔄 Recovered bet amount ${recoveredBet} from input field`);
-        betRef.current = recoveredBet;
-      } else {
-        logToUI(`❌ CRITICAL ERROR: Could not determine bet amount!`);
-        // Show error to user
-        showToast("Error: Could not determine bet amount. Please try again.", "error");
-        return;
-      }
+      logToUI(`❌ CRITICAL ERROR: Auto cashout triggered but betRef.current is invalid (${bet}). Aborting cashout.`);
+      showToast("Error: Bet amount not registered correctly for auto cashout.", "error");
+      // Consider resetting or handling this state failure
+      resetGame(); // Resetting might be the safest option
+      return;
     }
-    
-    // Double check that we have a valid bet now
-    const confirmedBet = betRef.current;
+    // Use the confirmed bet amount from the ref
+    const confirmedBet = bet; 
     const token = tokenRef.current;
     
     // Log critical bet information
@@ -890,159 +916,261 @@ export function CrashoutGame({
     // Calculate exact winnings with extra precision
     const winnings = confirmedBet * target;
     
-    logToUI(`💵 WINNINGS CALCULATION: ${confirmedBet} × ${target} = ${winnings}`);
-    
-    // Set cashout states
-    setHasCashed(true);
-    hasCashedRef.current = true;
+    // --- FIX: Update ref synchronously, defer other state updates --- 
+    setHasCashed(true); // Keep state update for UI
+    hasCashedRef.current = true; // *** SET REF SYNCHRONOUSLY ***
     cashoutRef.current?.play().catch(() => {});
-    
-    // Set winning states - ensure win amount is properly set
-    setHasWon(true);
-    setWinAmount(winnings);
-    
-    // Double check win amount was set
-    setTimeout(() => {
-      if (winAmount !== winnings) {
-        logToUI(`⚠️ Win amount mismatch. Expected: ${winnings}, Actual: ${winAmount}`);
-        // Force update win amount again
-        setWinAmount(winnings);
-      }
-    }, 100);
-    
-    // Add to history
-    const newEntry: HistoryEntry = { value: target.toFixed(2), bet: confirmedBet, token };
-    setHistory(prev => [newEntry, ...prev].slice(0, 5));
-    
-    // Play win sound
-    winRef.current?.play().catch(() => {});
-    
-    // Show notification with confirmed amounts
-    showToast(`AUTO CASHOUT: You won ${winnings.toFixed(2)} ${token}!`, "success");
-    
-    // Set a special simulation state to prevent game from ending
-    setGameState('simulating');
-    
-    // Create a custom crash point that's higher than the auto cashout value
-    // This ensures the simulation runs longer
-    const simulationCrashPoint = Math.max(crashPointRef.current, target * 1.5);
-    
-    // Instead of stopping the game, just continue to simulate the multiplier
-    // Save current multiplier for continued display
-    setSimulatedMultiplier(target);
-    
-    // Continue running the game simulation so user can see where it would have crashed
+    cashoutMultiplierRef.current = target;
+
+    // --- FIX: Immediately stop the main game loop --- 
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
+      logToUI("Cleared main game interval due to auto cashout.");
     }
     
-    // Show message to indicate simulation is continuing
-    logToUI(`🎮 SIMULATION CONTINUING - Watch how high the multiplier goes!`);
-    
-    // Start a new interval to simulate the continuation
-    simulationIntervalRef.current = window.setInterval(() => {
-      setMultiplier(prev => {
-        const growth = 0.005 + Math.random() * 0.02;
-        let next = prev * (1 + growth);
-        
-        // Add periodic logging to show simulation is running
-        if (Math.random() < 0.1) { // 10% chance each tick
-          logToUI(`🎮 Simulation multiplier: ${next.toFixed(2)}x (you cashed out at ${target.toFixed(2)}x)`);
-        }
-        
-        if (next >= simulationCrashPoint) {
-          // Game would have crashed - just for display
-          if (simulationIntervalRef.current) {
-            clearInterval(simulationIntervalRef.current);
-            simulationIntervalRef.current = null;
-          }
-          logToUI(`🎲 Game would have crashed at ${next.toFixed(2)}x (you cashed out at ${target.toFixed(2)}x)`);
-          
-          // Don't call endGame, we already handled the win
-          setTimeout(() => {
-            // Move to claiming state after simulation completes
-            setGameState('claiming');
-            setTimeLeft(CLAIM_TIME_SECONDS);
-            
-            // Double check the win amount one last time
-            if (winAmount <= 0 || !hasWon) {
-              logToUI(`⚠️ FIXING win state in crash handler. Current winAmount: ${winAmount}`);
-              setHasWon(true);
-              setWinAmount(confirmedBet * target);
-            }
-          }, 3000); // Longer delay to ensure user sees the crash
-          
-          return next;
-        }
-        
-        return next;
-      });
-    }, 100);
-    
-    logToUI(`🎉 Auto cashout complete! Ready to claim ${winnings.toFixed(2)} ${token}`);
+    // --- FIX: Defer state updates and side effects to avoid render warning --- 
+    setTimeout(() => {
+     logToUI(`💵 WINNINGS CALCULATION: ${confirmedBet} × ${target} = ${winnings}`);
+     
+     // Set winning states - ensure win amount is properly set
+     setHasWon(true);
+     setWinAmount(winnings);
+     
+     // Add to history
+     const newEntry: HistoryEntry = { value: target.toFixed(2), bet: confirmedBet, token };
+     setHistory(prev => [newEntry, ...prev].slice(0, 5));
+     
+     // Play win sound
+     winRef.current?.play().catch(() => {});
+     
+     // Show notification with confirmed amounts
+     showToast(`AUTO CASHOUT: You won ${winnings.toFixed(2)} ${token}!`, "success");
+     
+     // --- Use Enhanced Confetti --- 
+     triggerWinConfetti();
+     setCelebrate(true);
+     setTimeout(() => setCelebrate(false), 1000);
+     
+     // Set a special simulation state to prevent game from ending
+     setGameState('simulating');
+     
+     // Create a custom crash point that's higher than the auto cashout value
+     // This ensures the simulation runs longer
+     const simulationCrashPoint = Math.max(crashPointRef.current, target * 1.5);
+     
+     // Instead of stopping the game, just continue to simulate the multiplier
+     // Save current multiplier for continued display
+     setSimulatedMultiplier(target);
+     
+     // Continue running the game simulation so user can see where it would have crashed
+     if (intervalRef.current) {
+       clearInterval(intervalRef.current);
+       intervalRef.current = null;
+     }
+     
+     // Show message to indicate simulation is continuing
+     logToUI(`🎮 SIMULATION CONTINUING - Watch how high the multiplier goes!`);
+     
+     // Critical fix: Immediately schedule transition to claiming state
+     // This ensures the user can claim their winnings even if simulation continues
+     setTimeout(() => {
+       // Force game into claiming state
+       logToUI(`⚠️ FORCING transition to claiming state for auto cashout winnings`);
+       setGameState('claiming');
+       
+       // Double check all win state variables are properly set
+       if (!hasWon) setHasWon(true);
+       if (winAmount <= 0) setWinAmount(confirmedBet * target);
+       if (!hasCashedRef.current) hasCashedRef.current = true;
+       
+       // Log the final win amount for verification
+       const finalWinAmount = confirmedBet * target;
+       logToUI(`🏆 AUTO CASHOUT WIN READY TO CLAIM: ${finalWinAmount} ${token}`);
+     }, 3000); // Short delay to allow the player to see simulation start
+     
+     // Start a new interval to simulate the continuation
+     simulationIntervalRef.current = window.setInterval(() => {
+       setMultiplier(prev => {
+         const growth = 0.005 + Math.random() * 0.02;
+         let next = prev * (1 + growth);
+         
+         // Add periodic logging to show simulation is running
+         if (Math.random() < 0.1) { // 10% chance each tick
+           logToUI(`🎮 Simulation multiplier: ${next.toFixed(2)}x (you cashed out at ${target.toFixed(2)}x)`);
+         }
+         
+         if (next >= simulationCrashPoint) {
+           // Game would have crashed - just for display
+           if (simulationIntervalRef.current) {
+             clearInterval(simulationIntervalRef.current);
+             simulationIntervalRef.current = null;
+           }
+           logToUI(`🎲 Game would have crashed at ${next.toFixed(2)}x (you cashed out at ${target.toFixed(2)}x)`);
+           
+           // Don't call endGame, we already handled the win
+           setTimeout(() => {
+             // Move to claiming state after simulation completes
+             setGameState('claiming');
+             
+             // Record history with the ACTUAL simulated crash point
+             const crashPointForHistory = next; // The point where simulation ended
+             const bet = betRef.current; // Get bet info from ref
+             const token = tokenRef.current; // Get token info from ref
+             const cashoutMul = cashoutMultiplierRef.current; // Get cashout multi from ref
+             const newEntry: HistoryEntry = { 
+               value: crashPointForHistory.toFixed(2), 
+               bet, 
+               token,
+               cashoutMultiplier: cashoutMul // Store cashout multiplier
+             };
+             setHistory(prev => [newEntry, ...prev].slice(0, 5));
+             logToUI(`💾 HISTORY RECORDED (Simulation): Crash at ${crashPointForHistory.toFixed(2)}x, Bet: ${bet} ${token}, Cashed Out @ ${cashoutMul ? cashoutMul.toFixed(2) + 'x' : 'N/A'}`);
+             cashoutMultiplierRef.current = null; // Reset ref
+           }, 3000); // Longer delay to ensure user sees the crash
+           
+           return next;
+         }
+         
+         return next;
+       });
+     }, 100);
+     
+     logToUI(`🎉 Auto cashout complete! Ready to claim ${winnings.toFixed(2)} ${token}`);
+     // Mark that auto claim is ready
+     setAutoClaimReady(true);
+    }, 0); // End outer setTimeout
   };
   
   // Manual cashout handler - completely reworked for reliability
   const handleCashout = () => {
-    if (gameState !== 'active' || hasCashed || !userJoined) return;
+    if (gameState !== 'active' || hasCashed || !userJoinedRef.current) return;
     
     // Store the exact multiplier at the time of cashout
     const cashoutMultiplier = multiplier;
     logToUI(`⭐ MANUAL CASHOUT at ${cashoutMultiplier.toFixed(2)}x`);
     
     // Set cashout states
+    // --- FIX: Update ref immediately to prevent race condition --- 
     setHasCashed(true);
-    hasCashedRef.current = true;
+    hasCashedRef.current = true; // *** SET REF SYNCHRONOUSLY ***
     cashoutRef.current?.play().catch(() => {});
-    
-    // Calculate winnings in the original token
+    // Store manual cashout multiplier for history
+    cashoutMultiplierRef.current = cashoutMultiplier;
+    // --- END FIX ---
+
+    // --- FIX: Immediately stop the main game loop --- 
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+      logToUI("Cleared main game interval due to manual cashout.");
+    }
+    // ---------------------------------------------
+
     const bet = betRef.current;
     const token = tokenRef.current;
     const winnings = bet * cashoutMultiplier;
     
-    // Set winning states
-    setHasWon(true);
-    setWinAmount(winnings);
-    
-    // Add to history
-    const newEntry: HistoryEntry = { value: cashoutMultiplier.toFixed(2), bet, token };
-    setHistory(prev => [newEntry, ...prev].slice(0, 5));
-    
-    // Play win sound
-    winRef.current?.play().catch(() => {});
-    
-    // Show notification
-    showToast(`MANUAL CASHOUT: You won ${winnings.toFixed(2)} ${token}!`, "success");
-    
-    // Set special simulation state
-    setGameState('simulating');
-    logToUI(`🎮 SIMULATION CONTINUING - Watch how high the multiplier goes!`);
-    
-    // The game continues running but the user has already cashed out
-    logToUI(`🎉 Manual cashout complete! Ready to claim ${winnings.toFixed(2)} ${token}`);
-    
-    // Let the game continue to run naturally - don't clear the interval
+    // --- FIX: Defer state updates and side effects --- 
+    setTimeout(() => {
+      // Set winning states
+      setHasWon(true);
+      setWinAmount(winnings);
+      
+      // Add to history
+      // History will be added at the end of the simulation now
+      // const newEntry: HistoryEntry = { value: cashoutMultiplier.toFixed(2), bet, token, cashoutMultiplier }; 
+      // setHistory(prev => [newEntry, ...prev].slice(0, 5));
+      
+      // Play win sound
+      winRef.current?.play().catch(() => {});
+      
+      // Show notification
+      showToast(`MANUAL CASHOUT: You won ${winnings.toFixed(2)} ${token}!`, "success");
+      // --- Use Enhanced Confetti --- 
+      triggerWinConfetti();
+      setCelebrate(true);
+      setTimeout(() => setCelebrate(false), 1000);
+      
+      // Set special simulation state
+      setGameState('simulating');
+      setAutoClaimReady(true); // Mark claim ready
+      logToUI(`🎮 SIMULATION CONTINUING - Watch how high the multiplier goes!`);
+      logToUI(`🎉 Manual cashout complete! Ready to claim ${winnings.toFixed(2)} ${token}`);
+
+      // --- FIX: Add simulation interval logic ---
+      setSimulatedMultiplier(cashoutMultiplier);
+      const simulationCrashPoint = Math.max(crashPointRef.current, cashoutMultiplier * 1.5);
+      logToUI(`Starting simulation loop for manual cashout. Sim Crash Point: ${simulationCrashPoint.toFixed(2)}x`);
+
+      if (simulationIntervalRef.current) {
+         clearInterval(simulationIntervalRef.current);
+      }
+
+      simulationIntervalRef.current = window.setInterval(() => {
+         setMultiplier(prev => {
+           const growth = 0.005 + Math.random() * 0.02;
+           let next = prev * (1 + growth);
+           
+           // Log progress
+           if (Math.random() < 0.1) { 
+             logToUI(`🎮 Manual Sim multiplier: ${next.toFixed(2)}x (you cashed out at ${cashoutMultiplier.toFixed(2)}x)`);
+           }
+           
+           if (next >= simulationCrashPoint) {
+             // Simulation ends
+             if (simulationIntervalRef.current) {
+               clearInterval(simulationIntervalRef.current);
+               simulationIntervalRef.current = null;
+             }
+             logToUI(`🎲 Manual Sim: Game would have crashed at ${next.toFixed(2)}x (you cashed out at ${cashoutMultiplier.toFixed(2)}x)`);
+             
+             // Schedule history recording (NO state change here)
+             setTimeout(() => {
+                // setGameState('claiming'); // <<<--- REMOVED THIS LINE
+
+                // Record history with the ACTUAL simulated crash point & cashout point
+                const crashPointForHistory = next;
+                const bet = betRef.current;
+                const token = tokenRef.current;
+                const cashoutMulForHistory = cashoutMultiplier;
+                const newEntry: HistoryEntry = {
+                  value: crashPointForHistory.toFixed(2),
+                  bet,
+                  token,
+                  cashoutMultiplier: cashoutMulForHistory
+                };
+                setHistory(prev => [newEntry, ...prev].slice(0, 5));
+                logToUI(`💾 HISTORY RECORDED (Manual Sim): Crash at ${crashPointForHistory.toFixed(2)}x, Bet: ${bet} ${token}, Cashed Out @ ${cashoutMulForHistory ? cashoutMulForHistory.toFixed(2) + 'x' : 'N/A'}`);
+                cashoutMultiplierRef.current = null;
+             }, 3000); // Delay to show final simulated crash point
+
+             return next;
+           }
+
+           return next;
+         });
+       }, 100);
+       // --- END FIX ---
+
+    }, 0); // End setTimeout
   };
 
   // Begin the actual crash game round
   const beginRound = () => {
     // Check if user has placed a bet
-    const bet = parseFloat(betAmount);
-    if (betPlaced && bet > 0) {
-      // Store bet details but don't deduct tokens again (already deducted during bet placement)
-      betRef.current = bet;
-      tokenRef.current = selectedToken;
-      setUserJoined(true);
-      logToUI(`User joined game with ${bet} ${selectedToken}. Auto cashout set to: ${autoCashout || 'none'}`);
-      
-      // Log critical bet info at game start
-      logToUI(`💰 BET CONFIRMED: amount=${bet}, token=${selectedToken}`);
+    // --- FIX: Rely ONLY on betRef.current, as betPlaced state might be stale --- 
+    if (betRef.current > 0) { 
+      // Bet ref has a value, assume user just placed a bet
+      userJoinedRef.current = true; // Set ref
+      logToUI(`✅ User joined check passed in beginRound (betRef > 0). Setting userJoinedRef.current = true. Bet: ${betRef.current} ${tokenRef.current}. Auto: ${autoCashout || 'none'}`);
+      logToUI(`💰 BET CONFIRMED in beginRound: amount=${betRef.current}, token=${tokenRef.current}`);
     } else {
-      betRef.current = 0;
-      setUserJoined(false);
-      logToUI(`User watching game without bet`);
+      // betRef is 0, assume user is watching or previous bet check failed elsewhere
+      userJoinedRef.current = false; // Set ref
+      logToUI(`❌ User joined check FAILED in beginRound (betRef <= 0). Setting userJoinedRef.current = false.`);
     }
+    // --- END FIX ---
     
     setGameState('active');
     setMultiplier(1.0);
@@ -1052,67 +1180,58 @@ export function CrashoutGame({
     console.log(`Game starting. Crash point set to: ${crashPointRef.current.toFixed(2)}x`);
     bgmRef.current?.play().catch(() => {});
     
-    if (countdownRef.current) clearInterval(countdownRef.current);
     if (intervalRef.current) clearInterval(intervalRef.current);
     
     intervalRef.current = window.setInterval(() => {
       setMultiplier(prev => {
         const growth = 0.005 + Math.random() * 0.02;
         let next = prev * (1 + growth);
+        const crashPoint = crashPointRef.current;
+        const autoCashoutTargetStr = autoCashout?.trim();
+        const autoCashoutTarget = autoCashoutTargetStr ? parseFloat(autoCashoutTargetStr) : 0;
+
+        // --- Enhanced Auto Cashout & Crash Check --- 
+        // logToUI(`Tick: next=${next.toFixed(4)}x, target=${autoCashoutTarget.toFixed(2)}x, crash=${crashPoint.toFixed(2)}x, cashed=${hasCashedRef.current}`);
+        // --- Add more detailed log BEFORE checks --- 
+        logToUI(`Tick Check: next=${next.toFixed(4)}x | userJoined=${userJoinedRef.current} | hasCashed=${hasCashedRef.current} | autoTarget=${autoCashoutTarget.toFixed(2)}x | crashPoint=${crashPoint.toFixed(2)}x`);
+
+        // Check for Auto Cashout FIRST
+        if (userJoinedRef.current && !hasCashedRef.current && autoCashoutTarget >= 1.01 && next >= autoCashoutTarget) {
+          logToUI(`🎯 AUTO CASHOUT TRIGGERING: next (${next.toFixed(4)}) >= target (${autoCashoutTarget.toFixed(2)})`);
+          triggerAutoCashout(autoCashoutTarget); // Use the exact target value
+          // IMPORTANT: Return target to prevent further checks in this tick and update display
+          return autoCashoutTarget; 
+        }
+
+        // Check for Crash SECOND
+        if (next >= crashPoint) {
+          logToUI(`💥 CRASH TRIGGERING: next (${next.toFixed(4)}) >= crashPoint (${crashPoint.toFixed(2)})`);
+          if (intervalRef.current) { // Clear interval if still active
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
+
+          // --- FIX: Only call endGame(false) if the user hasn't already cashed out ---
+          if (!hasCashedRef.current) {
+             logToUI(`Calling endGame(false) because hasCashedRef is false.`);
+             endGame(false, crashPoint);
+          } else {
+             // User already cashed out, interval might be running one last time.
+             // Do nothing here, cashout logic already handled it.
+             logToUI(`Crash point reached, but user already cashed out (hasCashedRef=true). Skipping endGame(false).`);
+          }
+          // --- END FIX ---
+
+          return crashPoint; // Return crash point for display
+        }
+        // ---------------------------------------------
         
         // Periodically log bet amount during the game for debugging
         if (Math.random() < 0.05) { // ~5% chance each update
           console.log(`PERIODIC CHECK - Bet amount: ${betRef.current}, Token: ${tokenRef.current}`);
         }
-        
-        // More robust handling of auto cashout
-        if (userJoined && !hasCashedRef.current && autoCashout) {
-          // Get target with high precision
-          const targetStr = autoCashout.trim();
-          const target = parseFloat(targetStr);
-          
-          // Log detailed debug info for auto cashout
-          if (target >= 1.01 && next >= target - 0.005) {  // Within 0.005 of target
-            logToUI(`AUTO CASHOUT CHECK: current=${next.toFixed(4)}, target=${target.toFixed(4)}, diff=${(next-target).toFixed(4)}, bet=${betRef.current}`);
-          }
-          
-          // Fixed comparison - ensure we trigger exactly at the target if possible
-          // If target is 1.1 and next would be 1.11, we need to catch it at exactly 1.1
-          if (target >= 1.01 && next >= target) {
-            logToUI(`🎯 EXACT Auto cashout hit: ${next.toFixed(4)} >= ${target.toFixed(4)}, bet=${betRef.current}`);
-            
-            // Trigger the auto cashout with the EXACT target value, not the current multiplier
-            triggerAutoCashout(target);
-            
-            // Return the target value as the current multiplier for display
-            return target;
-          }
-        }
-        
-        const crashPoint = crashPointRef.current;
-        if (next >= crashPoint) {
-          // Game has crashed
-          if (intervalRef.current) {
-            clearInterval(intervalRef.current);
-            intervalRef.current = null;
-          }
-          
-          logToUI(`Game crashed at ${crashPoint.toFixed(2)}x. User had cashed out: ${hasCashedRef.current}`);
-          
-          // If user hasn't cashed out, show crash state
-          if (!hasCashedRef.current) {
-            endGame(false, crashPoint);
-          } else if (!hasWon) {
-            // If user cashed out but win state isn't properly set
-            logToUI(`Fixing win state after crash`);
-            setHasWon(true);
-            setGameState('claiming');
-            setTimeLeft(CLAIM_TIME_SECONDS);
-          }
-          return crashPoint;
-        }
-        
-        return next;
+
+        return next; // Continue growth if no cashout or crash
       });
     }, 100);
   };
@@ -1125,88 +1244,51 @@ export function CrashoutGame({
 
   // Claim tokens after winning
   const claimTokens = async () => {
-    if (!hasWon || winAmount <= 0) return;
-    
-    setGameState('claiming');
-    const token = tokenRef.current; // Get the original token type used for betting
-    
-    const success = await processPayout(token, winAmount);
-    
-    if (success) {
-      setHasWon(false);
-      setWinAmount(0);
-      resetGame();
-    } else {
-      // Even if blockchain transaction fails, update UI state to avoid stuck game
-      setHasWon(false);
-      setWinAmount(0);
-      resetGame();
-      showToast("Failed to claim tokens, but game has been reset.", "error");
+    // Check if win is valid
+    if (!hasWon || winAmount <= 0) {
+      logToUI("❌ Claim attempted with invalid state (no win or zero amount). Resetting just in case.");
+      resetGame(); 
+      return;
     }
+
+    // Store details needed for payout
+    const tokenToClaim = tokenRef.current; // <<< Linter Error Fixed: Use tokenRef.current
+    const amountToClaim = winAmount;       // <<< Linter Error Fixed: Use winAmount
+
+    logToUI(`🚀 Initiating claim for ${amountToClaim.toFixed(2)} ${tokenToClaim}`);
+    setGameState('claiming'); // Ensure state is claiming visually
+
+    // --- FIX: Process payout BEFORE resetting game state --- 
+    const success = await processPayout(tokenToClaim, amountToClaim);
+
+    if (success) {
+      logToUI(`✅ Payout successful for ${amountToClaim.toFixed(2)} ${tokenToClaim}. Resetting game.`);
+      // Reset game state only AFTER successful payout
+      setHasWon(false);
+      setWinAmount(0); 
+      setAutoClaimReady(false);
+      // --- FIX: Add small delay before reset to allow UI updates --- 
+      setTimeout(() => {
+         resetGame(); 
+      }, 50); // 50ms delay
+    } else {
+      logToUI(`❌ Payout failed for ${amountToClaim.toFixed(2)} ${tokenToClaim}. Game state remains in 'claiming'.`);
+      // Don't reset the game if payout failed, allow user to retry or see error
+      // Keep winAmount so button reflects the value they tried to claim
+      // Maybe set gameState back to something else or show specific error UI?
+      // For now, just show toast and leave state as is.
+      showToast(`Failed to process token claim for ${amountToClaim.toFixed(2)} ${tokenToClaim}. Please try again or check balance.`, "error");
+      // Optional: Re-enable claim button after a delay?
+      // setTimeout(() => setGameState('claiming'), 3000); // Example: revert state if needed
+    }
+    // --- END FIX ---
   };
 
-  // Game state management with countdowns
+  // Game state management - Removed countdowns
   useEffect(() => {
     console.log(`Game state changed to: ${gameState}`);
-    
-    if (gameState === 'inactive') {
-      // Countdown to start game
-      setTimeLeft(30);
-      if (countdownRef.current) clearInterval(countdownRef.current);
-      
-      countdownRef.current = window.setInterval(() => {
-        setTimeLeft(prev => {
-          if (prev <= 1) {
-            clearInterval(countdownRef.current!);
-            countdownRef.current = null;
-            
-            // Start game only if at least one player has placed a bet
-            if (betPlaced) {
-              beginRound();
-            } else {
-              // If no bets, reset timer and stay in inactive state
-              setTimeLeft(30);
-              return 30;
-            }
-            
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    } else if (gameState === 'active') {
-      // Add a safety check for auto cashout in case the game loop misses it
-      if (autoCashout && parseFloat(autoCashout) >= 1.01) {
-        console.log(`Setting up auto cashout safety check for ${autoCashout}x`);
-        
-        // Check every 100ms if we need to auto cashout
-        const autoCashoutSafetyCheck = setInterval(() => {
-          const target = parseFloat(autoCashout);
-          if (!hasCashedRef.current && multiplier >= target) {
-            console.log(`🔄 Safety auto cashout triggered at ${multiplier.toFixed(2)}x (target: ${target.toFixed(2)}x)`);
-            clearInterval(autoCashoutSafetyCheck);
-            triggerAutoCashout(target);
-          }
-        }, 100);
-        
-        // Clean up the safety check when game state changes
-        return () => clearInterval(autoCashoutSafetyCheck);
-      }
-      
-      // Countdown for active game state
-      if (countdownRef.current) clearInterval(countdownRef.current);
-      
-      countdownRef.current = window.setInterval(() => {
-        setTimeLeft(prev => {
-          if (prev <= 1) {
-            clearInterval(countdownRef.current!);
-            countdownRef.current = null;
-            resetGame();
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
+
+    if (gameState === 'active') {
     } else if (gameState === 'claiming') {
       // If we're in claiming state, make sure hasCashed and hasWon are set properly
       if (!hasCashedRef.current || !hasWon) {
@@ -1216,10 +1298,9 @@ export function CrashoutGame({
         setHasWon(true);
       }
     }
-    
-    return () => {
-      if (countdownRef.current) clearInterval(countdownRef.current);
-    };
+
+    // No cleanup needed for countdownRef anymore
+
   }, [gameState, betPlaced, autoCashout, multiplier]);
 
   // Get the current balance of selected token
@@ -1474,38 +1555,57 @@ export function CrashoutGame({
     }
   };
 
-  // Wallet options dialog
+  // --- Enhanced Confetti Function ---
+  const triggerWinConfetti = () => {
+    confetti({
+      particleCount: 250, // More particles!
+      spread: 160,        // Wider spread!
+      origin: { y: 0.5 },
+      colors: ['#00ffcc', '#ff00ff', '#ffff00', '#00f0ff', '#ff55a3', '#ffffff'], // Neon/Vibrant + White
+      gravity: 0.8,       // A bit slower fall
+      scalar: 1.2         // Slightly larger particles
+    });
+    // Simple screen shake idea (optional - requires CSS)
+    // document.body.classList.add('shake-effect');
+    // setTimeout(() => document.body.classList.remove('shake-effect'), 300);
+  };
+
+  // --- Dialog Components (Styling Updated for Dark Theme & Vibrancy) ---
+
   const WalletOptionsDialog = () => (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
-      <div className="border border-[rgb(51_51_51_/var(--tw-border-opacity,1))] rounded-lg p-8 max-w-md w-full shadow-xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md"> {/* Increased blur */}
+      <div className="bg-gradient-to-br from-gray-950 via-black to-gray-900 border border-gray-700 rounded-xl p-8 max-w-md w-full shadow-xl shadow-black/40"> {/* Matching gradient */}
         <div className="mb-6 text-center">
-          <h3 className="text-xl font-bold text-white mb-2">Connect Your Wallet</h3>
-          <p className="text-gray-400 text-sm">Connect to place token bets</p>
+          <h3 className="text-2xl font-bold text-white mb-2 drop-shadow-md">Connect Wallet</h3> {/* Added drop shadow */}
+          <p className="text-gray-400 text-sm">Connect to join the action!</p>
         </div>
         
         <div className="flex flex-col space-y-4">
+          {/* MetaMask Button */}
           <button
             onClick={() => connectWallet(WALLET_OPTIONS.METAMASK)}
-            className="flex items-center justify-between p-4 bg-black text-white border border-gray-700 rounded-lg hover:bg-white hover:text-black transition-all duration-200"
+            className="group flex items-center justify-between p-4 bg-gradient-to-r from-gray-800 via-gray-900 to-gray-800 text-white border border-gray-700 rounded-lg hover:bg-gradient-to-r hover:from-blue-900 hover:via-black hover:to-blue-900 hover:border-blue-600 transition-all duration-300 transform hover:scale-105 shadow-md hover:shadow-blue-500/30" // Added gradient & hover effect
           >
             <div className="flex items-center">
-              <div className="bg-black p-2 rounded-full mr-3">
-                <img src="/metamask-fox.svg" alt="MetaMask" width={28} height={28} />
+              {/* MetaMask Icon Wrapper */}
+              <div className="bg-black p-2 rounded-full mr-3 border border-gray-600 group-hover:border-blue-500 transition-colors"> {/* Hover border color */}
+                <img src="/metamask-fox.svg" alt="MetaMask" width={28} height={28} /> 
               </div>
               <div>
-                <p className="font-medium">MetaMask</p>
-                <p className="text-xs opacity-70">Connect using MetaMask</p>
+                <p className="font-medium text-lg">MetaMask</p>
+                <p className="text-xs opacity-70 group-hover:opacity-100 text-gray-400">Connect using browser extension</p>
               </div>
             </div>
-            <svg className="w-4 h-4 rotate-180" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M19 12H5M12 5L5 12L12 19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            {/* Chevron Icon */}
+            <svg className="w-5 h-5 text-gray-500 transition-transform duration-300 group-hover:translate-x-1 group-hover:text-white" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
             </svg>
           </button>
         </div>
         
         <button
           onClick={() => setShowWalletOptions(false)}
-          className="mt-6 py-2 px-4 border border-gray-700 rounded-lg text-white w-full hover:bg-gray-800 transition-colors"
+          className="mt-8 py-2 px-4 bg-gray-700/50 border border-gray-600 rounded-lg text-gray-300 w-full hover:bg-gray-600/70 hover:text-white transition-colors duration-200 hover:border-gray-500" // Subtle hover border change
         >
           Cancel
         </button>
@@ -1513,67 +1613,68 @@ export function CrashoutGame({
     </div>
   );
 
-  // Transaction dialog
   const TransactionDialog = () => (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
-      <div className="bg-gray-900 border border-gray-700 rounded-lg p-8 max-w-md w-full shadow-xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md"> {/* Increased blur */}
+      <div className="bg-gradient-to-br from-gray-950 via-black to-gray-900 border border-gray-700 rounded-xl p-8 max-w-md w-full shadow-xl shadow-black/40"> {/* Matching gradient */}
         <div className="text-center mb-6">
-          <h3 className="text-xl font-bold text-white mb-2">Transaction Status</h3>
-          <p className="text-gray-400 text-sm">
+          <h3 className="text-2xl font-bold text-white mb-2 drop-shadow-md">Transaction Status</h3> {/* Added drop shadow */}
+          <p className="text-gray-400 text-sm h-5">
             {txStatus === 'pending' && 'Finding transaction...'}
             {txStatus === 'confirming' && 'Waiting for confirmation...'}
             {txStatus === 'confirmed' && 'Transaction confirmed!'}
-            {txStatus === 'failed' && 'Approve to get our tokens'}
+            {txStatus === 'failed' && 'Transaction failed or rejected.'}
           </p>
         </div>
         
-        <div className="flex justify-center mb-4">
+        <div className="flex justify-center items-center mb-4 h-20">
+          {/* Spinner/Icons - Adding some color hints */}
           {txStatus === 'pending' && (
-            <div className="animate-spin w-16 h-16 border-4 border-gray-700 border-t-green-400 rounded-full"></div>
+            <div className="animate-spin w-16 h-16 border-4 border-gray-600 border-t-cyan-400 rounded-full"></div> 
           )}
           {txStatus === 'confirming' && (
-            <div className="animate-pulse w-16 h-16 flex items-center justify-center rounded-full bg-blue-500/20">
-              <svg className="w-10 h-10 text-blue-500" fill="none" viewBox="0 0 24 24">
-                <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-              </svg>
+            <div className="relative w-16 h-16">
+              <div className="absolute inset-0 animate-ping rounded-full bg-cyan-400 opacity-60"></div> {/* Cyan ping */}
+              <div className="relative flex items-center justify-center w-16 h-16 rounded-full bg-gray-500/20">
+                 <svg className="w-10 h-10 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg> {/* Cyan check */}
+              </div>
             </div>
           )}
           {txStatus === 'confirmed' && (
-            <div className="w-16 h-16 flex items-center justify-center rounded-full bg-green-500/20">
-              <svg className="w-10 h-10 text-green-500" fill="none" viewBox="0 0 24 24">
-                <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-              </svg>
+             <div className="relative w-16 h-16">
+              <div className="absolute inset-0 animate-ping rounded-full bg-lime-400 opacity-75"></div> {/* Lime ping */}
+              <div className="relative flex items-center justify-center w-16 h-16 rounded-full bg-lime-500/20"> {/* Lime background */}
+                 <svg className="w-10 h-10 text-lime-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg> {/* Lime check */}
+              </div>
             </div>
           )}
-          {txStatus === 'failed' && (
-            <div className="w-16 h-16 flex items-center justify-center rounded-full bg-yellow-500/20">
-              <svg className="w-10 h-10 text-yellow-500" fill="none" viewBox="0 0 24 24">
-                <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 21a9 9 0 100-18 9 9 0 000 18zm0-2a7 7 0 110-14 7 7 0 010 14zm0-2a5 5 0 100-10 5 5 0 000 10z" />
-              </svg>
+           {txStatus === 'failed' && (
+             <div className="relative w-16 h-16">
+               <div className="absolute inset-0 animate-pulse rounded-full bg-red-500 opacity-50"></div> {/* Keep red pulse */}
+               <div className="relative flex items-center justify-center w-16 h-16 rounded-full bg-red-500/20"> 
+                 <svg className="w-10 h-10 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+               </div>
             </div>
           )}
         </div>
         
         {txHash && (
-          <div className="mt-6 p-4 bg-black/40 rounded-lg flex items-center justify-between overflow-hidden border border-gray-800">
-            <div className="truncate text-sm text-gray-400">{txHash}</div>
+          <div className="mt-6 p-3 bg-black/50 rounded-lg flex items-center justify-between overflow-hidden border border-gray-700">
+            <div className="truncate text-sm text-gray-400 font-mono pr-2">{txHash}</div>
             <a 
               href={`${ABSTRACT_BLOCK_EXPLORER}/tx/${txHash}`} 
               target="_blank" 
               rel="noopener noreferrer"
-              className="ml-2 flex items-center gap-1 text-white hover:text-gray-300 transition-colors"
+              className="flex-shrink-0 flex items-center gap-1 text-cyan-400 hover:text-cyan-300 transition-colors text-sm font-medium" // Cyan link
             >
               <span>View</span>
-              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-              </svg>
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
             </a>
           </div>
         )}
         
         <button
           onClick={() => setShowTxDialog(false)}
-          className="mt-8 py-3 px-4 bg-white text-black hover:bg-gray-200 rounded-lg transition-all duration-200 w-full font-medium"
+          className="mt-8 py-3 px-4 bg-gradient-to-r from-gray-300 to-white text-black rounded-lg transition-all duration-300 w-full font-semibold hover:from-white hover:to-white hover:shadow-lg hover:shadow-white/20 transform hover:scale-[1.03]" // Brighter close button
         >
           Close
         </button>
@@ -1581,82 +1682,80 @@ export function CrashoutGame({
     </div>
   );
 
-  // Contract Balances Dialog
   const ContractBalancesDialog = () => (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
-      <div className="bg-gray-900 border border-gray-700 rounded-lg p-8 max-w-md w-full shadow-xl">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-xl font-bold text-white">Contract Token Balances</h3>
-          <button 
-            onClick={() => setShowContractBalances(false)}
-            className="p-1 text-gray-400 hover:text-white"
-          >
-            ✕
-          </button>
-        </div>
+     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md"> {/* Increased blur */}
+       <div className="bg-gradient-to-br from-gray-950 via-black to-gray-900 border border-gray-700 rounded-xl p-6 max-w-md w-full shadow-xl shadow-black/40"> {/* Matching gradient */}
+         <div className="flex justify-between items-center mb-4">
+           <h3 className="text-xl font-bold text-white drop-shadow-md">Contract Balances</h3> {/* Drop shadow */}
+           <button 
+             onClick={() => setShowContractBalances(false)}
+             className="p-1 rounded-full text-gray-500 hover:text-white hover:bg-gray-700 transition-colors"
+           >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+           </button>
+         </div>
         
-        <div className="overflow-y-auto max-h-96">
-          <table className="w-full">
-            <thead>
-              <tr className="text-left text-gray-400 border-b border-gray-700">
-                <th className="py-2">Token</th>
-                <th className="py-2">Balance</th>
-              </tr>
-            </thead>
-            <tbody>
-              {Object.entries(contractBalances).map(([token, balance]) => (
-                <tr key={token} className="border-b border-gray-800">
-                  <td className="py-2 text-white">{token}</td>
-                  <td className="py-2 text-white">{balance.toFixed(2)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+         <div className="overflow-y-auto max-h-80 pr-2 scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-gray-800/50">
+           <table className="w-full text-sm">
+             <thead>
+               <tr className="text-left text-gray-400 border-b border-gray-700">
+                 <th className="py-2 font-medium">Token</th>
+                 <th className="py-2 font-medium text-right">Balance</th>
+               </tr>
+             </thead>
+             <tbody>
+               {Object.entries(contractBalances).map(([token, balance]) => (
+                 <tr key={token} className="border-b border-gray-800 hover:bg-gray-800/40">
+                   <td className="py-2 text-white font-medium">{token}</td>
+                   <td className="py-2 text-white text-right font-mono">{balance.toFixed(2)}</td>
+                 </tr>
+               ))}
+             </tbody>
+           </table>
+         </div>
         
-        <button
-          onClick={() => setShowContractBalances(false)}
-          className="mt-6 py-2 px-4 bg-white text-black hover:bg-gray-200 rounded-lg transition-all duration-200 w-full font-medium"
-        >
-          Close
-        </button>
-      </div>
-    </div>
-  );
+         <button
+           onClick={() => setShowContractBalances(false)}
+           className="mt-6 py-2 px-4 bg-gray-700/50 border border-gray-600 rounded-lg text-gray-300 w-full hover:bg-gray-600/70 hover:text-white transition-colors duration-200"
+         >
+           Close
+         </button>
+       </div>
+     </div>
+   );
 
-  // Add a debug panel to the UI
   const DebugPanel = () => (
-    <div className="fixed bottom-0 left-0 right-0 bg-black/80 text-white p-2 z-50 max-h-60 overflow-y-auto" style={{fontSize: '10px'}}>
-      <div className="flex justify-between items-center mb-1">
-        <h4 className="font-bold">Game Debug Log</h4>
-        <button 
-          onClick={() => setShowDebugPanel(false)}
-          className="text-gray-400 hover:text-white"
-        >
-          Close
-        </button>
-      </div>
-      <div>
-        <p className="mb-1">
-          Game State: <span className="font-mono">{gameState}</span> | 
-          Multiplier: <span className="font-mono">{multiplier.toFixed(2)}x</span> | 
-          Auto Cashout: <span className="font-mono">{autoCashout || 'None'}</span>
-        </p>
-        <p className="mb-1">
-          Bet Amount: <span className="font-mono text-yellow-400">{betRef.current || 0} {tokenRef.current || selectedToken}</span> | 
-          Cashed Out: <span className="font-mono">{hasCashed ? 'Yes' : 'No'}</span> | 
-          Won: <span className="font-mono">{hasWon ? 'Yes' : 'No'}</span> | 
-          Win Amount: <span className="font-mono text-green-400">{winAmount.toFixed(2)} {tokenRef.current}</span>
-        </p>
-        <div className="bg-gray-900 p-1 rounded">
-          {debugLogs.map((log, i) => (
-            <div key={i} className="text-xs mb-0.5 font-mono">{log}</div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-  
+    <div className="fixed bottom-0 left-0 right-0 bg-black/95 border-t border-purple-700/50 text-white p-3 z-50 max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-purple-600 scrollbar-track-gray-900" style={{fontSize: '11px'}}> {/* Purple border/scrollbar */}
+       <div className="flex justify-between items-center mb-2">
+         <h4 className="font-bold text-purple-400 uppercase tracking-wider">Debug Log</h4> {/* Purple title */}
+         <button 
+           onClick={() => setShowDebugPanel(false)}
+           className="text-gray-500 hover:text-white text-xs bg-gray-800 px-2 py-0.5 rounded hover:bg-gray-700"
+         >
+           Close
+         </button>
+       </div>
+       <div>
+         <p className="mb-1 font-mono">
+           State: <span className="text-gray-300">{gameState}</span> | 
+           Mult: <span className={getMultiplierColor(multiplier, gameState)}>{multiplier.toFixed(2)}x</span> | {/* Dynamic color */}
+           Auto: <span className="text-gray-300">{autoCashout || 'N/A'}x</span>
+         </p>
+         <p className="mb-2 font-mono">
+           Bet: <span className="text-gray-300">{betRef.current || 0} {tokenRef.current || selectedToken}</span> | 
+           Cashed: <span className={hasCashed ? 'text-lime-400' : 'text-red-500'}>{hasCashed ? 'Y' : 'N'}</span> | {/* Lime for Yes */} 
+           Won: <span className={hasWon ? 'text-lime-400' : 'text-red-500'}>{hasWon ? 'Y' : 'N'}</span> | {/* Lime for Yes */} 
+           WinAmt: <span className="text-lime-400">{winAmount.toFixed(2)} {tokenRef.current}</span> {/* Lime for win amount */}
+         </p>
+         <div className="bg-gray-900/50 p-2 rounded border border-gray-700 max-h-28 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
+           {debugLogs.map((log, i) => (
+             <div key={i} className="text-xs mb-0.5 font-mono text-gray-400 whitespace-pre-wrap break-words">{log}</div>
+           ))}
+         </div>
+       </div>
+     </div>
+   );
+
   // Add cleanup for simulation interval
   useEffect(() => {
     return () => {
@@ -1667,87 +1766,178 @@ export function CrashoutGame({
     };
   }, []);
   
+  // Add auto transition to claiming for auto cashout case
+  useEffect(() => {
+    let transitionTimer: NodeJS.Timeout | null = null; // Keep track of the timer
+
+    // If auto claim is ready and we're still in simulating state, schedule a potential move to claiming
+    if (autoClaimReady && gameState === 'simulating' && hasWon && winAmount > 0) {
+      const token = tokenRef.current;
+      const amount = winAmount;
+
+      logToUI(`🔄 Scheduling potential auto-transition to claiming state for ${amount.toFixed(2)} ${token} in 5s`);
+
+      transitionTimer = setTimeout(() => {
+        // --- FIX: Only transition if *still* simulating ---
+        if (gameState === 'simulating') {
+           logToUI('⏳ Timer fired: Transitioning from simulating to claiming via useEffect.');
+           setGameState('claiming');
+        } else {
+           logToUI(`⏳ Timer fired: Skipping useEffect transition to claiming, current state: ${gameState}`);
+        }
+        // ---------------------------------------------
+      }, 5000); // Give some time to see the simulation, then potentially force claiming
+    }
+
+    // --- FIX: Add cleanup function ---
+    // This runs when the component unmounts OR when dependencies change
+    return () => {
+      if (transitionTimer) {
+        logToUI('🧹 Cleaning up scheduled useEffect transition timer.');
+        clearTimeout(transitionTimer); // <<< Linter Error Fixed: Pass NodeJS.Timeout | null
+      }
+    };
+    // --- END FIX ---
+
+  }, [autoClaimReady, gameState, hasWon, winAmount]); // Dependencies
+  
+  // Inside the component function
+
+  // --- REMOVE useEffect for background video ---
+  // useEffect(() => {
+  //     const videoElement = backgroundVideoRef.current;
+  //     if (videoElement) { ... } // This whole hook is removed
+  // }, []);
+  // --- END REMOVAL ---
+
+  // --- MODIFY useEffect for crash video ---
+  useEffect(() => {
+    const videoElement = videoRef.current;
+    if (videoElement && gameState === 'crashed') { // <<< Added gameState check
+        const onError = (e: Event) => { /* ... error logging ... */ };
+        videoElement.addEventListener('error', onError);
+
+        // --- Attempt to play when state becomes 'crashed' ---
+        videoElement.currentTime = 0; // Reset before playing
+        videoElement.play().catch(error => {
+            logToUI(`Crash video play promise rejected: ${error}`);
+            console.error("Crash video play error:", error);
+        });
+        // --- End Attempt ---
+
+        return () => { // Cleanup
+             if (videoElement) {
+               videoElement.removeEventListener('error', onError);
+            }
+        };
+    }
+}, [gameState]); // <<< Trigger when gameState changes
+  // --- END MODIFICATION ---
+
+  // ... rest of the code ...
+
   // Early exit to show only Connect Wallet when not connected
   if (!isWalletConnected) {
     return (
-      <div className="max-w-xl mx-auto p-2 rounded-xl shadow-xl border-[#100] border-b">
-        <div className="bg-black p-4 rounded-lg mb-4 text-center">
+      <div className="max-w-xl mx-auto p-2 rounded-xl shadow-xl border border-gray-800 bg-gradient-to-br from-black via-gray-950 to-black"> {/* Adjusted gradient */}
+        <div className="bg-gray-900 p-4 rounded-lg mb-4 text-center">
           <h2 className="text-xl text-white mb-2">Connect Wallet to Play</h2>
           <p className="text-gray-400 text-sm mb-4">Connect your wallet to see your token balances and place bets</p>
           <button 
             onClick={() => connectWallet()} 
-            className={baseBtnClass + " w-full py-3 text-lg"}
+            className={"w-full py-3 text-lg px-4 bg-gradient-to-r from-blue-500 via-cyan-500 to-blue-600 text-white rounded-lg font-semibold hover:from-blue-600 hover:via-cyan-600 hover:to-blue-700 transition-all duration-200 shadow-lg hover:shadow-xl shadow-cyan-500/30 hover:shadow-cyan-400/40 transform hover:scale-[1.03]"} // Vibrant connect button
           >
             Connect Wallet
           </button>
         </div>
-        {showWalletOptions && <WalletOptionsDialog />}
-        {showTxDialog && <TransactionDialog />}
+        {showWalletOptions && <WalletOptionsDialog />} 
+        {showTxDialog && <TransactionDialog />} 
         {showContractBalances && <ContractBalancesDialog />}
       </div>
     );
   }
 
+  // --- COLOR & STYLE DEFINITIONS ---
+  const getMultiplierColor = (value: number, state: typeof gameState): string => {
+    if (state === 'crashed') return 'text-red-500'; // Keep crash red
+    if (state === 'simulating' && hasCashed) return 'text-gray-500'; // Dimmed during simulation after cashout
+    if (value < 1.5) return 'text-white';
+    if (value < 2.5) return 'text-cyan-300';
+    if (value < 5) return 'text-lime-300';
+    if (value < 10) return 'text-yellow-300';
+    if (value < 20) return 'text-orange-400';
+    return 'text-fuchsia-500'; // Hot pink/purple for high multipliers
+  };
+
+  const getHistoryBgColor = (value: number): string => {
+    if (value < 1.1) return 'bg-gray-800 hover:bg-gray-700';
+    if (value < 1.5) return 'bg-sky-900 hover:bg-sky-800';
+    if (value < 2.5) return 'bg-teal-800 hover:bg-teal-700';
+    if (value < 5) return 'bg-green-700 hover:bg-green-600';
+    if (value < 10) return 'bg-yellow-600 hover:bg-yellow-500';
+    if (value < 20) return 'bg-orange-600 hover:bg-orange-500';
+    return 'bg-fuchsia-700 hover:bg-fuchsia-600'; // Match high multiplier color theme
+  };
+
+  // --- END COLOR & STYLE DEFINITIONS ---
+
   return (
-    <div className="max-w-xl mx-auto p-2 rounded-xl shadow-xl border-[#100] border-b">
-      {/* Loading overlay */}
+    <div className="max-w-2xl mx-auto p-4 rounded-xl bg-gradient-to-b from-gray-950 via-black to-gray-950 shadow-2xl shadow-black/30 border border-gray-800"> {/* Darker gradient */}
+      {/* Loading overlay - Styled for Dark Theme */} 
       {isLoadingBalances && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-          <div className="bg-gray-900 p-6 rounded-xl max-w-md w-full text-center">
-            <div className="animate-spin w-12 h-12 border-4 border-green-500 border-t-transparent rounded-full mx-auto mb-4"></div>
-            <h3 className="text-white text-xl mb-2">Loading Your Tokens</h3>
-            <p className="text-gray-400 text-sm">Please wait while we fetch your token balances from the blockchain...</p>
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[60]"> {/* Increased blur */}
+          <div className="text-center p-6">
+            <div className="animate-spin w-12 h-12 border-4 border-gray-600 border-t-cyan-400 rounded-full mx-auto mb-4"></div> {/* Cyan spinner */}
+            <h3 className="text-white text-xl mb-2 font-semibold drop-shadow-md">Loading Tokens...</h3> {/* Drop shadow */}
+            <p className="text-gray-400 text-sm">Fetching balances from the blockchain.</p>
           </div>
         </div>
       )}
       
-      {/* Show debug panel if enabled */}
-      {showDebugPanel && <DebugPanel />}
+      {showDebugPanel && <DebugPanel />} 
       
-      {/* Debug panel toggle button */}
-      <div className="flex justify-end mb-2">
+      {/* Header Row - Wallet Info, Debug Toggle */} 
+      <div className="flex justify-between items-center mb-4">
+        {/* Wallet Info */} 
+        {isWalletConnected ? (
+          <div className="bg-gray-800/50 rounded-lg p-2 border border-gray-700 flex items-center gap-2 text-sm shadow-inner"> {/* Inner shadow */}
+            <span className="text-lime-400 animate-pulse">●</span> {/* Lime pulsing dot */} 
+            <span className="text-white font-mono"> 
+              {localWalletAddress.substring(0, 6)}...{localWalletAddress.substring(localWalletAddress.length - 4)}
+            </span>
+            <button 
+              onClick={handleDisconnect}
+              className="text-xs bg-red-600/80 text-white px-2 py-0.5 rounded hover:bg-red-500 transition-colors shadow-sm hover:shadow-md shadow-red-900/50" // Subtle shadow
+            >
+              Disconnect
+            </button>
+          </div>
+        ) : (
+          <button 
+            onClick={() => connectWallet()} 
+            className="px-4 py-2 bg-gradient-to-r from-blue-500 via-cyan-500 to-blue-600 text-white rounded-lg font-semibold hover:from-blue-600 hover:via-cyan-600 hover:to-blue-700 transition-all duration-200 shadow-lg hover:shadow-xl shadow-cyan-500/30 hover:shadow-cyan-400/40 transform hover:scale-[1.03]" // Match other connect button
+          >
+            Connect Wallet
+          </button>
+        )}
+        
+        {/* Debug Toggle */} 
         <button 
           onClick={() => setShowDebugPanel(prev => !prev)} 
-          className="text-xs text-gray-400 hover:text-white bg-gray-800 px-2 py-1 rounded"
+          className="text-xs text-purple-400 hover:text-purple-300 bg-gray-800/50 px-2 py-1 rounded border border-purple-700/50 hover:border-purple-600 transition-colors shadow-sm hover:shadow-md shadow-purple-900/50" // Purple theme for debug toggle
         >
           {showDebugPanel ? 'Hide Debug' : 'Show Debug'}
         </button>
       </div>
       
-      {/* Add wallet info and disconnect button */}
-      {isWalletConnected && (
-        <div className="bg-gray-800 rounded-lg p-2 mb-4 border border-green-400">
-          <div className="flex justify-between items-center">
-            <div className="text-sm text-white">
-              <span className="text-green-400 mr-1">●</span> 
-              Connected: {localWalletAddress.substring(0, 6)}...{localWalletAddress.substring(localWalletAddress.length - 4)}
-            </div>
-            <button 
-              onClick={handleDisconnect}
-              className="text-xs bg-red-500 text-white px-2 py-1 rounded hover:bg-red-600"
-            >
-              Disconnect
-            </button>
-          </div>
-        </div>
-      )}
-      
-      {/* Always-visible Connect Wallet button */}
-      {!isWalletConnected && (
-        <div className="mb-4">
-          <button onClick={() => connectWallet()} className={baseBtnClass}>
-            Connect Wallet
-          </button>
-        </div>
-      )}
-      {/* Wallet connection dialogs */}
-      {showWalletOptions && <WalletOptionsDialog />}
-      {showTxDialog && <TransactionDialog />}
-      {showContractBalances && <ContractBalancesDialog />}
+      {/* Dialogs */} 
+      {showWalletOptions && <WalletOptionsDialog />} 
+      {showTxDialog && <TransactionDialog />} 
+      {showContractBalances && <ContractBalancesDialog />} 
 
-      {/* volume control */}
-      <div className="flex items-center space-x-2 mb-4">
-        <button onClick={() => setMuted(m => !m)} className="text-white">
+      {/* Volume Control */} 
+      <div className="flex items-center space-x-2 mb-6 px-2">
+        <button onClick={() => setMuted(m => !m)} className="text-gray-400 hover:text-white text-xl transition-colors">
           {muted ? '🔇' : '🔊'}
         </button>
         <input
@@ -1755,222 +1945,282 @@ export function CrashoutGame({
           min="0" max="1" step="0.01"
           value={muted ? 0 : volume}
           onChange={e => { setMuted(false); setVolume(parseFloat(e.target.value)); }}
-          className="w-full"
+          className="w-full h-1.5 bg-gray-700 rounded-full appearance-none cursor-pointer accent-cyan-500 hover:accent-cyan-400" // Cyan accent color for slider
         />
       </div>
       
-      {/* Add simulation indicator */}
+      {/* Simulation Indicator */} 
       {gameState === 'simulating' && (
-        <div className="mb-2 p-2 bg-blue-900/50 text-white text-center rounded">
-          <div className="text-sm">
-            <span className="font-bold text-yellow-400">YOU WON!</span> Simulation running - watch how high it goes!
+        <div className="mb-4 p-3 bg-gradient-to-r from-gray-800 to-gray-900 text-white text-center rounded-lg border border-gray-600 shadow-inner">
+          <div className="text-sm font-semibold animate-pulse text-gray-400"> {/* Dimmed text */}
+            CASHED OUT! <span className="text-gray-500">Simulation Running...</span>
           </div>
-          <div className="text-xs mt-1">
-            You cashed out at <span className="font-bold text-green-400">{simulatedMultiplier?.toFixed(2) || '0.00'}x</span> and won {winAmount.toFixed(2)} {tokenRef.current}
+          <div className="text-xs mt-1 text-gray-500"> {/* Dimmed text */}
+            Won {winAmount.toFixed(2)} {tokenRef.current} @ <span className="font-bold text-gray-400">{simulatedMultiplier?.toFixed(2) || '0.00'}x</span> {/* Dimmed text */}
           </div>
         </div>
       )}
       
-      {/* Rest of UI remains the same */}
-      
-      {/* eslint-disable @typescript-eslint/no-unnecessary-condition */}
-      {/* Update active button state UI to include simulation state */}
-      <div className="flex space-x-4 mb-6">
-        {!isWalletConnected ? (
-          <div className="flex-1">
-            <button
-              onClick={() => connectWallet()}
-              className={baseBtnClass + ' flex-1'}
-            >
-              Connect Wallet
-            </button>
-          </div>
-        ) : (
-          <>
-            {/* Game state indicators and actions - Remove the inactive bet button from here */}
-            {gameState === 'active' && (
-              <div className="flex-1">
-                <button
-                  onClick={handleCashout}
-                  disabled={hasCashed || !userJoined}
-                  className={baseBtnClass + ' flex-1 ' + (hasCashed ? 'bg-green-500 hover:bg-green-600' : '')}
-                >
-                  {hasCashed ? 'Cashed Out! ✓' : 'Cashout Now'}
-                </button>
-              </div>
-            )}
-            {gameState === 'simulating' && (
-              <div className="flex-1">
-                <button
-                  onClick={claimTokens}
-                  className={baseBtnClass + ' flex-1 bg-green-500 hover:bg-green-600 text-black font-bold'}
-                >
-                  Claim {winAmount.toFixed(2)} {tokenRef.current}
-                </button>
-              </div>
-            )}
-            {(gameState === 'claiming' || (hasWon && winAmount > 0 && gameState !== 'simulating')) && (
-              <div className="flex-1">
-                <button
-                  onClick={claimTokens}
-                  className={baseBtnClass + ' flex-1 bg-green-500 hover:bg-green-600 text-black font-bold'}
-                >
-                  Claim {winAmount.toFixed(2)} {tokenRef.current}
-                </button>
-              </div>
-            )}
-          </>
-        )}
-        {/* Show game state for debugging */}
-        <div className="absolute top-2 right-2 text-xs text-gray-500">
-          {gameState}{hasCashed ? ' (cashed)' : ''}{hasWon ? ' (won)' : ''}
-        </div>
-      </div>
-      {/* eslint-enable @typescript-eslint/no-unnecessary-condition */}
+      {/* --- Multiplier Display Area --- */} 
+      <div className="relative w-full h-64 bg-gradient-to-br from-black via-gray-900 to-black rounded-xl overflow-hidden mb-6 border-2 border-gray-800 shadow-2xl shadow-black/50 flex items-center justify-center"> {/* Centering + Enhanced BG/Border */}
+         {/* Optional: Subtle Animated Background */}
+         <div className="absolute inset-0 opacity-10 animate-pulse-slow"> 
+           {/* Example: Could be a blurred image, or SVG pattern, or just a gradient */}
+           <div className="absolute inset-0 bg-gradient-radial from-purple-900/30 via-transparent to-transparent"></div>
+         </div>
 
-      {/* Update the game state UI to make the simulating multiplier more visible */}
-      <div className="relative w-full h-56 bg-black rounded-xl overflow-hidden mb-6">
-        <img
-          src="/images/crashout/Game%20Started.gif"
-          alt="Starting"
-          className={'absolute top-0 left-0 w-full h-full object-cover transition-opacity' + (gameState === 'crashed' ? ' opacity-0' : ' opacity-100')}
-        />
-        <video
-          ref={videoRef}
-          src="/images/crashout/Loss.mp4"
-          muted
-          playsInline
-          className={'absolute top-0 left-0 w-full h-full object-cover transition-opacity' + (gameState === 'crashed' ? ' opacity-100' : ' opacity-0')}
-        />
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className={'text-7xl font-extrabold tracking-wide ' + (gameState === 'crashed' ? 'text-red-500' : (gameState === 'simulating' && hasCashed) ? 'text-blue-400' : 'text-green-400')}>
-            {multiplier.toFixed(2)}x
-          </span>
-          
-          {/* Add a label during simulation */}
-          {gameState === 'simulating' && hasCashed && (
-            <div className="mt-4 px-3 py-1 bg-blue-500/70 rounded text-white text-lg animate-pulse">
-              Simulation - You cashed out at {simulatedMultiplier?.toFixed(2) || '0.00'}x
+         {/* <<< Re-added Background GIF >>> */}
+         <img
+           src="/images/crashout/Game Started.gif"
+           alt="Background"
+           className={'absolute top-0 left-0 w-full h-full object-cover transition-opacity duration-500 ' + 
+                      (gameState === 'active' || gameState === 'inactive' || gameState === 'approving' ? ' opacity-20' : ' opacity-0 pointer-events-none')} // Show when active/inactive
+         />
+
+         {/* Crash Video Overlay */}
+         <video
+           ref={videoRef}
+           muted
+           loop // <<< Added loop attribute >>>
+           playsInline
+           className={'absolute top-0 left-0 w-full h-full object-cover transition-opacity duration-300 ' +
+                      (gameState === 'crashed' ? ' opacity-90' : ' opacity-0 pointer-events-none')} // Slightly more visible crash
+         >
+            <source src="/images/crashout/Loss.mp4" type="video/mp4" />
+            Crash video not loaded.
+         </video>
+         
+         {/* Multiplier Text Container */}
+         <div className="z-10 text-center"> {/* Centering container */}
+           <span
+             className={`font-mono font-black tracking-tighter transition-all duration-150 ease-linear block
+               ${celebrate ? 'scale-110' : 'scale-100'} 
+               ${gameState === 'active' ? 'animate-pulse-fast' : ''}
+               ${getMultiplierColor(multiplier, gameState)} // Dynamic color class
+               text-[7rem] sm:text-[8rem] md:text-[10rem] lg:text-[12rem] // Responsive large text
+             `}
+             style={{ textShadow: `0 0 15px ${gameState === 'crashed' ? 'rgba(255, 0, 0, 0.5)' : gameState === 'active' ? 'rgba(255, 255, 255, 0.3)' : 'rgba(100,100,100,0.2)'}` }} // Subtle glow based on state
+           >
+             {multiplier.toFixed(2)}<span className="text-4xl md:text-5xl opacity-80">x</span> {/* Smaller 'x' */}
+           </span>
+           
+           {/* State Label During Simulation */}
+           {gameState === 'simulating' && hasCashed && (
+             <div className="mt-2 px-4 py-1 bg-gray-800/80 rounded-full text-gray-400 text-sm shadow-md backdrop-blur-sm">
+               Simulation Running...
+             </div>
+           )}
+         </div>
+       </div>
+      
+      {/* --- Controls Area --- */} 
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        {/* Left Column: Bet Amount & Token Select */} 
+        <div className="space-y-4">
+          {/* Bet Amount Input */} 
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1">Bet Amount</label>
+            <div className="relative">
+              <input
+                type="number"
+                value={betAmount}
+                onChange={e => setBetAmount(e.target.value)}
+                disabled={gameState !== 'inactive' || betPlaced}
+                className="w-full p-3 bg-gray-900 text-white rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-600 placeholder-gray-500 disabled:opacity-50 disabled:cursor-not-allowed pr-10 shadow-inner" // Enhanced focus, bg, shadow
+                placeholder="0.01"
+                min="0.01"
+                step="0.01"
+              />
             </div>
-          )}
+          </div>
+          
+          {/* Token Selection */} 
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1 flex items-center justify-between">
+              <span>Select Token</span>
+              <button 
+                onClick={handleRefreshBalances} 
+                disabled={isLoadingBalances}
+                className="text-xs bg-gray-700/50 hover:bg-gray-600/70 text-gray-300 hover:text-white px-2 py-0.5 rounded border border-gray-600 transition-colors disabled:opacity-50"
+              >
+                {isLoadingBalances ? "Loading..." : "Refresh"}
+              </button>
+            </label>
+            <div className="relative">
+              <select
+                value={selectedToken}
+                onChange={e => setSelectedToken(e.target.value)}
+                disabled={gameState !== 'inactive' || betPlaced || isLoadingBalances}
+                className="w-full p-3 appearance-none bg-gray-900 text-white rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-600 disabled:opacity-50 disabled:cursor-not-allowed shadow-inner" // Enhanced focus, bg, shadow
+              >
+                {availableTokens.map(token => (
+                  <option key={token.symbol} value={token.symbol} className="bg-gray-800 text-white">
+                    {token.symbol} ({token.balance.toFixed(2)})
+                  </option>
+                ))}
+              </select>
+              {/* Dropdown Arrow */} 
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-400">
+                 <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+               </div>
+              {isLoadingBalances && (
+                <div className="absolute right-10 top-1/2 transform -translate-y-1/2">
+                  <div className="animate-spin h-5 w-5 border-2 border-cyan-500 border-t-transparent rounded-full"></div> {/* Cyan spinner */}
+                </div>
+              )}
+            </div>
+            <div className="mt-1 text-xs text-gray-400">
+              Balance: <span className="font-medium text-gray-300">{getSelectedTokenBalance().toFixed(2)} {selectedToken}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column: Auto Cashout & Action Button */} 
+        <div className="space-y-4 flex flex-col">
+          {/* Auto Cashout Input */} 
+          <div>
+             <label className="block text-sm font-medium text-gray-300 mb-1">Auto Cashout (Optional)</label>
+             <div className="relative">
+               <input
+                 type="number"
+                 value={autoCashout}
+                 onChange={e => setAutoCashout(e.target.value)}
+                 disabled={gameState !== 'inactive' || betPlaced}
+                 className="w-full p-3 bg-gray-900 text-white rounded-lg border border-gray-700 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-600 placeholder-gray-500 disabled:opacity-50 disabled:cursor-not-allowed pr-10 shadow-inner" // Enhanced focus, bg, shadow
+                 placeholder="e.g., 1.5" 
+                 min="1.01" 
+                 step="0.01"
+               />
+               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">x</span> 
+             </div>
+           </div>
+
+           {/* --- Main Action Button Area --- */} 
+           <div className="flex-grow flex items-end">
+             {/* Connect Wallet Button (only shows if needed) */} 
+             {!isWalletConnected && (
+               <button 
+                 onClick={() => connectWallet()} 
+                 className="w-full py-3 px-4 bg-gradient-to-r from-blue-500 via-cyan-500 to-blue-600 text-white rounded-lg font-semibold text-lg hover:from-blue-600 hover:via-cyan-600 hover:to-blue-700 transition-all duration-300 shadow-lg hover:shadow-xl shadow-cyan-500/30 hover:shadow-cyan-400/40 transform hover:scale-[1.03]" // Match other connect button
+               >
+                 Connect Wallet
+               </button>
+             )}
+
+             {/* Inactive State: Bet Button */} 
+             {isWalletConnected && gameState === 'inactive' && (
+               <button
+                 onClick={startGame}
+                 disabled={approvalPending || betPlaced || !betAmount || parseFloat(betAmount) <= 0}
+                 className={`w-full py-3 px-4 rounded-lg font-semibold text-lg transition-all duration-300 shadow-lg transform hover:scale-105 disabled:opacity-60 disabled:cursor-not-allowed disabled:scale-100 
+                   ${betPlaced ? 'bg-gray-700 text-gray-400 cursor-not-allowed' : // Dark gray when bet placed
+                   approvalPending ? 'bg-gradient-to-r from-gray-600 to-gray-700 text-white animate-pulse' : // Gray pulse for approving
+                   'bg-gradient-to-r from-lime-400 via-green-500 to-emerald-600 text-black hover:from-lime-500 hover:via-green-600 hover:to-emerald-700 shadow-green-500/30 hover:shadow-green-400/40'} // Vibrant green gradient for bet
+                 `}
+               >
+                 {approvalPending ? 'Approving...' : betPlaced ? 'Bet Placed ✓' : `Place Bet (${selectedToken})`}
+               </button>
+             )}
+
+             {/* Active State: Cashout Button */} 
+             {isWalletConnected && gameState === 'active' && (
+               <button
+                 onClick={handleCashout}
+                 disabled={hasCashed || !userJoinedRef.current}
+                 className={`w-full py-3 px-4 rounded-lg font-semibold text-lg transition-all duration-300 shadow-lg transform hover:scale-105 disabled:opacity-60 disabled:cursor-not-allowed disabled:scale-100 
+                   ${hasCashed ? 'bg-gray-700 text-gray-400 cursor-not-allowed' : 
+                   'bg-gradient-to-r from-pink-500 via-red-500 to-orange-500 text-white hover:from-pink-600 hover:via-red-600 hover:to-orange-600 shadow-red-500/30 hover:shadow-red-400/40'} // Vibrant red/orange gradient for cashout
+                 `}
+               >
+                 {hasCashed ? 'Cashed Out ✓' : 'Cashout Now!'}
+               </button>
+             )}
+
+             {/* Simulating or Claiming State: Claim Button */} 
+             {isWalletConnected && (gameState === 'simulating' || gameState === 'claiming' || (hasWon && winAmount > 0)) && (
+               <button
+                 onClick={claimTokens}
+                 disabled={!hasWon || winAmount <= 0}
+                 className={`w-full py-3 px-4 rounded-lg font-semibold text-lg transition-all duration-300 shadow-lg transform hover:scale-105 
+                   ${(!hasWon || winAmount <= 0) ? 'bg-gray-600 text-gray-400 cursor-not-allowed' :
+                   'bg-gradient-to-r from-purple-500 via-fuchsia-500 to-pink-600 text-white hover:from-purple-600 hover:via-fuchsia-600 hover:to-pink-700 shadow-fuchsia-500/30 hover:shadow-fuchsia-400/40 animate-pulse'} // Vibrant purple/pink gradient for claim
+                 `}
+               >
+                 Claim {winAmount.toFixed(2)} {tokenRef.current}
+               </button>
+             )}
+           </div>
+         </div>
+      </div>
+      
+      {/* --- History Row --- */} 
+      <div className="mt-8">
+        <h3 className="text-lg font-semibold text-gray-300 mb-3 text-center uppercase tracking-wider drop-shadow">Recent Rounds</h3> {/* Added drop shadow */}
+        <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+          {history.map((entry, idx) => {
+            const mul = parseFloat(entry.value);
+            const bgColor = getHistoryBgColor(mul); // Use the new function
+          
+            return (
+              <div
+                key={idx}
+                className={`p-2.5 rounded-lg text-center ${bgColor} text-white hover:scale-110 transition-transform duration-200 cursor-pointer relative group shadow-md hover:shadow-lg hover:shadow-black/30`}
+              >
+                <span className="font-bold text-lg drop-shadow-sm">{entry.value}x</span>
+                
+                {/* Tooltip - Dark theme with accent */}
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 p-3 bg-black/90 backdrop-blur-sm border border-purple-700/50 rounded-lg shadow-xl text-xs w-44 opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-in-out pointer-events-none z-10"> {/* Purple border */}
+                  <div className="mb-2 pb-1 border-b border-purple-600/50"> {/* Purple border */}
+                    <p className="font-bold text-center text-purple-300 uppercase tracking-wide text-[11px]">Round Details</p> {/* Purple title */}
+                  </div>
+                  {entry.bet > 0 ? (
+                    <>
+                      <div className="mb-1.5">
+                        <p className="text-gray-400 text-[10px] mb-0.5">Your Bet:</p>
+                        <p className="font-semibold text-white text-center text-sm">{entry.bet.toFixed(2)} {entry.token}</p>
+                      </div>
+                      {entry.cashoutMultiplier && entry.cashoutMultiplier > 0 && (
+                        <div className="mt-2 pt-1.5 border-t border-gray-600">
+                          <div className="flex justify-between items-center mb-1">
+                            <span className="text-gray-400 text-[10px]">Cashed Out:</span>
+                            <span className="font-semibold text-lime-400 text-sm"> {/* Lime color */} 
+                              @{entry.cashoutMultiplier.toFixed(2)}x
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-400 text-[10px]">Your Win:</span>
+                            <span className="font-semibold text-lime-400 text-sm"> {/* Lime color */} 
+                              {(entry.bet * entry.cashoutMultiplier).toFixed(2)} {entry.token}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                     <p className="text-gray-500 text-center italic text-[11px] mt-1">No bet placed this round</p>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
       
-      {/* Rest of the component */}
-      <div className="space-y-4 mb-6">
-        <div>
-          <label className="block text-white mb-1">Bet Amount</label>
-          <input
-            type="number"
-            value={betAmount}
-            onChange={e => setBetAmount(e.target.value)}
-            disabled={gameState !== 'inactive' || betPlaced}
-            className="w-full p-3 bg-gray-800 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-green-400"
-            placeholder="0.01"
-            min="0.01"
-            step="0.01"
-          />
-        </div>
-        
-        {/* Replace the token selection dropdown with a more prominent UI */}
-        <div>
-          <label className="block text-white mb-1 flex items-center justify-between">
-            <span>Select Token {isLoadingBalances && "(Loading...)"}</span>
-            <button 
-              onClick={handleRefreshBalances} 
-              disabled={isLoadingBalances}
-              className="text-xs bg-gray-700 hover:bg-gray-600 text-white px-2 py-1 rounded"
-            >
-              {isLoadingBalances ? "Loading..." : "Refresh Balances"}
-            </button>
-          </label>
-          <div className="relative">
-            <select
-              value={selectedToken}
-              onChange={e => setSelectedToken(e.target.value)}
-              disabled={gameState !== 'inactive' || betPlaced || isLoadingBalances}
-              className="w-full p-3 bg-gray-800 text-white rounded-lg border-2 border-green-400 focus:outline-none focus:ring-2 focus:ring-green-600"
-            >
-              {availableTokens.map(token => (
-                <option key={token.symbol} value={token.symbol}>
-                  {token.symbol} ({token.balance.toFixed(2)})
-                </option>
-              ))}
-            </select>
-            {isLoadingBalances && (
-              <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                <div className="animate-spin h-5 w-5 border-2 border-green-400 border-t-transparent rounded-full"></div>
-              </div>
-            )}
-          </div>
-          <div className="mt-1 text-xs text-gray-400">
-            Available: {getSelectedTokenBalance().toFixed(2)} {selectedToken}
-          </div>
-        </div>
-        
-        <div>
-          <label className="block text-white mb-1">Auto Cashout</label>
-          <input
-            type="number"
-            value={autoCashout}
-            onChange={e => setAutoCashout(e.target.value)}
-            disabled={gameState !== 'inactive' || betPlaced}
-            className="w-full p-3 bg-gray-800 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-green-400"
-            placeholder="1.01"
-            min="1.01"
-            step="0.01"
-          />
-        </div>
-        
-        {/* Add Bet button below Auto Cashout */}
-        {isWalletConnected && gameState === 'inactive' && (
-          <div>
-            <button
-              onClick={startGame}
-              disabled={approvalPending || betPlaced}
-              className={baseBtnClass + ' w-full p-3 text-lg'}
-            >
-              {approvalPending ? 'Approving...' : betPlaced ? 'Bet Placed' : `Bet ${selectedToken}`}
-            </button>
-          </div>
-        )}
-      </div>
-      <div className="grid grid-cols-5 gap-2 mt-4">
-        {history.map((entry, idx) => {
-          const mul = parseFloat(entry.value);
-          const bet = entry.bet;
-          const token = entry.token;
-          // 1–1.4× always red
-          let bgClass = '';
-          if (mul <= 1.4) bgClass = 'bg-red-500';
-          else if (mul <= 2) bgClass = 'bg-orange-500';
-          else if (mul <= 5) bgClass = 'bg-yellow-400';
-          else if (mul <= 10) bgClass = 'bg-green-500';
-          else if (mul <= 20) bgClass = 'bg-blue-400';
-          else bgClass = 'bg-purple-500';
-          return (
-            <div
-              key={idx}
-              className={`p-2 rounded text-center ${bgClass} text-white`}
-              title={`Crash at ${entry.value}x - Bet: ${bet.toFixed(2)} ${token}`}
-            >
-              {entry.value}x
-            </div>
-          );
-        })}
-      </div>
-      {/* Add check contract balances button */}
+      {/* Check Contract Balances Button */} 
       {isWalletConnected && (
-        <div className="mt-4">
-          <button
-            onClick={checkAndDisplayContractBalances}
-            disabled={isLoadingContractBalances}
-            className={`${baseBtnClass} text-xs`}
-          >
-            {isLoadingContractBalances ? 'Loading Balances...' : 'Check Available Token Balances'}
-          </button>
-        </div>
-      )}
+         <div className="mt-8 text-center">
+           <button
+             onClick={checkAndDisplayContractBalances}
+             disabled={isLoadingContractBalances}
+             className="px-3 py-1.5 bg-gray-700/50 text-gray-300 text-xs rounded-md border border-gray-600 hover:bg-gray-600/70 hover:text-white transition-colors disabled:opacity-50 shadow-sm hover:shadow-md shadow-gray-900/50" // Subtle shadow
+           >
+             {isLoadingContractBalances ? 'Loading Balances...' : 'Check Contract Balances'}
+           </button>
+         </div>
+       )}
     </div>
   );
-}
+} // <<< Closing brace for the CrashoutGame component function
+
+// --- Export outside the component function ---
+export { CrashoutGame };
