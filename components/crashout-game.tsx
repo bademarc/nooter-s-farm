@@ -801,7 +801,7 @@ function CrashoutGame({
     setGameState('inactive');
     setMultiplier(1.0);
     setSimulatedMultiplier(null);
-    setAutoClaimReady(false);
+    setAutoClaimReady(false); // <<< ADDED THIS RESET HERE
     userJoinedRef.current = false; // Reset ref directly
     setHasCashed(false);
     hasCashedRef.current = false;
@@ -893,155 +893,6 @@ function CrashoutGame({
     }
   };
 
-  // Auto-claim feature - directly handle auto cashout results
-  const triggerAutoCashout = (target: number) => {
-    logToUI(`⭐ AUTO CASHOUT TRIGGERED at ${target.toFixed(2)}x`);
-    
-    // --- FIX: Strict check for valid bet amount from ref --- 
-    const bet = betRef.current; // Declare bet here, getting value from ref
-    if (!bet || bet <= 0) {
-      logToUI(`❌ CRITICAL ERROR: Auto cashout triggered but betRef.current is invalid (${bet}). Aborting cashout.`);
-      showToast("Error: Bet amount not registered correctly for auto cashout.", "error");
-      // Consider resetting or handling this state failure
-      resetGame(); // Resetting might be the safest option
-      return;
-    }
-    // Use the confirmed bet amount from the ref
-    const confirmedBet = bet; 
-    const token = tokenRef.current;
-    
-    // Log critical bet information
-    logToUI(`💰 BET INFO: amount=${confirmedBet}, token=${token}, multiplier=${target}`);
-    
-    // Calculate exact winnings with extra precision
-    const winnings = confirmedBet * target;
-    
-    // --- FIX: Update ref synchronously, defer other state updates --- 
-    setHasCashed(true); // Keep state update for UI
-    hasCashedRef.current = true; // *** SET REF SYNCHRONOUSLY ***
-    cashoutRef.current?.play().catch(() => {});
-    cashoutMultiplierRef.current = target;
-
-    // --- FIX: Immediately stop the main game loop --- 
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-      logToUI("Cleared main game interval due to auto cashout.");
-    }
-    
-    // --- FIX: Defer state updates and side effects to avoid render warning --- 
-    setTimeout(() => {
-     logToUI(`💵 WINNINGS CALCULATION: ${confirmedBet} × ${target} = ${winnings}`);
-     
-     // Set winning states - ensure win amount is properly set
-     setHasWon(true);
-     setWinAmount(winnings);
-     
-     // Add to history
-     const newEntry: HistoryEntry = { value: target.toFixed(2), bet: confirmedBet, token };
-     setHistory(prev => [newEntry, ...prev].slice(0, 5));
-     
-     // Play win sound
-     winRef.current?.play().catch(() => {});
-     
-     // Show notification with confirmed amounts
-     showToast(`AUTO CASHOUT: You won ${winnings.toFixed(2)} ${token}!`, "success");
-     
-     // --- Use Enhanced Confetti --- 
-     triggerWinConfetti();
-     setCelebrate(true);
-     setTimeout(() => setCelebrate(false), 1000);
-     
-     // Set a special simulation state to prevent game from ending
-     setGameState('simulating');
-     
-     // Create a custom crash point that's higher than the auto cashout value
-     // This ensures the simulation runs longer
-     const simulationCrashPoint = Math.max(crashPointRef.current, target * 1.5);
-     
-     // Instead of stopping the game, just continue to simulate the multiplier
-     // Save current multiplier for continued display
-     setSimulatedMultiplier(target);
-     
-     // Continue running the game simulation so user can see where it would have crashed
-     if (intervalRef.current) {
-       clearInterval(intervalRef.current);
-       intervalRef.current = null;
-     }
-     
-     // Show message to indicate simulation is continuing
-     logToUI(`🎮 SIMULATION CONTINUING - Watch how high the multiplier goes!`);
-     
-     // Critical fix: Immediately schedule transition to claiming state
-     // This ensures the user can claim their winnings even if simulation continues
-     setTimeout(() => {
-       // Force game into claiming state
-       logToUI(`⚠️ FORCING transition to claiming state for auto cashout winnings`);
-       setGameState('claiming');
-       
-       // Double check all win state variables are properly set
-       if (!hasWon) setHasWon(true);
-       if (winAmount <= 0) setWinAmount(confirmedBet * target);
-       if (!hasCashedRef.current) hasCashedRef.current = true;
-       
-       // Log the final win amount for verification
-       const finalWinAmount = confirmedBet * target;
-       logToUI(`🏆 AUTO CASHOUT WIN READY TO CLAIM: ${finalWinAmount} ${token}`);
-     }, 3000); // Short delay to allow the player to see simulation start
-     
-     // Start a new interval to simulate the continuation
-     simulationIntervalRef.current = window.setInterval(() => {
-       setMultiplier(prev => {
-         const growth = 0.005 + Math.random() * 0.02;
-         let next = prev * (1 + growth);
-         
-         // Add periodic logging to show simulation is running
-         if (Math.random() < 0.1) { // 10% chance each tick
-           logToUI(`🎮 Simulation multiplier: ${next.toFixed(2)}x (you cashed out at ${target.toFixed(2)}x)`);
-         }
-         
-         if (next >= simulationCrashPoint) {
-           // Game would have crashed - just for display
-           if (simulationIntervalRef.current) {
-             clearInterval(simulationIntervalRef.current);
-             simulationIntervalRef.current = null;
-           }
-           logToUI(`🎲 Game would have crashed at ${next.toFixed(2)}x (you cashed out at ${target.toFixed(2)}x)`);
-           
-           // Don't call endGame, we already handled the win
-           setTimeout(() => {
-             // Move to claiming state after simulation completes
-             setGameState('claiming');
-             
-             // Record history with the ACTUAL simulated crash point
-             const crashPointForHistory = next; // The point where simulation ended
-             const bet = betRef.current; // Get bet info from ref
-             const token = tokenRef.current; // Get token info from ref
-             const cashoutMul = cashoutMultiplierRef.current; // Get cashout multi from ref
-             const newEntry: HistoryEntry = { 
-               value: crashPointForHistory.toFixed(2), 
-               bet, 
-               token,
-               cashoutMultiplier: cashoutMul // Store cashout multiplier
-             };
-             setHistory(prev => [newEntry, ...prev].slice(0, 5));
-             logToUI(`💾 HISTORY RECORDED (Simulation): Crash at ${crashPointForHistory.toFixed(2)}x, Bet: ${bet} ${token}, Cashed Out @ ${cashoutMul ? cashoutMul.toFixed(2) + 'x' : 'N/A'}`);
-             cashoutMultiplierRef.current = null; // Reset ref
-           }, 3000); // Longer delay to ensure user sees the crash
-           
-           return next;
-         }
-         
-         return next;
-       });
-     }, 100);
-     
-     logToUI(`🎉 Auto cashout complete! Ready to claim ${winnings.toFixed(2)} ${token}`);
-     // Mark that auto claim is ready
-     setAutoClaimReady(true);
-    }, 0); // End outer setTimeout
-  };
-  
   // Manual cashout handler - completely reworked for reliability
   const handleCashout = () => {
     if (gameState !== 'active' || hasCashed || !userJoinedRef.current) return;
@@ -1050,14 +901,18 @@ function CrashoutGame({
     const cashoutMultiplier = multiplier;
     logToUI(`⭐ MANUAL CASHOUT at ${cashoutMultiplier.toFixed(2)}x`);
     
-    // Set cashout states
-    // --- FIX: Update ref immediately to prevent race condition --- 
+    // --- FIX: Update ref and winAmount immediately ---
     setHasCashed(true);
     hasCashedRef.current = true; // *** SET REF SYNCHRONOUSLY ***
-    cashoutRef.current?.play().catch(() => {});
-    // Store manual cashout multiplier for history
     cashoutMultiplierRef.current = cashoutMultiplier;
+    const bet = betRef.current;
+    const token = tokenRef.current;
+    const winnings = bet * cashoutMultiplier;
+    setWinAmount(winnings); // <<< SET IMMEDIATELY
+    setHasWon(true);      // <<< SET IMMEDIATELY
     // --- END FIX ---
+
+    cashoutRef.current?.play().catch(() => {});
 
     // --- FIX: Immediately stop the main game loop --- 
     if (intervalRef.current) {
@@ -1067,32 +922,18 @@ function CrashoutGame({
     }
     // ---------------------------------------------
 
-    const bet = betRef.current;
-    const token = tokenRef.current;
-    const winnings = bet * cashoutMultiplier;
-    
     // --- FIX: Defer state updates and side effects --- 
     setTimeout(() => {
-      // Set winning states
-      setHasWon(true);
-      setWinAmount(winnings);
+      // --- REMOVED setHasWon and setWinAmount from here ---
       
-      // Add to history
-      // History will be added at the end of the simulation now
-      // const newEntry: HistoryEntry = { value: cashoutMultiplier.toFixed(2), bet, token, cashoutMultiplier }; 
-      // setHistory(prev => [newEntry, ...prev].slice(0, 5));
-      
-      // Play win sound
+      // Play win sound, toast, confetti, celebrate...
       winRef.current?.play().catch(() => {});
-      
-      // Show notification
       showToast(`MANUAL CASHOUT: You won ${winnings.toFixed(2)} ${token}!`, "success");
-      // --- Use Enhanced Confetti --- 
       triggerWinConfetti();
       setCelebrate(true);
       setTimeout(() => setCelebrate(false), 1000);
       
-      // Set special simulation state
+      // Set simulation state
       setGameState('simulating');
       setAutoClaimReady(true); // Mark claim ready
       logToUI(`🎮 SIMULATION CONTINUING - Watch how high the multiplier goes!`);
@@ -1154,6 +995,151 @@ function CrashoutGame({
        // --- END FIX ---
 
     }, 0); // End setTimeout
+  };
+
+  // Auto-claim feature - directly handle auto cashout results
+  const triggerAutoCashout = (target: number) => {
+    logToUI(`⭐ AUTO CASHOUT TRIGGERED at ${target.toFixed(2)}x`);
+    
+    // --- FIX: Strict check for valid bet amount from ref --- 
+    const bet = betRef.current; // Declare bet here, getting value from ref
+    if (!bet || bet <= 0) {
+      logToUI(`❌ CRITICAL ERROR: Auto cashout triggered but betRef.current is invalid (${bet}). Aborting cashout.`);
+      showToast("Error: Bet amount not registered correctly for auto cashout.", "error");
+      // Consider resetting or handling this state failure
+      resetGame(); // Resetting might be the safest option
+      return;
+    }
+    // Use the confirmed bet amount from the ref
+    const confirmedBet = bet; 
+    const token = tokenRef.current;
+    
+    // Log critical bet information
+    logToUI(`💰 BET INFO: amount=${confirmedBet}, token=${token}, multiplier=${target}`);
+    
+    // Calculate exact winnings with extra precision
+    const winnings = confirmedBet * target;
+    
+    // --- FIX: Update ref and winAmount immediately --- 
+    setHasCashed(true); // Keep state update for UI
+    hasCashedRef.current = true; // *** SET REF SYNCHRONOUSLY ***
+    cashoutMultiplierRef.current = target;
+    setWinAmount(winnings); // <<< SET IMMEDIATELY
+    setHasWon(true);      // <<< SET IMMEDIATELY
+    // --- END FIX ---
+
+    cashoutRef.current?.play().catch(() => {});
+
+    // --- FIX: Immediately stop the main game loop --- 
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+      logToUI("Cleared main game interval due to auto cashout.");
+    }
+    
+    // --- FIX: Defer state updates and side effects to avoid render warning --- 
+    setTimeout(() => {
+     logToUI(`💵 WINNINGS CALCULATION: ${confirmedBet} × ${target} = ${winnings}`);
+     
+     // --- REMOVED setHasWon and setWinAmount from here ---
+     
+     // Add to history, play sound, toast, confetti, celebrate...
+     const newEntry: HistoryEntry = { value: target.toFixed(2), bet: confirmedBet, token };
+     setHistory(prev => [newEntry, ...prev].slice(0, 5));
+     winRef.current?.play().catch(() => {});
+     showToast(`AUTO CASHOUT: You won ${winnings.toFixed(2)} ${token}!`, "success");
+     triggerWinConfetti();
+     setCelebrate(true);
+     setTimeout(() => setCelebrate(false), 1000);
+     
+     // Set a special simulation state to prevent game from ending
+     setGameState('simulating');
+     
+     // Create a custom crash point that's higher than the auto cashout value
+     // This ensures the simulation runs longer
+     const simulationCrashPoint = Math.max(crashPointRef.current, target * 1.5);
+     
+     // Instead of stopping the game, just continue to simulate the multiplier
+     // Save current multiplier for continued display
+     setSimulatedMultiplier(target);
+     
+     // Continue running the game simulation so user can see where it would have crashed
+     if (intervalRef.current) {
+       clearInterval(intervalRef.current);
+       intervalRef.current = null;
+     }
+     
+     // Show message to indicate simulation is continuing
+     logToUI(`🎮 SIMULATION CONTINUING - Watch how high the multiplier goes!`);
+     
+     // Critical fix: Immediately schedule transition to claiming state
+     // This ensures the user can claim their winnings even if simulation continues
+     setTimeout(() => {
+       // Force game into claiming state
+       logToUI(`⚠️ FORCING transition to claiming state for auto cashout winnings`);
+       setGameState('claiming');
+       
+       // Double check all win state variables are properly set
+       if (!hasWon) setHasWon(true); // Re-set just in case
+       // if (winAmount <= 0) setWinAmount(winnings); // Avoid re-setting winAmount here
+       if (!hasCashedRef.current) hasCashedRef.current = true; // Re-set just in case
+       
+       // Log the final win amount for verification
+       const finalWinAmount = confirmedBet * target;
+       logToUI(`🏆 AUTO CASHOUT WIN READY TO CLAIM: ${finalWinAmount} ${token}`);
+     }, 3000); // Short delay to allow the player to see simulation start
+     
+     // Start a new interval to simulate the continuation
+     simulationIntervalRef.current = window.setInterval(() => {
+       setMultiplier(prev => {
+         const growth = 0.005 + Math.random() * 0.02;
+         let next = prev * (1 + growth);
+         
+         // Add periodic logging to show simulation is running
+         if (Math.random() < 0.1) { // 10% chance each tick
+           logToUI(`🎮 Simulation multiplier: ${next.toFixed(2)}x (you cashed out at ${target.toFixed(2)}x)`);
+         }
+         
+         if (next >= simulationCrashPoint) {
+           // Game would have crashed - just for display
+           if (simulationIntervalRef.current) {
+             clearInterval(simulationIntervalRef.current);
+             simulationIntervalRef.current = null;
+           }
+           logToUI(`🎲 Game would have crashed at ${next.toFixed(2)}x (you cashed out at ${target.toFixed(2)}x)`);
+           
+           // Don't call endGame, we already handled the win
+           setTimeout(() => {
+             // Move to claiming state after simulation completes (This might be redundant due to the forced transition earlier, but safe)
+             setGameState('claiming');
+             
+             // Record history with the ACTUAL simulated crash point
+             const crashPointForHistory = next; // The point where simulation ended
+             const bet = betRef.current; // Get bet info from ref
+             const token = tokenRef.current; // Get token info from ref
+             const cashoutMul = cashoutMultiplierRef.current; // Get cashout multi from ref
+             const newEntry: HistoryEntry = { 
+               value: crashPointForHistory.toFixed(2), 
+               bet, 
+               token,
+               cashoutMultiplier: cashoutMul // Store cashout multiplier
+             };
+             setHistory(prev => [newEntry, ...prev].slice(0, 5));
+             logToUI(`💾 HISTORY RECORDED (Simulation): Crash at ${crashPointForHistory.toFixed(2)}x, Bet: ${bet} ${token}, Cashed Out @ ${cashoutMul ? cashoutMul.toFixed(2) + 'x' : 'N/A'}`);
+             cashoutMultiplierRef.current = null; // Reset ref
+           }, 3000); // Longer delay to ensure user sees the crash
+           
+           return next;
+         }
+         
+         return next;
+       });
+     }, 100);
+     
+     logToUI(`🎉 Auto cashout complete! Ready to claim ${winnings.toFixed(2)} ${token}`);
+     // Mark that auto claim is ready
+     setAutoClaimReady(true);
+    }, 0); // End outer setTimeout
   };
 
   // Begin the actual crash game round
@@ -1264,13 +1250,7 @@ function CrashoutGame({
     if (success) {
       logToUI(`✅ Payout successful for ${amountToClaim.toFixed(2)} ${tokenToClaim}. Resetting game.`);
       // Reset game state only AFTER successful payout
-      setHasWon(false);
-      setWinAmount(0); 
-      setAutoClaimReady(false);
-      // --- FIX: Add small delay before reset to allow UI updates --- 
-      setTimeout(() => {
-         resetGame(); 
-      }, 50); // 50ms delay
+      resetGame(); // <<< CALL resetGame directly
     } else {
       logToUI(`❌ Payout failed for ${amountToClaim.toFixed(2)} ${tokenToClaim}. Game state remains in 'claiming'.`);
       // Don't reset the game if payout failed, allow user to retry or see error
