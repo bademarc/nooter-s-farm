@@ -24,7 +24,8 @@ import {
   ArrowRightLeft,
   Users,
   Wallet,
-  Briefcase
+  Briefcase,
+  BookOpen
 } from "lucide-react";
 import { Leaderboard } from "./leaderboard";
 import { ethers, Contract } from "ethers";
@@ -196,6 +197,15 @@ export const Sidebar = ({
             )}
           </Button>
           
+          <Link href="/guide" passHref legacyBehavior>
+            <Button 
+              variant={"ghost"}
+              className={`w-full justify-start rounded-none border border-transparent noot-text text-white/80 hover:bg-[#222] hover:text-white`}
+            >
+              <BookOpen className="h-4 w-4 mr-2" />
+              <span>Game Guide</span>
+            </Button>
+          </Link>
           
           <Button 
             variant={activeTab === "profile" ? "default" : "ghost"} 

@@ -1111,47 +1111,45 @@ export default class Defense {
   // Show damage text floating up
   showDamageText(target, amount, color = 0xFF0000) {
     try {
-      // Skip if scene is invalid
-      if (!this.scene) return;
-
-      // Get the target position
-      let x, y;
-      if (typeof target === 'object' && target !== null) {
-        // If target is an enemy object
-        x = target.x;
-        y = target.y;
-      } else {
-        // If x,y coordinates were passed directly
-        x = target;
-        y = amount;
-        amount = color;
-        color = arguments[3] || 0xFF0000;
-      }
-
-      // Convert color number to hex string directly
-      let colorHex = '#FF0000'; // Default red
-      if (typeof color === 'number') {
-        colorHex = '#' + color.toString(16).padStart(6, '0');
-      }
-
-      const text = this.scene.add.text(x, y, amount, {
-        fontFamily: 'Arial',
-        fontSize: '16px',
-        color: colorHex,
+      // Skip if scene or target is invalid
+      if (!this.scene || !target || !target.active) return;
+      
+      // Create text style - improve visibility
+      const textStyle = {
+        fontFamily: 'Arial, sans-serif',
+        fontSize: '18px', // Slightly smaller than default floating text
+        color: Phaser.Display.Color.ValueToColor(color).rgba,
         stroke: '#000000',
-        strokeThickness: 2
-      }).setOrigin(0.5);
-
-      // Animate text
+        strokeThickness: 3, // Thicker stroke
+        shadow: {
+          offsetX: 1,
+          offsetY: 1,
+          color: '#000000',
+          blur: 2
+        }
+      };
+      
+      // Format the amount to one decimal place
+      const formattedAmount = amount.toFixed(1);
+      
+      // Create the text object slightly offset from the target
+      const text = this.scene.add.text(target.x, target.y - 40, `-${formattedAmount}`, textStyle);
+      text.setOrigin(0.5);
+      text.setDepth(2000); // Ensure visibility
+      
+      // Add animation for rising and fading
       this.scene.tweens.add({
         targets: text,
-        y: y - 30,
+        y: target.y - 80, // Move higher
         alpha: 0,
-        duration: 1000,
-        onComplete: () => text.destroy()
+        duration: 1200, // Longer duration
+        ease: 'Cubic.easeOut',
+        onComplete: () => {
+          text.destroy();
+        }
       });
     } catch (error) {
-      console.error("Error showing damage text:", error);
+      console.error("Error in showDamageText:", error);
     }
   }
   
@@ -1181,38 +1179,114 @@ export default class Defense {
   }
   
   destroy() {
-    console.log(`Destroying ${this.type} at (${this.x}, ${this.y})`);
-    this.active = false;
-    
-    // Clean up sprites
-    if (this.sprite) {
-      this.sprite.destroy();
-      this.sprite = null;
-    }
-    
-    if (this.rangeIndicator) {
-      this.rangeIndicator.destroy();
-      this.rangeIndicator = null;
-    }
-    
-    // Clean up cooldown text
-    if (this.cooldownText) {
-      this.cooldownText.destroy();
-      this.cooldownText = null;
-    }
-    
-    // Clean up ready indicator
-    if (this.readyIndicator) {
-      this.readyIndicator.destroy();
-      this.readyIndicator = null;
-    }
-    
-    // Remove from defenses array in scene
-    if (this.scene && this.scene.defenses) {
-      const index = this.scene.defenses.indexOf(this);
-      if (index !== -1) {
-        this.scene.defenses.splice(index, 1);
+    try {
+      this.active = false; // Mark as inactive
+      
+      // Destroy sprite and remove listeners
+      if (this.sprite) {
+        // Explicitly remove listeners first
+        this.sprite.off('pointerover');
+        this.sprite.off('pointerout');
+        // Stop any running tweens on the sprite
+        this.scene?.tweens?.killTweensOf(this.sprite);
+        this.sprite.destroy();
+        this.sprite = null; // Clear reference
       }
+      
+      // Destroy range indicator
+      if (this.rangeIndicator) {
+        this.rangeIndicator.destroy();
+        this.rangeIndicator = null; // Clear reference
+      }
+      
+      // Destroy cooldown text
+      if (this.cooldownText) {
+        this.cooldownText.destroy();
+        this.cooldownText = null; // Clear reference
+      }
+      
+      // Destroy ready indicator
+      if (this.readyIndicator) {
+        this.readyIndicator.destroy();
+        this.readyIndicator = null; // Clear reference
+      }
+      
+      // Destroy no mana text
+      if (this.noManaText) {
+        this.noManaText.destroy();
+        this.noManaText = null;
+      }
+      
+      // Destroy cooldown indicator graphics and container
+      if (this.cooldownIndicator) { // The graphics object itself
+        this.cooldownIndicator.destroy();
+        this.cooldownIndicator = null;
+      }
+      if (this.cooldownContainer) { // The container holding the graphics
+        this.cooldownContainer.destroy();
+        this.cooldownContainer = null;
+      }
+      
+      // Destroy special attack indicators and text
+      if (this.specialAttackIndicator) { // The graphics object
+        this.specialAttackIndicator.destroy();
+        this.specialAttackIndicator = null;
+      }
+      if (this.specialAttackReadyIndicator) { // The pulsing circle
+         this.scene?.tweens?.killTweensOf(this.specialAttackReadyIndicator); // Stop pulse tween
+        this.specialAttackReadyIndicator.destroy();
+        this.specialAttackReadyIndicator = null;
+      }
+       if (this.specialAttackText) { // The "SPECIAL" text
+        this.specialAttackText.destroy();
+        this.specialAttackText = null;
+      }
+      
+      // Destroy target line if it exists
+      if (this.targetLine) {
+        this.targetLine.destroy();
+        this.targetLine = null;
+      }
+
+      // Destroy fallback label if it exists (from GameScene fallback creation)
+       if (this.label && typeof this.label.destroy === 'function') {
+        this.label.destroy();
+        this.label = null;
+      }
+      
+      // Note: Projectiles/effects initiated by this defense might need specific cleanup
+      // Note: Internal timers/tweens specific to this defense might need specific cleanup
+      // The scene-level cleanup (this.time.removeAllEvents()) should handle most cases, but keep this in mind if issues persist.
+
+      // Remove from scene's defenses array (redundant if GameScene clears it, but safe)
+      if (this.scene && this.scene.defenses) {
+        const index = this.scene.defenses.indexOf(this);
+        if (index > -1) {
+          // Use splice only if found, avoid modifying array if not needed
+          // this.scene.defenses.splice(index, 1); 
+          // Removed this line as GameScene.cleanupCurrentGame should handle clearing the main array
+        }
+      }
+      
+      // Final log after attempting cleanup
+      // console.log(`Defense ${this.type} at (${this.x}, ${this.y}) destroy attempted`);
+    } catch (error) {
+      console.error("Error destroying defense:", error);
+    } finally {
+        // Ensure essential references are nullified even if errors occurred
+        this.sprite = null;
+        this.rangeIndicator = null;
+        this.cooldownText = null;
+        this.readyIndicator = null;
+        this.noManaText = null;
+        this.cooldownIndicator = null;
+        this.cooldownContainer = null;
+        this.specialAttackIndicator = null;
+        this.specialAttackReadyIndicator = null;
+        this.specialAttackText = null;
+        this.targetLine = null;
+        this.label = null;
+        this.scene = null; // Break reference to scene
     }
   }
   

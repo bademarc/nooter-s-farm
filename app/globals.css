@@ -753,7 +753,7 @@ body {
 .noot-button {
   background-color: #000000;
   color: var(--noot-text);
-  border: 2px solid #f9d77a;
+  border: 2px solid var(--noot-border);
   border-radius: 0;
   padding: 0.5rem 1rem;
   font-weight: 600;
@@ -761,8 +761,9 @@ body {
 }
 
 .noot-button:hover {
-  background-color: #f9d77a;
-  color: #000000;
+  background-color: var(--noot-accent);
+  color: var(--noot-text);
+  border-color: var(--noot-highlight);
 }
 
 .noot-input {
@@ -1309,7 +1310,7 @@ canvas {
   font-family: var(--font-akaya);
   background-color: #111111;
   color: var(--noot-text);
-  border: 2px solid #f9d77a;
+  border: 2px solid var(--noot-border);
   border-radius: 8px;
   padding: 0.6rem 1.2rem;
   font-weight: 500;
@@ -1318,10 +1319,11 @@ canvas {
 }
 
 .akaya-button:hover {
-  background-color: #f9d77a;
-  color: #000000;
+  background-color: var(--noot-accent);
+  color: var(--noot-text);
   transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(249, 215, 122, 0.3);
+  box-shadow: 0 4px 8px rgba(51, 51, 51, 0.3);
+  border-color: var(--noot-highlight);
 }
 
 .noot-input {

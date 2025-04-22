@@ -909,9 +909,9 @@ export default class Enemy {
           }
         }
         
-        // Show floating text for score
+        // Show floating text for COINS earned
         if (typeof this.scene.showFloatingText === 'function') {
-          this.scene.showFloatingText(this.x, this.y - 20, `+${this.value * 10}`, 0xFFFF00);
+          this.scene.showFloatingText(this.x, this.y - 20, `+${this.value}`, 0xFFFF00); 
         }
       }
       

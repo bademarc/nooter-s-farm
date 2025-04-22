@@ -988,6 +988,10 @@ if (isBrowser) {
         // Start the game
         startGame() {
           try {
+            // --- Add log ---
+            console.log("startGame: Initiated. Preparing to clean up previous game...");
+            // --- End log ---
+
             // --- Force unlock Web Audio context on user interaction ---
             if (this.sound && this.sound.unlock) {
               this.sound.unlock();
@@ -999,60 +1003,109 @@ if (isBrowser) {
             
             console.log("Start button clicked - starting game");
             
-            // Remove start button
+            // Remove start button if it exists
             if (this.startButton) {
               this.startButton.destroy();
+              this.startButton = null; // Clear reference
+            }
+            if (this.startText) {
               this.startText.destroy();
+              this.startText = null; // Clear reference
             }
             
-            // Set game to active state
-            this.gameState.isActive = true;
-            this.gameState.wave = 1;
+            // --- Call cleanup FIRST to ensure a clean slate ---
+            this.cleanupCurrentGame();
+            // --- End cleanup ---
+
+            // --- Add log ---
+            console.log(`startGame: Cleanup complete. Defenses array length: ${this.defenses?.length || 0}`);
+            // --- End log ---
+
+            // Re-initialize game state (partially redundant with cleanup, but ensures defaults)
+            this.gameState = {
+              isActive: true, // Set to active now
+              isPaused: false,
+              wave: 1,
+              score: 0,
+              lives: 3,
+              farmCoins: 50,
+              clickDamage: 0.3, // Consistent starting click damage
+              canPlant: true,
+              autoWave: true, // Default to auto wave
+              path: this.gameState.path // Preserve path if needed, or redefine
+            };
+            this.registry.set('farmCoins', this.gameState.farmCoins);
             
-            // Set autoWave to true by default to ensure waves always progress automatically
-            this.gameState.autoWave = true;
+            // Re-initialize arrays and flags
+            this.enemies = [];
+            this.crops = {};
+            this.defenses = []; // Ensure defenses array is empty
+            this.isSpawningEnemies = false;
+            this.waveInProgress = false;
+            this.waveChangeInProgress = false;
+            this.enemiesSpawned = 0;
+            this.totalEnemiesInWave = 0;
+            this.currentDefenseType = null;
+            this.toolMode = 'attack';
+            this.pendingDefensePlacement = false;
+            this.pendingDefenseType = null;
             
-            this.updateWaveText();
+            // Update UI text elements
+            this.updateWaveText(); // Should show Wave: 1
+            this.updateScoreText(); // Should show Score: 0
+            this.updateLivesText(); // Should show Lives: 3
+            this.updateFarmCoins(0); // Should show Coins: 50
             
-            // Reset game stats
-            this.gameState.score = 0;
-            this.gameState.lives = 3;
-            this.gameState.clickDamage = 0.3; // Reduced base click damage
-            
-            // Reset farm coins to 50 to start with
-            this.gameState.farmCoins = 50;
-            this.updateFarmCoins(0); // Update display
-            
-            // Reset the upgrade system if it exists
+            // Re-create or reset the upgrade system if needed
+            if (this.UpgradeClass) {
             if (this.upgradeSystem) {
-              this.upgradeSystem.destroy();
+                this.upgradeSystem.destroy(); // Destroy old one first
+              }
               this.upgradeSystem = new this.UpgradeClass(this);
-              this.upgradeSystem.createUI();
+              this.upgradeSystem.createUI(); // Create new UI
+              this.upgradeSystem.setUIVisible(false); // Start hidden
+              this.updateAdvancedDefenseButtons(); // Update button visibility
+            } else {
+              console.error("UpgradeClass not available during startGame");
             }
             
-            // Start first wave - IMPORTANT: must be after setting gameState
+            // Ensure toolbar is reset to attack mode visually
+            this.setToolMode('attack');
+            
+            // Start first wave - IMPORTANT: must be after setting gameState and resetting flags
             this.startWave();
             
-            // Only show next wave button if auto-wave is disabled 
+            // Handle Next Wave button visibility based on autoWave
             if (!this.gameState.autoWave) {
+              // Ensure button exists before showing
+              if (!this.nextWaveButton || !this.nextWaveButton.button) {
+                // Recreate if necessary (though ideally it persists)
+                // this.createUI(); // Or a more specific function
+              }
               this.showNextWaveButton();
             } else {
               // Hide next wave button if it exists when auto-wave is enabled
-              if (this.nextWaveButton) {
+              if (this.nextWaveButton && this.nextWaveButton.button) {
                 this.nextWaveButton.button.visible = false;
                 this.nextWaveButton.text.visible = false;
               }
             }
             
-            // Start background music
-            if (this.soundManager) {
+            // Start background music if sound manager exists and isn't already playing
+            if (this.soundManager && (!this.soundManager.currentMusic || !this.soundManager.currentMusic.isPlaying)) {
               this.soundManager.playMusic();
+            }
+            // Play click sound for starting
+            if (this.soundManager) {
               this.soundManager.play('click');
             }
             
             console.log("Game started successfully");
           } catch (error) {
             console.error("Error starting game:", error);
+            // Attempt to recover or show error message
+            this.gameState.isActive = false;
+             this.add.text(400, 300, 'Error starting game!', { fontSize: '24px', color: '#FF0000' }).setOrigin(0.5);
           }
         }
         
@@ -1557,6 +1610,10 @@ if (isBrowser) {
         
         startGame() {
           try {
+            // --- Add log ---
+            console.log("startGame: Initiated. Preparing to clean up previous game...");
+            // --- End log ---
+
             // --- Force unlock Web Audio context on user interaction ---
             if (this.sound && this.sound.unlock) {
               this.sound.unlock();
@@ -1568,60 +1625,109 @@ if (isBrowser) {
             
             console.log("Start button clicked - starting game");
             
-            // Remove start button
+            // Remove start button if it exists
             if (this.startButton) {
               this.startButton.destroy();
+              this.startButton = null; // Clear reference
+            }
+            if (this.startText) {
               this.startText.destroy();
+              this.startText = null; // Clear reference
             }
             
-            // Set game to active state
-            this.gameState.isActive = true;
-            this.gameState.wave = 1;
+            // --- Call cleanup FIRST to ensure a clean slate ---
+            this.cleanupCurrentGame();
+            // --- End cleanup ---
+
+            // --- Add log ---
+            console.log(`startGame: Cleanup complete. Defenses array length: ${this.defenses?.length || 0}`);
+            // --- End log ---
+
+            // Re-initialize game state (partially redundant with cleanup, but ensures defaults)
+            this.gameState = {
+              isActive: true, // Set to active now
+              isPaused: false,
+              wave: 1,
+              score: 0,
+              lives: 3,
+              farmCoins: 50,
+              clickDamage: 0.3, // Consistent starting click damage
+              canPlant: true,
+              autoWave: true, // Default to auto wave
+              path: this.gameState.path // Preserve path if needed, or redefine
+            };
+            this.registry.set('farmCoins', this.gameState.farmCoins);
             
-            // Set autoWave to true by default to ensure waves always progress automatically
-            this.gameState.autoWave = true;
+            // Re-initialize arrays and flags
+            this.enemies = [];
+            this.crops = {};
+            this.defenses = []; // Ensure defenses array is empty
+            this.isSpawningEnemies = false;
+            this.waveInProgress = false;
+            this.waveChangeInProgress = false;
+            this.enemiesSpawned = 0;
+            this.totalEnemiesInWave = 0;
+            this.currentDefenseType = null;
+            this.toolMode = 'attack';
+            this.pendingDefensePlacement = false;
+            this.pendingDefenseType = null;
             
-            this.updateWaveText();
+            // Update UI text elements
+            this.updateWaveText(); // Should show Wave: 1
+            this.updateScoreText(); // Should show Score: 0
+            this.updateLivesText(); // Should show Lives: 3
+            this.updateFarmCoins(0); // Should show Coins: 50
             
-            // Reset game stats
-            this.gameState.score = 0;
-            this.gameState.lives = 3;
-            this.gameState.clickDamage = 0.3; // Reduced base click damage
-            
-            // Reset farm coins to 50 to start with
-            this.gameState.farmCoins = 50;
-            this.updateFarmCoins(0); // Update display
-            
-            // Reset the upgrade system if it exists
+            // Re-create or reset the upgrade system if needed
+            if (this.UpgradeClass) {
             if (this.upgradeSystem) {
-              this.upgradeSystem.destroy();
+                this.upgradeSystem.destroy(); // Destroy old one first
+              }
               this.upgradeSystem = new this.UpgradeClass(this);
-              this.upgradeSystem.createUI();
+              this.upgradeSystem.createUI(); // Create new UI
+              this.upgradeSystem.setUIVisible(false); // Start hidden
+              this.updateAdvancedDefenseButtons(); // Update button visibility
+            } else {
+              console.error("UpgradeClass not available during startGame");
             }
             
-            // Start first wave - IMPORTANT: must be after setting gameState
+            // Ensure toolbar is reset to attack mode visually
+            this.setToolMode('attack');
+            
+            // Start first wave - IMPORTANT: must be after setting gameState and resetting flags
             this.startWave();
             
-            // Only show next wave button if auto-wave is disabled 
+            // Handle Next Wave button visibility based on autoWave
             if (!this.gameState.autoWave) {
+              // Ensure button exists before showing
+              if (!this.nextWaveButton || !this.nextWaveButton.button) {
+                // Recreate if necessary (though ideally it persists)
+                // this.createUI(); // Or a more specific function
+              }
               this.showNextWaveButton();
             } else {
               // Hide next wave button if it exists when auto-wave is enabled
-              if (this.nextWaveButton) {
+              if (this.nextWaveButton && this.nextWaveButton.button) {
                 this.nextWaveButton.button.visible = false;
                 this.nextWaveButton.text.visible = false;
               }
             }
             
-            // Start background music
-            if (this.soundManager) {
+            // Start background music if sound manager exists and isn't already playing
+            if (this.soundManager && (!this.soundManager.currentMusic || !this.soundManager.currentMusic.isPlaying)) {
               this.soundManager.playMusic();
+            }
+            // Play click sound for starting
+            if (this.soundManager) {
               this.soundManager.play('click');
             }
             
             console.log("Game started successfully");
           } catch (error) {
             console.error("Error starting game:", error);
+            // Attempt to recover or show error message
+            this.gameState.isActive = false;
+             this.add.text(400, 300, 'Error starting game!', { fontSize: '24px', color: '#FF0000' }).setOrigin(0.5);
           }
         }
         
@@ -4563,11 +4669,11 @@ if (isBrowser) {
               })
               .on('pointerdown', () => {
                 // Play click sound if available
-                if (this.sound && this.sound.play && this.buttonClickSound) {
-                  this.sound.play('buttonClickSound');
+                if (this.soundManager) { // Check soundManager instead of sound
+                  this.soundManager.play('click'); // Use consistent sound key
                 }
                 
-                // Clean up game over elements
+                // Clean up game over UI elements BEFORE starting new game
                 overlay.destroy();
                 gameOverText.destroy();
                 scoreText.destroy();
@@ -4577,14 +4683,17 @@ if (isBrowser) {
                 restartText.destroy();
                 
                 // Update external farm coins if callback is available
-                if (typeof this.addFarmCoins === 'function') {
-                  this.addFarmCoins(finalCoins); // Pass the captured final coins
-                }
+                // IMPORTANT: This should probably happen based on game logic,
+                // maybe only add coins on victory or based on score?
+                // For now, let's assume we don't add coins on simple restart.
+                // if (typeof this.addFarmCoins === 'function') {
+                //   this.addFarmCoins(finalCoins); // Pass the captured final coins
+                // }
                 
                 // Reset cursor
                 this.input.setDefaultCursor('default');
                 
-                // Start a new game
+                // Start a new game - cleanup will happen inside startGame
                 this.startGame();
               });
             
@@ -4616,69 +4725,133 @@ if (isBrowser) {
           try {
             console.log("Cleaning up current game...");
             
+            // Stop any active timers (spawning, wave completion, etc.)
+            this.time.removeAllEvents();
+            
             // Clean up all enemies
             if (this.enemies && this.enemies.length) {
               this.enemies.forEach(enemy => {
-                if (enemy && enemy.destroy) {
-                  enemy.destroy();
+                if (enemy && typeof enemy.destroy === 'function') {
+                  try {
+                    enemy.destroy();
+                  } catch (e) { console.error("Error destroying enemy:", e); }
                 }
               });
-              this.enemies = [];
+              this.enemies = []; // Clear the array
+              console.log("Enemies cleaned up.");
             }
             
             // Clean up all crops
             if (this.crops) {
-              Object.values(this.crops).forEach(crop => {
-                if (crop && crop.destroy) {
-                  crop.destroy();
+              Object.keys(this.crops).forEach(key => {
+                const crop = this.crops[key];
+                if (crop && typeof crop.destroy === 'function') {
+                  try {
+                    crop.destroy();
+                  } catch (e) { console.error("Error destroying crop:", e); }
                 }
               });
-              this.crops = {};
+              this.crops = {}; // Clear the object
+              console.log("Crops cleaned up.");
             }
             
-            // Clean up all defenses
+            // Clean up all defenses THOROUGHLY
             if (this.defenses && this.defenses.length) {
-              this.defenses.forEach(defense => {
+              // --- Add log ---
+              console.log(`cleanupCurrentGame: Found ${this.defenses.length} defenses to clean up.`);
+              // --- End log ---
+              this.defenses.forEach((defense, index) => { // Add index for logging
                 if (defense) {
-                  // Clean up range circle if it exists
-                  if (defense.rangeCircle && defense.rangeCircle.destroy) {
-                    defense.rangeCircle.destroy();
-                  }
-                  
-                  // Clean up the defense itself
-                  if (defense.destroy) {
-                    defense.destroy();
+                  // --- Add log ---
+                  console.log(`cleanupCurrentGame: Attempting to destroy defense #${index} (Type: ${defense.type || 'unknown'})`);
+                  // --- End log ---
+                  // Call the defense's own destroy method if it exists
+                  if (typeof defense.destroy === 'function') {
+                    try {
+                      defense.destroy();
+                    } catch (e) { console.error("Error destroying defense:", e); }
+                  } else {
+                    // Manual cleanup if no destroy method (less ideal)
+                    if (defense.sprite && typeof defense.sprite.destroy === 'function') defense.sprite.destroy();
+                    if (defense.rangeIndicator && typeof defense.rangeIndicator.destroy === 'function') defense.rangeIndicator.destroy();
+                    if (defense.manaText && typeof defense.manaText.destroy === 'function') defense.manaText.destroy(); // Explicitly destroy mana text
+                    if (defense.cooldownIndicator && typeof defense.cooldownIndicator.destroy === 'function') defense.cooldownIndicator.destroy(); // Explicitly destroy cooldown indicator
+                    // Add cleanup for other potential defense elements like labels if the fallback was used
+                    if (defense.label && typeof defense.label.destroy === 'function') defense.label.destroy();
                   }
                 }
               });
-              this.defenses = [];
+              this.defenses = []; // Force clear the array AFTER iterating and destroying
+              // --- Add log ---
+              console.log("cleanupCurrentGame: Defenses array cleared.");
+              // --- End log ---
+            } else {
+                 // --- Add log ---
+                 console.log("cleanupCurrentGame: No defenses found in the array to clean up.");
+                 // --- End log ---
+                 this.defenses = []; // Ensure the array is empty even if it was null/undefined initially
+            }
+            
+            // Clean up projectiles if they exist as a separate group
+            if (this.projectiles && typeof this.projectiles.destroy === 'function') {
+              this.projectiles.destroy(true); // Destroy group and children
+              this.projectiles = null; // Reset reference
+              console.log("Projectiles cleaned up.");
             }
             
             // Reset game state
             this.gameState = {
               isActive: false,
+              isPaused: false, // Ensure paused state is reset
               wave: 1,
               score: 0,
-              lives: 3,
-              farmCoins: 50,
-              clickDamage: 1
+              lives: 3, // Reset lives
+              farmCoins: 50, // Reset starting coins
+              clickDamage: 0.3, // Reset base click damage
+              canPlant: true,
+              autoWave: true // Reset auto-wave setting
             };
+            this.registry.set('farmCoins', this.gameState.farmCoins); // Update registry too
             
             // Reset other game properties
             this.isSpawningEnemies = false;
-            this.enemiesRemaining = 0;
+            this.waveInProgress = false; // Ensure wave is marked as not in progress
+            this.waveChangeInProgress = false; // Reset wave change flag
+            this.enemiesSpawned = 0;
+            this.totalEnemiesInWave = 0;
             this.currentDefenseType = null;
-            this.toolMode = 'attack';
+            this.toolMode = 'attack'; // Reset tool mode
+            this.pendingDefensePlacement = false; // Reset placement flag
+            this.pendingDefenseType = null;
             
-            // Update UI if methods exist
-            if (typeof this.updateWaveText === 'function') this.updateWaveText();
-            if (typeof this.updateScoreText === 'function') this.updateScoreText();
-            if (typeof this.updateLivesText === 'function') this.updateLivesText();
-            if (typeof this.moneyText !== 'undefined' && this.moneyText) {
-              this.moneyText.setText(`Farm Coins: ${this.gameState.farmCoins}`);
+            // Reset UI elements if they exist
+            if (this.scoreText) this.scoreText.setText("Score: 0");
+            if (this.farmCoinsText) this.farmCoinsText.setText(`Coins: ${this.gameState.farmCoins}`);
+            if (this.waveText) this.waveText.setText("Wave: 1");
+            if (this.livesText) this.livesText.setText("Lives: 3");
+            if (this.nextWaveButton) {
+              this.nextWaveButton.button.visible = false;
+              this.nextWaveButton.text.visible = false;
             }
             
-            console.log("Game cleanup complete");
+            // Reset upgrade system UI if necessary
+            if (this.upgradeSystem && typeof this.upgradeSystem.resetUI === 'function') {
+              this.upgradeSystem.resetUI(); // Assuming resetUI hides/resets the panel
+              this.upgradeSystem.setUIVisible(false); // Ensure it's hidden
+            }
+            
+            // Clear any lingering floating text or effects
+            // (Phaser might handle this, but explicit cleanup can help)
+            // Example: Find all text objects that are floating texts and destroy them
+            
+            // Reset sound manager state if needed (e.g., stop looping sounds)
+            if (this.soundManager) {
+              // this.soundManager.stopAllLoops(); // Assuming such a method exists
+            }
+            
+            // --- Add log ---
+            console.log("Game cleanup complete (End of cleanupCurrentGame)");
+            // --- End log ---
           } catch (error) {
             console.error("Error in cleanupCurrentGame:", error);
           }
