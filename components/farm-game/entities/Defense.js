@@ -39,51 +39,51 @@ export default class Defense {
       this.cost = 35;
       this.range = 210;
       this.cooldown = 1600;
-      this.damage = 0.4; // Decreased from 0.5
+      this.damage = 0.5; // Increased from 0.4
       this.targetTypes = ['bird'];
       this.aoeRadius = 80;
       this.aoeDamageMultiplier = 0.5;
       this.maxMana = 50;
       this.currentMana = this.maxMana;
-      this.manaCostPerShot = 8; // Decreased from 10 (~6 shots)
-      this.manaRegenRate = 4; // Increased from 2 (2s per shot regen)
+      this.manaCostPerShot = 8;
+      this.manaRegenRate = 4;
       this.createABSMage();
     } else if (type === 'dog') {
       this.cost = 50;
       this.range = 180;
       this.cooldown = 1500;
-      this.damage = 0.7; // Decreased from 0.9
+      this.damage = 0.85; // Increased from 0.7
       this.targetTypes = ['rabbit'];
       this.aoeRadius = 60;
       this.aoeDamageMultiplier = 0.6;
       this.maxMana = 60;
       this.currentMana = this.maxMana;
-      this.manaCostPerShot = 10; // Decreased from 12 (6 shots)
-      this.manaRegenRate = 5; // Increased from 2.4 (2s per shot regen)
+      this.manaCostPerShot = 10;
+      this.manaRegenRate = 5;
       this.createNOOTMage();
     } else if (type === 'wizard') {
       this.cost = 110;
       this.range = 260;
       this.cooldown = 2100;
-      this.damage = 1.2; // Decreased from 1.5
+      this.damage = 1.4; // Increased from 1.2
       this.targetTypes = ['bird', 'rabbit', 'fox', 'slime', 'ghost', 'skeleton', 'bat', 'spider', 'wolf', 'snake', 'goblin'];
       this.maxMana = 80;
       this.currentMana = this.maxMana;
-      this.manaCostPerShot = 18; // Decreased from 20 (~4-5 shots)
-      this.manaRegenRate = 6; // Increased from 3 (3s per shot regen)
+      this.manaCostPerShot = 18;
+      this.manaRegenRate = 6;
       this.createWizard();
     } else if (type === 'cannon') {
       this.cost = 165;
       this.range = 310;
       this.cooldown = 3800;
-      this.damage = 2.0; // Decreased from 2.5
+      this.damage = 2.4; // Increased from 2.0
       this.targetTypes = ['rabbit', 'fox', 'slime', 'skeleton', 'spider', 'wolf', 'snake', 'goblin'];
       this.aoeRadius = 100;
       this.aoeDamageMultiplier = 0.4;
       this.maxMana = 100;
       this.currentMana = this.maxMana;
-      this.manaCostPerShot = 30; // Decreased from 35 (~3-4 shots)
-      this.manaRegenRate = 7.5; // Increased from 4 (4s per shot regen)
+      this.manaCostPerShot = 30;
+      this.manaRegenRate = 7.5;
       this.createCannon();
     }
     
@@ -1038,29 +1038,45 @@ export default class Defense {
           }
         },
         onComplete: () => {
-          // Create explosion effect
-          const explosion = this.scene.add.circle(
-            enemyX, 
-            enemyY, 
-            20, 
-            color === 'blue' ? 0x00AAFF : 0xFF4400, 
-            0.7
-          );
-          explosion.setDepth(201);
-          
-          // Fade out explosion
-          this.scene.tweens.add({
-            targets: explosion,
-            alpha: 0,
-            scale: 2,
-            duration: 300,
-            onComplete: () => explosion.destroy()
-          });
+          // --- START FIX for scene/add error in callback ---
+          // Check if scene and adder are still valid before creating explosion
+          if (this.scene && this.scene.add) {
+              // Create explosion effect
+              const explosion = this.scene.add.circle(
+                enemyX, 
+                enemyY, 
+                20, 
+                color === 'blue' ? 0x00AAFF : 0xFF4400, 
+                0.7
+              );
+              explosion.setDepth(201);
+              
+              // Check if tweens manager is still valid before animating explosion
+              if (this.scene.tweens) {
+                  // Fade out explosion
+                  this.scene.tweens.add({
+                    targets: explosion,
+                    alpha: 0,
+                    scale: 2,
+                    duration: 300,
+                    onComplete: () => {
+                        // Check if explosion still exists before destroying
+                         if (explosion && explosion.scene) explosion.destroy();
+                    }
+                  });
+              } else {
+                  // If tweens are gone, destroy explosion immediately
+                   if (explosion && explosion.scene) explosion.destroy();
+              }
+          } else {
+             // console.log("Scene or scene.add became invalid before fireball explosion.");
+          }
+          // --- END FIX ---
           
           // Create AOE effect at impact point
           if (fireball.isAOE) {
             // Destroy the glow
-            if (glow) {
+            if (glow && glow.scene) {
               glow.destroy();
             }
             
@@ -1068,8 +1084,10 @@ export default class Defense {
             clearInterval(trailInterval);
           }
           
-          // Destroy fireball
-          fireball.destroy();
+          // Destroy fireball - check if active first
+          if (fireball && fireball.active) {
+              fireball.destroy();
+          }
         }
       });
       
@@ -1112,7 +1130,10 @@ export default class Defense {
   showDamageText(target, amount, color = 0xFF0000) {
     try {
       // Skip if scene or target is invalid
-      if (!this.scene || !target || !target.active) return;
+      if (!this.scene || !this.scene.add || !this.scene.tweens || !target || !target.active) {
+         // console.log("Skipping damage text: Invalid scene or target.");
+         return;
+      }
       
       // Create text style - improve visibility
       const textStyle = {
@@ -1129,11 +1150,27 @@ export default class Defense {
         }
       };
       
-      // Format the amount to one decimal place
-      const formattedAmount = amount.toFixed(1);
+      // --- START FIX for amount.toFixed error ---
+      let displayAmount = '';
+      if (typeof amount === 'number') {
+          // Format number to one decimal place, add minus sign
+          displayAmount = `-${amount.toFixed(1)}`;
+      } else if (typeof amount === 'string') {
+          // Display string directly (e.g., "CRITICAL!") - don't add minus sign
+          displayAmount = amount;
+      } else if (typeof amount === 'bigint') {
+          // Convert BigInt to string, add minus sign
+          displayAmount = `-${amount.toString()}`;
+      } else {
+          // Handle other unexpected types by converting to string
+          console.warn("showDamageText: Unexpected amount type:", typeof amount, amount);
+          displayAmount = `-${String(amount)}`;
+      }
+      // --- END FIX ---
       
       // Create the text object slightly offset from the target
-      const text = this.scene.add.text(target.x, target.y - 40, `-${formattedAmount}`, textStyle);
+      // Use the processed displayAmount
+      const text = this.scene.add.text(target.x, target.y - 40, displayAmount, textStyle);
       text.setOrigin(0.5);
       text.setDepth(2000); // Ensure visibility
       
@@ -1145,133 +1182,181 @@ export default class Defense {
         duration: 1200, // Longer duration
         ease: 'Cubic.easeOut',
         onComplete: () => {
-          text.destroy();
+          // Check if text still exists and has a scene context before destroying
+          if (text && text.scene) {
+            text.destroy();
+          }
         }
       });
     } catch (error) {
-      console.error("Error in showDamageText:", error);
+      console.error("Error in showDamageText:", error, "Target:", target, "Amount:", amount);
+       if (this.scene) {
+            console.error("Scene state:", { sys: !!this.scene.sys, add: !!this.scene.add, tweens: !!this.scene.tweens });
+       }
     }
   }
   
   createAttackEffect(enemy) {
-    // Create sparkling effect around enemy when hit
-    for (let i = 0; i < 8; i++) {
-      const angle = (Math.PI * 2 / 8) * i;
-      const x = enemy.x + Math.cos(angle) * 20;
-      const y = enemy.y + Math.sin(angle) * 20;
-      
-      const spark = this.scene.add.circle(
-        x, y, 3, 
-        this.type === 'scarecrow' ? 0x00AAFF : 0xFF4400, 
-        0.8
-      );
-      
-      // Animate spark outward
-      this.scene.tweens.add({
-        targets: spark,
-        x: x + Math.cos(angle) * 15,
-        y: y + Math.sin(angle) * 15,
-        alpha: 0,
-        duration: 300,
-        onComplete: () => spark.destroy()
-      });
+    // --- START FIX for scene/tween errors ---
+    // Early exit checks
+    if (!this.scene || !this.scene.sys || !this.scene.add || !this.scene.tweens || !enemy || !enemy.active) {
+        // console.log("Skipping attack effect: Invalid scene or enemy.");
+        return; // Exit if scene or essential parts/enemy are invalid/inactive
     }
-  }
+    // --- END FIX ---
+
+    const effectColor = this.type === 'scarecrow' ? 0x00AAFF : 0xFF4400;
+    const enemyX = enemy.x || 0;
+    const enemyY = enemy.y || 0;
+
+    try {
+        for (let i = 0; i < 8; i++) {
+            const angle = (Math.PI * 2 / 8) * i;
+            const x = enemyX + Math.cos(angle) * 20;
+            const y = enemyY + Math.sin(angle) * 20;
+
+            // Check scene validity *again* right before creating graphics/tweens
+            if (!this.scene || !this.scene.add || !this.scene.tweens) {
+                // console.log("Skipping spark creation loop: Scene became invalid mid-effect.");
+                return; // Stop creating more sparks if scene died
+            }
+
+            const spark = this.scene.add.circle(
+                x, y, 3,
+                effectColor,
+                0.8
+            ).setDepth(190); // Ensure visibility
+
+            // Animate spark outward
+            this.scene.tweens.add({
+                targets: spark,
+                x: x + Math.cos(angle) * 15,
+                y: y + Math.sin(angle) * 15,
+                alpha: 0,
+                scale: 0.5,
+                duration: 300,
+                ease: 'Quad.easeOut',
+                onComplete: () => {
+                    // Check if spark and scene still exist before destroying
+                    if (spark && spark.scene) {
+                        spark.destroy();
+                    }
+                }
+            });
+        }
+    } catch (error) {
+        console.error("Error creating attack effect sparks:", error, "Enemy:", enemy);
+        if (this.scene) {
+          console.error("Scene state:", { sys: !!this.scene.sys, add: !!this.scene.add, tweens: !!this.scene.tweens });
+        }
+    }
+}
+
   
   destroy() {
     try {
-      this.active = false; // Mark as inactive
-      
+      // console.log(`Attempting destroy on Defense ${this.type} at (${this.x?.toFixed(0)}, ${this.y?.toFixed(0)}) - Active: ${this.active}`);
+      if (!this.active) {
+        // console.log(`Defense ${this.type} already inactive/destroyed.`);
+        return; // Already destroyed or being destroyed
+      }
+      this.active = false; // Mark as inactive immediately
+
+      // --- START FIX: Kill tweens before destroying objects ---
+      if (this.scene && this.scene.tweens) {
+          if (this.sprite) this.scene.tweens.killTweensOf(this.sprite);
+          if (this.rangeIndicator) this.scene.tweens.killTweensOf(this.rangeIndicator);
+          if (this.cooldownText) this.scene.tweens.killTweensOf(this.cooldownText);
+          if (this.readyIndicator) this.scene.tweens.killTweensOf(this.readyIndicator);
+          if (this.noManaText) this.scene.tweens.killTweensOf(this.noManaText);
+          if (this.cooldownIndicator) this.scene.tweens.killTweensOf(this.cooldownIndicator);
+          if (this.cooldownContainer) this.scene.tweens.killTweensOf(this.cooldownContainer);
+          if (this.specialAttackIndicator) this.scene.tweens.killTweensOf(this.specialAttackIndicator);
+          if (this.specialAttackReadyIndicator) this.scene.tweens.killTweensOf(this.specialAttackReadyIndicator);
+          if (this.specialAttackText) this.scene.tweens.killTweensOf(this.specialAttackText);
+          if (this.targetLine) this.scene.tweens.killTweensOf(this.targetLine);
+          if (this.label) this.scene.tweens.killTweensOf(this.label);
+          // Kill tweens associated with this specific game object instance if possible
+          // Note: This might require more specific tween management if tweens aren't directly targeting these objects.
+          // Example: If tweens target generic properties, they might need explicit stopping elsewhere.
+      }
+      // --- END FIX ---
+
+
       // Destroy sprite and remove listeners
       if (this.sprite) {
-        // Explicitly remove listeners first
         this.sprite.off('pointerover');
         this.sprite.off('pointerout');
-        // Stop any running tweens on the sprite
-        this.scene?.tweens?.killTweensOf(this.sprite);
         this.sprite.destroy();
-        this.sprite = null; // Clear reference
+        this.sprite = null;
       }
-      
+
       // Destroy range indicator
       if (this.rangeIndicator) {
         this.rangeIndicator.destroy();
-        this.rangeIndicator = null; // Clear reference
+        this.rangeIndicator = null;
       }
-      
+
       // Destroy cooldown text
       if (this.cooldownText) {
         this.cooldownText.destroy();
-        this.cooldownText = null; // Clear reference
+        this.cooldownText = null;
       }
-      
+
       // Destroy ready indicator
       if (this.readyIndicator) {
         this.readyIndicator.destroy();
-        this.readyIndicator = null; // Clear reference
+        this.readyIndicator = null;
       }
-      
+
       // Destroy no mana text
       if (this.noManaText) {
         this.noManaText.destroy();
         this.noManaText = null;
       }
-      
+
       // Destroy cooldown indicator graphics and container
-      if (this.cooldownIndicator) { // The graphics object itself
+      if (this.cooldownIndicator) {
         this.cooldownIndicator.destroy();
         this.cooldownIndicator = null;
       }
-      if (this.cooldownContainer) { // The container holding the graphics
+      if (this.cooldownContainer) {
         this.cooldownContainer.destroy();
         this.cooldownContainer = null;
       }
-      
+
       // Destroy special attack indicators and text
-      if (this.specialAttackIndicator) { // The graphics object
+      if (this.specialAttackIndicator) {
         this.specialAttackIndicator.destroy();
         this.specialAttackIndicator = null;
       }
-      if (this.specialAttackReadyIndicator) { // The pulsing circle
-         this.scene?.tweens?.killTweensOf(this.specialAttackReadyIndicator); // Stop pulse tween
+      if (this.specialAttackReadyIndicator) {
         this.specialAttackReadyIndicator.destroy();
         this.specialAttackReadyIndicator = null;
       }
-       if (this.specialAttackText) { // The "SPECIAL" text
+       if (this.specialAttackText) {
         this.specialAttackText.destroy();
         this.specialAttackText = null;
       }
-      
+
       // Destroy target line if it exists
       if (this.targetLine) {
         this.targetLine.destroy();
         this.targetLine = null;
       }
 
-      // Destroy fallback label if it exists (from GameScene fallback creation)
+      // Destroy fallback label if it exists
        if (this.label && typeof this.label.destroy === 'function') {
         this.label.destroy();
         this.label = null;
       }
-      
-      // Note: Projectiles/effects initiated by this defense might need specific cleanup
-      // Note: Internal timers/tweens specific to this defense might need specific cleanup
-      // The scene-level cleanup (this.time.removeAllEvents()) should handle most cases, but keep this in mind if issues persist.
 
-      // Remove from scene's defenses array (redundant if GameScene clears it, but safe)
-      if (this.scene && this.scene.defenses) {
-        const index = this.scene.defenses.indexOf(this);
-        if (index > -1) {
-          // Use splice only if found, avoid modifying array if not needed
-          // this.scene.defenses.splice(index, 1); 
-          // Removed this line as GameScene.cleanupCurrentGame should handle clearing the main array
-        }
-      }
-      
+      // Remove from scene's defenses array - Handled by GameScene.cleanupCurrentGame
+
       // Final log after attempting cleanup
-      // console.log(`Defense ${this.type} at (${this.x}, ${this.y}) destroy attempted`);
+      // console.log(`Defense ${this.type} destroy process completed.`);
     } catch (error) {
-      console.error("Error destroying defense:", error);
+      console.error("Error during Defense destroy:", error, "Type:", this.type);
     } finally {
         // Ensure essential references are nullified even if errors occurred
         this.sprite = null;
@@ -1286,7 +1371,7 @@ export default class Defense {
         this.specialAttackText = null;
         this.targetLine = null;
         this.label = null;
-        this.scene = null; // Break reference to scene
+        this.scene = null; // Break reference to scene LAST
     }
   }
   
@@ -1360,13 +1445,13 @@ export default class Defense {
     // Determine original damage based on type AFTER the nerfs applied above
     let originalDamage;
     if (this.type === 'scarecrow') {
-      originalDamage = 0.4; // Updated base damage
+      originalDamage = 0.5; // Updated base damage
     } else if (this.type === 'dog') {
-      originalDamage = 0.7; // Updated base damage
+      originalDamage = 0.85; // Updated base damage
     } else if (this.type === 'wizard') {
-      originalDamage = 1.2; // Updated base damage
+      originalDamage = 1.4; // Updated base damage
     } else if (this.type === 'cannon') {
-      originalDamage = 2.0; // Updated base damage
+      originalDamage = 2.4; // Updated base damage
     } else {
       // Default or fallback damage if type is unknown
       originalDamage = 1.0;

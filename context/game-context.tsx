@@ -678,8 +678,15 @@ export const GameProvider = ({ children }: GameProviderProps) => {
         const newEarned = totalCoinsEarned + roundedAmount;
         setTotalCoinsEarned(newEarned);
         // Show toast for significant earnings
-        if (roundedAmount >= 50) toast.success(`Wow! You earned ${roundedAmount.toFixed(2)} coins!`);
-        else if (roundedAmount >= 10) toast.success(`You earned ${roundedAmount.toFixed(2)} coins!`);
+        if (roundedAmount >= 50) {
+          setTimeout(() => {
+            toast.success(`Wow! You earned ${roundedAmount.toFixed(2)} coins!`);
+          }, 0);
+        } else if (roundedAmount >= 10) {
+          setTimeout(() => {
+            toast.success(`You earned ${roundedAmount.toFixed(2)} coins!`);
+          }, 0);
+        }
         // Save to storage
         if (typeof window !== 'undefined') {
           localStorage.setItem('farm-coins', JSON.stringify(newTotal));

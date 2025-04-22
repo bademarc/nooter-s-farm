@@ -1028,8 +1028,8 @@ if (isBrowser) {
               wave: 1,
               score: 0,
               lives: 3,
-              farmCoins: 50,
-              clickDamage: 0.3, // Consistent starting click damage
+              farmCoins: 75, // Increased from 50
+              clickDamage: 0.5, // Increased from 0.3
               canPlant: true,
               autoWave: true, // Default to auto wave
               path: this.gameState.path // Preserve path if needed, or redefine
@@ -1054,7 +1054,7 @@ if (isBrowser) {
             this.updateWaveText(); // Should show Wave: 1
             this.updateScoreText(); // Should show Score: 0
             this.updateLivesText(); // Should show Lives: 3
-            this.updateFarmCoins(0); // Should show Coins: 50
+            this.updateFarmCoins(0); // Should show Coins: 75 (updated value)
             
             // Re-create or reset the upgrade system if needed
             if (this.UpgradeClass) {
@@ -1650,8 +1650,8 @@ if (isBrowser) {
               wave: 1,
               score: 0,
               lives: 3,
-              farmCoins: 50,
-              clickDamage: 0.3, // Consistent starting click damage
+              farmCoins: 75, // Increased from 50
+              clickDamage: 0.5, // Increased from 0.3
               canPlant: true,
               autoWave: true, // Default to auto wave
               path: this.gameState.path // Preserve path if needed, or redefine
@@ -1676,7 +1676,7 @@ if (isBrowser) {
             this.updateWaveText(); // Should show Wave: 1
             this.updateScoreText(); // Should show Score: 0
             this.updateLivesText(); // Should show Lives: 3
-            this.updateFarmCoins(0); // Should show Coins: 50
+            this.updateFarmCoins(0); // Should show Coins: 75 (updated value)
             
             // Re-create or reset the upgrade system if needed
             if (this.UpgradeClass) {
@@ -1772,13 +1772,32 @@ if (isBrowser) {
         
         // Update wave text
         updateWaveText() {
-          if (this.waveText) {
-            this.waveText.setText(`Wave: ${this.gameState.wave}`);
-            
-            // Ensure any big wave text showing also has the correct wave number
-            if (this._waveStartText && this._waveStartText.text) {
-              this._waveStartText.text.setText(`WAVE ${this.gameState.wave}`);
+          // FIX: Use this.waveText instead of this.uiElements.waveText
+          if (this.waveText && this.gameState) { 
+            if (this.gameState.wave !== undefined && this.gameState.wave !== null) {
+                // FIX: Use this.waveText
+                this.waveText.setText(`Wave: ${this.gameState.wave}`);
+            } else {
+                 // FIX: Use this.waveText
+                 this.waveText.setText(`Wave: N/A`); // Default text if wave is missing
             }
+
+            // Update the wave text stored in the game state
+            // this.gameState.waveText = `Wave: ${this.gameState.wave}`;
+
+            // Ensure any big wave text showing also has the correct wave number
+            // (This part correctly uses this._waveStartText)
+            if (this._waveStartText && this._waveStartText.active && this._waveStartText.text && typeof this._waveStartText.text.setText === 'function') {
+              try {
+                  this._waveStartText.text.setText(`WAVE ${this.gameState.wave}`);
+              } catch (e) {
+                  console.error("Error setting text on _waveStartText.text:", e, this._waveStartText);
+              }
+            }
+          } else {
+            // Log if waveText or gameState are missing
+             if (!this.waveText) console.warn("updateWaveText called but this.waveText is missing.");
+             if (!this.gameState) console.warn("updateWaveText called but this.gameState is missing.");
           }
         }
         
@@ -1798,12 +1817,14 @@ if (isBrowser) {
             if (this.waveChangeInProgress) {
               console.log("Resetting waveChangeInProgress flag at startWave");
               this.waveChangeInProgress = false;
-              // Clear the specific reset timeout if it exists
-              if (this._waveChangeResetTimeout) {
-                clearTimeout(this._waveChangeResetTimeout);
-                this._waveChangeResetTimeout = null;
+              // Clear the specific safety timeout set by forceNextWave
+              // FIX: Use the correct variable name _waveChangeTimeout
+              if (this._waveChangeTimeout) { 
+                console.log("Clearing safety timeout from forceNextWave.");
+                clearTimeout(this._waveChangeTimeout);
+                this._waveChangeTimeout = null;
               }
-            }
+            } // End if (this.waveChangeInProgress)
 
             // Check if already in progress or spawning
             if (this.waveInProgress || this.isSpawningEnemies) {
@@ -2380,84 +2401,6 @@ if (isBrowser) {
             
             // End current wave
             this.waveInProgress = false;
-            
-            // Check if player has completed wave 10 (meaning they're about to start wave 11)
-            // If so, trigger victory condition instead of starting a new wave
-            if (this.gameState.wave === 10) {
-              console.log("Player has reached wave 10 - Victory!");
-              
-              // Award bonus coins for victory
-              const victoryBonus = 500;
-              this.gameState.farmCoins += victoryBonus;
-              if (this.moneyText) {
-                this.moneyText.setText(`Farm Coins: ${this.gameState.farmCoins}`);
-              }
-              
-              // Show victory notification
-              this.showFloatingText(400, 250, "VICTORY!", 0x00FF00);
-              this.showFloatingText(400, 300, `You've defeated all 10 waves!`, 0xFFFF00);
-              this.showFloatingText(400, 350, `Bonus: +${victoryBonus} coins`, 0xFFD700);
-              
-              // Add a brief victory celebration before showing end screen
-              const victoryDelay = 3000;
-              
-              // Flash the screen with gold color
-              const flash = this.add.rectangle(400, 300, 800, 600, 0xFFD700, 0.3);
-              this.tweens.add({
-                targets: flash,
-                alpha: 0,
-                duration: 2000,
-                ease: 'Power2'
-              });
-              
-              // Create celebration particles if available
-              if (this.add.particles) {
-                try {
-                  const particles = this.add.particles(400, 300, 'pixel', {
-                    speed: { min: 100, max: 200 },
-                    scale: { start: 3, end: 0 },
-                    blendMode: 'ADD',
-                    lifespan: 2000,
-                    tint: [0xFFFF00, 0x00FF00, 0xFFD700],
-                    emitting: true
-                  });
-                  
-                  // Stop emitting after 2 seconds
-                  setTimeout(() => {
-                    if (particles && particles.emitters && particles.emitters.first) {
-                      particles.emitters.first.stop();
-                    }
-                  }, 2000);
-                  
-                  // Clean up particles after animation
-                  setTimeout(() => {
-                    if (particles && particles.destroy) {
-                      particles.destroy();
-                    }
-                  }, 3000);
-                } catch (e) {
-                  console.log("Particles not available for victory celebration", e);
-                }
-              }
-              
-              // Reset wave change flag
-              this.waveChangeInProgress = false;
-              
-              // Clean up safety timeout
-              if (this._waveChangeTimeout) {
-                clearTimeout(this._waveChangeTimeout);
-                this._waveChangeTimeout = null;
-              }
-              
-              // Show game completion screen after delay
-              setTimeout(() => {
-                if (typeof this.endGame === 'function') {
-                  this.endGame(true); // true indicates victory
-                }
-              }, victoryDelay);
-              
-              return; // Stop here, don't proceed to next wave
-            }
             
             // Increase wave counter - NO MAXIMUM WAVE LIMIT!
             this.gameState.wave++;
@@ -4806,8 +4749,8 @@ if (isBrowser) {
               wave: 1,
               score: 0,
               lives: 3, // Reset lives
-              farmCoins: 50, // Reset starting coins
-              clickDamage: 0.3, // Reset base click damage
+              farmCoins: 75, // Reset starting coins
+              clickDamage: 0.5, // Reset base click damage
               canPlant: true,
               autoWave: true // Reset auto-wave setting
             };
