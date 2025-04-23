@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
@@ -228,6 +228,12 @@ export default function EnhancedSlotMachine({ farmCoins, addFarmCoins, walletAdd
   const { toast } = useToast()
   const isMobile = useIsMobile()
 
+  // --- Memoized getCurrentBalance ---
+  const getCurrentBalance = useCallback(() => {
+    return availableTokens.find(t => t.symbol === selectedToken)?.balance || 0;
+  }, [availableTokens, selectedToken]);
+  // ----------------------------------
+
   // Initialize reels state on mount (Client-side)
   useEffect(() => {
     if (SYMBOLS && SYMBOLS.length > 0) {
@@ -268,11 +274,6 @@ export default function EnhancedSlotMachine({ farmCoins, addFarmCoins, walletAdd
   const getChecksumAddress = (address: string): string => {
     try { return ethers.getAddress(address); }
     catch (error) { console.error("Invalid address format:", error); return address; }
-  };
-
-  // Get current balance utility
-  const getCurrentBalance = () => {
-    return availableTokens.find(t => t.symbol === selectedToken)?.balance || 0;
   };
 
   // === Wallet Connection & Balance Fetching (Implementations) ===
@@ -591,94 +592,147 @@ export default function EnhancedSlotMachine({ farmCoins, addFarmCoins, walletAdd
     const balance = getCurrentBalance();
 
     if (balance < currentBet) {
-      showAppToast("Insufficient funds", "error"); return;
+      showAppToast("Insufficient funds", "error");
+      // Ensure states are reset on early exit
+      setIsSpinning(false);
+      setApprovalPending(false);
+      return;
     }
-    if (isSpinning || approvalPending) return;
+    if (isSpinning || approvalPending) {
+        console.log('[Spin Attempt Blocked]', { isSpinning, approvalPending });
+        // Ensure states are reset if somehow stuck and clicked again
+        if (!isSpinning && approvalPending) setApprovalPending(false);
+        if (isSpinning && !approvalPending) setIsSpinning(false);
+        return;
+    }
 
     console.log('[Spin Start]', { isSpinning, approvalPending }); // Log initial state
 
-    setIsSpinning(true);
-    console.log('[Spin] Set isSpinning = true');
-    setNeedsClaim(false);
-    setLastWinToken(null);
-    setWinAmount(0);
-    setShowWin(false);
-    setWinningLines([]);
-    setJackpotMode(false);
-    setNearMiss(false);
+    // Wrap core spin logic in try/finally
+    try {
+      setIsSpinning(true);
+      console.log('[Spin] Set isSpinning = true');
+      setNeedsClaim(false);
+      setLastWinToken(null);
+      setWinAmount(0);
+      setShowWin(false);
+      setWinningLines([]);
+      setJackpotMode(false);
+      setNearMiss(false);
 
-    let betSuccessful = false;
-    // Set pending true only if it's a token bet, otherwise no need
-    if (currentToken !== "FARM") {
-       setApprovalPending(true);
-       console.log('[Spin] Set approvalPending = true (for token bet)');
-    }
-
-    // --- Bet Processing ---
-    if (currentToken === "FARM") {
-      updateLocalTokenBalance("FARM", -currentBet);
-      betRef.current = currentBet;
-      tokenRef.current = "FARM";
-      betSuccessful = true;
-      console.log(`Farm Coin bet placed: ${currentBet}`);
-      // No need to set approvalPending false here as it wasn't set true
-    } else {
-      betSuccessful = await handleTokenBet(currentBet);
-      console.log('[Spin] Token bet result:', { betSuccessful });
-      // handleTokenBet resets approvalPending internally
-    }
-    // --------------------
-
-    if (!betSuccessful) {
-      setIsSpinning(false); // Stop if bet failed
-      // Ensure approvalPending is false if bet failed, especially if FARM was selected
+      let betSuccessful = false;
+      // Set pending true only if it's a token bet, otherwise no need
       if (currentToken !== "FARM") {
-         setApprovalPending(false);
+         setApprovalPending(true);
+         console.log('[Spin] Set approvalPending = true (for token bet)');
       }
-      console.log('[Spin End] Bet failed, set isSpinning = false');
-      return;
-    }
 
-    // --- Proceed with Spin Animation --- 
-    setSpinCount((prev) => prev + 1);
-    playSound(spinSound.current);
+      // --- Bet Processing ---
+      if (currentToken === "FARM") {
+        updateLocalTokenBalance("FARM", -currentBet);
+        betRef.current = currentBet;
+        tokenRef.current = "FARM";
+        betSuccessful = true;
+        console.log(`Farm Coin bet placed: ${currentBet}`);
+      } else {
+        betSuccessful = await handleTokenBet(currentBet);
+        console.log('[Spin] Token bet result:', { betSuccessful });
+        // handleTokenBet resets approvalPending internally ON FAILURE OR REJECTION.
+        // If successful, approvalPending remains true until the spin concludes.
+      }
+      // --------------------
 
-    const finalSymbols: Symbol[] = Array.from({ length: 3 }, () =>
-      SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)]
-    );
-    const reelSymbols = generateReelSymbols();
-
-    setReels(
-      reels.map((reel, index) => ({
-        ...reel,
-        spinning: true,
-        position: Math.floor(Math.random() * 20),
-        symbols: reelSymbols[index],
-        stopDelay: 800 + index * 600 + Math.random() * 400, // Keep random delays
-      }))
-    );
-
-    // Stop Reels Logic
-    reels.forEach((_, index) => {
-      const stopDelay = reels[index].stopDelay; // Use the delay set above
-      setTimeout(() => {
-        playSound(reelStopSound.current);
-        setReels((prevReels) => {
-          const newReels = [...prevReels];
-          newReels[index] = { ...newReels[index], spinning: false, symbol: finalSymbols[index] };
-          return newReels;
-        });
-
-        if (index === reels.length - 1) { // Last reel stopped
-          setTimeout(() => {
-            checkWin(finalSymbols);
-            setIsSpinning(false);
-            setApprovalPending(false); // Ensure reset after win check completes
-            console.log('[Spin End] Last reel stopped, checkWin called, set isSpinning = false, approvalPending = false');
-          }, 500);
+      if (!betSuccessful) {
+        // If bet failed (incl. token bet failure handled in handleTokenBet)
+        setIsSpinning(false); // Stop immediately
+        // Ensure approvalPending is false if bet failed, handleTokenBet might have already set it
+        if (approvalPending) {
+            setApprovalPending(false);
+            console.log('[Spin End] Bet failed, ensured approvalPending = false');
         }
-      }, stopDelay);
-    });
+        console.log('[Spin End] Bet failed, set isSpinning = false');
+        return; // Exit the try block
+      }
+
+      // --- Proceed with Spin Animation (Only if bet was successful) ---
+      setSpinCount((prev) => prev + 1);
+      playSound(spinSound.current);
+
+      // --- Update Auto-Spin Spent Amount ---
+      if (autoSpin && betSuccessful) {
+        const betJustMade = betRef.current; // Get the bet amount that was successful
+        setAmountSpentOnAutoSpin(prev => {
+          const newTotal = prev + betJustMade;
+          console.log(`[AutoSpin Update] Spent: ${betJustMade}, New Total Spent: ${newTotal}`);
+          return newTotal;
+        });
+      }
+      // ------------------------------------
+
+      const finalSymbols: Symbol[] = Array.from({ length: 3 }, () =>
+        SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)]
+      );
+      const reelSymbols = generateReelSymbols();
+
+      setReels(
+        reels.map((reel, index) => ({
+          ...reel,
+          spinning: true,
+          position: Math.floor(Math.random() * 20),
+          symbols: reelSymbols[index],
+          stopDelay: 800 + index * 600 + Math.random() * 400, // Keep random delays
+        }))
+      );
+
+      // Stop Reels Logic (Use Promise.all for better async handling)
+      const stopPromises = reels.map((_, index) => {
+        return new Promise<void>(resolve => {
+          const stopDelay = reels[index].stopDelay; // Use the delay set above
+          setTimeout(() => {
+            playSound(reelStopSound.current);
+            setReels((prevReels) => {
+              // Important: Ensure immutability
+              const newReels = prevReels.map((r, i) => {
+                  if (i === index) {
+                     return { ...r, spinning: false, symbol: finalSymbols[index] };
+                  }
+                  return r;
+              });
+              return newReels;
+            });
+            resolve(); // Resolve promise when this reel stops
+          }, stopDelay);
+        });
+      });
+
+      // Wait for all reels to finish stopping
+      await Promise.all(stopPromises);
+
+      // Check win *after* all reels have visually stopped
+      console.log('[Spin End] All reels stopped visually.');
+      await new Promise(resolve => setTimeout(resolve, 500)); // Short delay before win check
+      checkWin(finalSymbols);
+      console.log('[Spin End] checkWin completed.');
+
+      // Note: isSpinning and approvalPending are reset in the finally block
+
+    } catch (error) {
+        console.error("[Spin Error] An error occurred during the spin process:", error);
+        // Attempt to reset state even if errors occurred mid-spin
+    } finally {
+        console.log('[Spin Finally] Resetting isSpinning and approvalPending.');
+        setIsSpinning(false);
+        // Only reset approvalPending if it wasn't a FARM coin spin
+        // because handleTokenBet manages it for token failures.
+        // If the token bet *succeeded*, we need to reset it here.
+        if (currentToken !== "FARM" && approvalPending) {
+             setApprovalPending(false);
+        } else if (currentToken === "FARM" && approvalPending){
+            // Should not happen for FARM, but reset just in case state is inconsistent
+            setApprovalPending(false);
+            console.warn("[Spin Finally] approvalPending was true for a FARM spin, resetting.");
+        }
+    }
   };
 
   // Modified CheckWin Function
@@ -866,7 +920,23 @@ export default function EnhancedSlotMachine({ farmCoins, addFarmCoins, walletAdd
 
   // Auto-spin logic - Refined with logging and clearer conditions
   useEffect(() => {
-    console.log('[AutoSpin Effect Check]', { autoSpin, isSpinning, approvalPending, amountSpentOnAutoSpin, targetAutoSpinSpend });
+    const currentBalance = getCurrentBalance(); // Get current balance once
+    const currentTarget = targetAutoSpinSpend; // Get target once
+    const currentSpent = amountSpentOnAutoSpin; // Get spent amount once
+    const currentBet = bet; // Get current bet once
+
+    console.log('[AutoSpin Effect Check]', {
+      autoSpin,
+      isSpinning,
+      approvalPending,
+      currentBalance,
+      currentBet,
+      currentSpent,
+      currentTarget,
+      canAfford: currentBalance >= currentBet,
+      targetReached: currentTarget > 0 && currentSpent >= currentTarget,
+      nextExceeds: currentTarget > 0 && (currentSpent + currentBet) > currentTarget,
+    });
 
     if (autoSpinRef.current) {
       console.log('[AutoSpin Effect] Clearing existing timer ID:', autoSpinRef.current);
@@ -874,46 +944,52 @@ export default function EnhancedSlotMachine({ farmCoins, addFarmCoins, walletAdd
       autoSpinRef.current = null;
     }
 
-    const balance = getCurrentBalance();
-    const hasInsufficientFunds = balance < bet;
-    const hasReachedTargetSpend = targetAutoSpinSpend > 0 && amountSpentOnAutoSpin >= targetAutoSpinSpend;
-    // Stop if the *next* spin cannot be afforded or would exceed the target
-    const cannotAffordNext = hasInsufficientFunds;
-    const nextSpinExceedsTarget = targetAutoSpinSpend > 0 && (amountSpentOnAutoSpin + bet) > targetAutoSpinSpend;
-
+    // Conditions to STOP auto-spin
+    const cannotAffordNext = currentBalance < currentBet;
+    const hasReachedTarget = currentTarget > 0 && currentSpent >= currentTarget; // Use value captured at start of effect
+    const nextSpinExceedsTarget = currentTarget > 0 && (currentSpent + currentBet) > currentTarget; // Use values captured at start
     const isBetProcessing = approvalPending;
     const isCurrentlySpinning = isSpinning;
 
-    // Conditions to STOP auto-spin
-    const shouldStop = cannotAffordNext || hasReachedTargetSpend || isBetProcessing || nextSpinExceedsTarget;
+    const shouldStop = cannotAffordNext || hasReachedTarget || isBetProcessing || nextSpinExceedsTarget;
 
     // Conditions to START/SCHEDULE the next spin
-    const canStart = autoSpin && !isCurrentlySpinning && !shouldStop && targetAutoSpinSpend > 0;
+    // Ensure target is positive AND we are not currently spinning/processing AND stop conditions aren't met
+    const canStart = autoSpin && !isCurrentlySpinning && !isBetProcessing && !shouldStop && currentTarget > 0;
 
     if (autoSpin && shouldStop) {
-        console.log('[AutoSpin Effect] Stopping auto-spin due to conditions:', { cannotAffordNext, hasReachedTargetSpend, isBetProcessing, nextSpinExceedsTarget });
+        console.log('[AutoSpin Effect] Stopping auto-spin due to conditions:', { cannotAffordNext, hasReachedTarget, isBetProcessing, nextSpinExceedsTarget });
         setAutoSpin(false);
         setTargetAutoSpinSpend(0);
-        setAmountSpentOnAutoSpin(0); // Reset spent amount when stopping
-        if (cannotAffordNext) showAppToast("Auto-spin stopped: Insufficient funds for next spin.", "default")
-        else if (isBetProcessing) showAppToast("Auto-spin paused: Transaction pending.", "default")
-        else if (hasReachedTargetSpend || nextSpinExceedsTarget) showAppToast("Auto-spin stopped: Target spend reached/exceeded.", "default")
+        setAmountSpentOnAutoSpin(0);
+        setAutoSpinTotalBet(''); // Reset input field
+
+        if (cannotAffordNext) showAppToast("Auto-spin stopped: Insufficient funds for next spin.", "default");
+        else if (isBetProcessing) showAppToast("Auto-spin paused: Transaction pending.", "default");
+        else if (hasReachedTarget || nextSpinExceedsTarget) showAppToast("Auto-spin stopped: Target spend reached/exceeded.", "default");
 
     } else if (canStart) {
-        console.log('[AutoSpin Effect] Conditions met, scheduling next spin...');
+        console.log(`[AutoSpin Effect] Conditions met (${currentTarget > 0 ? `${currentSpent.toFixed(2)}/${currentTarget.toFixed(2)}` : 'No target'}), scheduling next spin...`);
         autoSpinRef.current = setTimeout(() => {
             console.log('[AutoSpin Timeout] Firing spin...');
-            spin();
-            autoSpinRef.current = null;
-        }, 1500);
+            // Ensure spin function is stable or update dependencies if it changes often
+            spin(); // spin will update amountSpentOnAutoSpin
+            autoSpinRef.current = null; // Clear ref after spin is initiated by timeout
+        }, 1500); // Delay between spins
         console.log('[AutoSpin Effect] Scheduled next spin with timer ID:', autoSpinRef.current);
-    } else {
-        if(autoSpin) {
-           console.log('[AutoSpin Effect] Conditions not met for scheduling.', { isCurrentlySpinning, shouldStop, targetAutoSpinSpend });
-           if (targetAutoSpinSpend <= 0 && autoSpin) {
-              showAppToast("Please set a total auto-spin amount.", "default");
-              setAutoSpin(false);
-           }
+    } else if (autoSpin) {
+        // Log why it didn't start if autoSpin is still true
+        console.log('[AutoSpin Effect] Conditions not met for scheduling.', { isCurrentlySpinning, isBetProcessing, shouldStop, currentTarget });
+        if (currentTarget <= 0 && autoSpin) {
+            showAppToast("Please set a valid total auto-spin amount.", "default");
+            setAutoSpin(false); // Stop if target is invalid
+            setAutoSpinTotalBet('');
+        } else if (isCurrentlySpinning) {
+            console.log('[AutoSpin Effect] Waiting for current spin animation to finish.');
+        } else if (isBetProcessing) {
+            console.log('[AutoSpin Effect] Waiting for bet processing to complete.');
+        } else if (shouldStop) {
+             console.log('[AutoSpin Effect] Waiting because a stop condition is met.');
         }
     }
 
@@ -924,8 +1000,10 @@ export default function EnhancedSlotMachine({ farmCoins, addFarmCoins, walletAdd
         autoSpinRef.current = null;
       }
     };
-     // Ensure all dependencies used in the checks are included
-  }, [autoSpin, isSpinning, approvalPending, bet, amountSpentOnAutoSpin, targetAutoSpinSpend, selectedToken, availableTokens, getCurrentBalance, showAppToast, spin, setAutoSpin, setAmountSpentOnAutoSpin, setTargetAutoSpinSpend]);
+  // Add getCurrentBalance (memoized) and setAutoSpinTotalBet to dependencies
+  // Note: Adding `spin` here might cause loops if not memoized correctly. Monitor console for excessive runs.
+  }, [autoSpin, isSpinning, approvalPending, bet, amountSpentOnAutoSpin, targetAutoSpinSpend, selectedToken, availableTokens, getCurrentBalance, showAppToast, /* spin, */ setAutoSpin, setAmountSpentOnAutoSpin, setTargetAutoSpinSpend, setAutoSpinTotalBet]);
+  // Temporarily commented out `spin` from deps to avoid potential infinite loops if it's not memoized. Add back if needed and ensure `spin` is stable (e.g., with useCallback).
 
   // --- Correct definition for toggleAutoSpin --- 
   const toggleAutoSpin = () => {
@@ -961,6 +1039,12 @@ export default function EnhancedSlotMachine({ farmCoins, addFarmCoins, walletAdd
     setAutoSpin(false);
     setTargetAutoSpinSpend(0);
     setAmountSpentOnAutoSpin(0);
+    setAutoSpinTotalBet(''); // Reset input field value
+    if (autoSpinRef.current) { // Clear any pending spin timeout
+        clearTimeout(autoSpinRef.current);
+        autoSpinRef.current = null;
+        console.log("[Stop Auto Spin] Cleared pending spin timeout.");
+    }
   };
 
   // Reset Effects (Unchanged)
