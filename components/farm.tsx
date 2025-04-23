@@ -39,7 +39,8 @@ import {
   Rocket,
   Shield,
   Package,
-  Leaf
+  Leaf,
+  Gem // Import Gem icon for slot machine tab
 } from "lucide-react";
 import { TokenSwap } from "@/components/token-swap";
 import { Switch } from "@/components/ui/switch";
@@ -55,6 +56,9 @@ const P5Wrapper = dynamic(() => import('./p5-platformer/P5Wrapper'), {
   ssr: false,
   loading: () => <div className="flex items-center justify-center h-64 text-white">Loading Platformer...</div>
 });
+// Import EnhancedSlotMachine
+import EnhancedSlotMachine from "@/app/slot-machine/components/enhanced-slot-machine";
+
 
 // Dynamically import P5Wrapper with SSR disabled
 const DynamicP5Wrapper = dynamic(() => import('./p5-platformer/P5Wrapper'), { // Corrected path
@@ -215,8 +219,8 @@ export function Farm() {
     console.log("All seeds:", seeds);
   }, [currentSeason, seeds]);
   
-  // Update activeTab state type to include 'crashout'
-  const [activeTab, setActiveTab] = useState<"farm" | "quests" | "market" | "swap" | "social" | "profile" | "animals" | "crafting" | "boosters" | "defend" | "crashout" | "platformer">("farm");
+  // Update activeTab state type to include 'crashout' and 'slot-machine'
+  const [activeTab, setActiveTab] = useState<"farm" | "quests" | "market" | "swap" | "social" | "profile" | "animals" | "crafting" | "boosters" | "defend" | "crashout" | "platformer" | "slot-machine">("farm");
   const [showParticles, setShowParticles] = useState(false);
   const [harvestAnimation, setHarvestAnimation] = useState<{
     plotIndex: number;
@@ -2153,6 +2157,14 @@ export function Farm() {
             <Home className="h-3 w-3 sm:h-4 sm:w-4" />
             Platformer
           </button>
+          {/* Add Slot Machine Tab Button */}
+          <button
+            onClick={() => setActiveTab("slot-machine")}
+            className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${activeTab === "slot-machine" ? "bg-white text-black" : "text-white/80"}`}
+          >
+            <Gem className="h-3 w-3 sm:h-4 sm:w-4" /> {/* Use Gem icon */}
+            Slot Machine
+          </button>
         </div>
         
         {/* Farm Tab */}
@@ -3534,6 +3546,19 @@ export function Farm() {
               ) : (
                 <LoadingPlaceholder /> 
               )} */}
+            </div>
+          </div>
+        )}
+
+        {/* Slot Machine Tab */}
+        {activeTab === "slot-machine" && (
+          <div className="animate-fadeIn">
+            <h2 className="text-xl font-semibold text-white border-b border-white/10 pb-2 mb-4 flex items-center">
+              <Gem className="h-5 w-5 mr-2 text-purple-400"/> Slot Machine
+            </h2>
+            <div className="noot-card p-1 overflow-hidden">
+              {/* Render the EnhancedSlotMachine component, passing props */}
+              <EnhancedSlotMachine farmCoins={farmCoins} addFarmCoins={addFarmCoins} />
             </div>
           </div>
         )}
