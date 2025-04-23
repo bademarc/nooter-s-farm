@@ -171,6 +171,7 @@ export default class Enemy {
         this.sprite = scene.add.sprite(0, 0, this.spriteKey);
         this.sprite.setDisplaySize(60, 60); // Larger size for better visibility
         this.sprite.setInteractive({ useHandCursor: true, pixelPerfect: false }); // Make it interactive for clicks with larger hitbox
+        this.sprite.flipX = true; // ADDED: Flip the sprite horizontally to face left
         
         // Make sprite more interactive
         this.sprite.on('pointerdown', () => {
