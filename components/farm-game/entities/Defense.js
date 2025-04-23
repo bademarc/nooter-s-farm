@@ -7,16 +7,16 @@ export default class Defense {
     this.x = x;
     this.y = y;
     this.active = true;
-    this.range = 150; // Default range
-    this.cooldown = 0; // Cooldown timer
-    this.damage = 1; // Default damage
+    this.range = 200; // Reduced range
+    this.cooldown = 1800; // Increased cooldown
+    this.damage = 0.45; // Reduced damage
     this.targetTypes = []; // Types of enemies this defense can target
     
     // Mana properties
     this.maxMana = 100; // Default max mana
     this.currentMana = this.maxMana;
-    this.manaCostPerShot = 10; // Default mana cost
-    this.manaRegenRate = 5; // Default mana regen per second
+    this.manaCostPerShot = 10; // Increased mana cost
+    this.manaRegenRate = 3.5; // Reduced mana regen
     this.isOutOfMana = false;
     
     // Special attack properties
@@ -28,8 +28,8 @@ export default class Defense {
     this.enemiesNeededForSpecial = 5; // Number of enemies needed to unlock special attack
     
     // Default AOE properties (can be overridden by type)
-    this.aoeRadius = 0;
-    this.aoeDamageMultiplier = 0;
+    this.aoeRadius = 70; // Reduced AOE radius
+    this.aoeDamageMultiplier = 0.4; // Reduced AOE damage
     
     // Get current wave for scaling
     const currentWave = this.scene.gameState?.wave || 1;
@@ -37,53 +37,53 @@ export default class Defense {
     // Set properties based on defense type
     if (type === 'scarecrow') {
       this.cost = 35;
-      this.range = 210;
-      this.cooldown = 1600;
-      this.damage = 0.5; // Increased from 0.4
+      this.range = 200; // Reduced range
+      this.cooldown = 1800; // Increased cooldown
+      this.damage = 0.45; // Reduced damage
       this.targetTypes = ['bird'];
-      this.aoeRadius = 80;
-      this.aoeDamageMultiplier = 0.5;
+      this.aoeRadius = 70; // Reduced AOE radius
+      this.aoeDamageMultiplier = 0.4; // Reduced AOE damage
       this.maxMana = 50;
       this.currentMana = this.maxMana;
-      this.manaCostPerShot = 8;
-      this.manaRegenRate = 4;
+      this.manaCostPerShot = 10; // Increased mana cost
+      this.manaRegenRate = 3.5; // Reduced mana regen
       this.createABSMage();
     } else if (type === 'dog') {
       this.cost = 50;
-      this.range = 180;
-      this.cooldown = 1500;
-      this.damage = 0.85; // Increased from 0.7
+      this.range = 170; // Reduced range
+      this.cooldown = 1700; // Increased cooldown
+      this.damage = 0.75; // Reduced damage
       this.targetTypes = ['rabbit'];
-      this.aoeRadius = 60;
-      this.aoeDamageMultiplier = 0.6;
+      this.aoeRadius = 55; // Reduced AOE radius
+      this.aoeDamageMultiplier = 0.5; // Reduced AOE damage
       this.maxMana = 60;
       this.currentMana = this.maxMana;
-      this.manaCostPerShot = 10;
-      this.manaRegenRate = 5;
+      this.manaCostPerShot = 12; // Increased mana cost
+      this.manaRegenRate = 4.5; // Reduced mana regen
       this.createNOOTMage();
     } else if (type === 'wizard') {
       this.cost = 110;
-      this.range = 260;
-      this.cooldown = 2100;
-      this.damage = 1.4; // Increased from 1.2
+      this.range = 245; // Reduced range
+      this.cooldown = 2300; // Increased cooldown
+      this.damage = 1.2; // Reduced damage
       this.targetTypes = ['bird', 'rabbit', 'fox', 'slime', 'ghost', 'skeleton', 'bat', 'spider', 'wolf', 'snake', 'goblin'];
       this.maxMana = 80;
       this.currentMana = this.maxMana;
-      this.manaCostPerShot = 18;
-      this.manaRegenRate = 6;
+      this.manaCostPerShot = 20; // Increased mana cost
+      this.manaRegenRate = 5.5; // Reduced mana regen
       this.createWizard();
     } else if (type === 'cannon') {
       this.cost = 165;
-      this.range = 310;
-      this.cooldown = 3800;
-      this.damage = 2.4; // Increased from 2.0
+      this.range = 290; // Reduced range
+      this.cooldown = 4000; // Increased cooldown
+      this.damage = 2.1; // Reduced damage
       this.targetTypes = ['rabbit', 'fox', 'slime', 'skeleton', 'spider', 'wolf', 'snake', 'goblin'];
-      this.aoeRadius = 100;
-      this.aoeDamageMultiplier = 0.4;
+      this.aoeRadius = 90; // Reduced AOE radius
+      this.aoeDamageMultiplier = 0.35; // Reduced AOE damage
       this.maxMana = 100;
       this.currentMana = this.maxMana;
-      this.manaCostPerShot = 30;
-      this.manaRegenRate = 7.5;
+      this.manaCostPerShot = 35; // Increased mana cost
+      this.manaRegenRate = 7.0; // Reduced mana regen
       this.createCannon();
     }
     
@@ -1445,13 +1445,13 @@ export default class Defense {
     // Determine original damage based on type AFTER the nerfs applied above
     let originalDamage;
     if (this.type === 'scarecrow') {
-      originalDamage = 0.5; // Updated base damage
+      originalDamage = 0.45; // Updated base damage
     } else if (this.type === 'dog') {
-      originalDamage = 0.85; // Updated base damage
+      originalDamage = 0.75; // Updated base damage
     } else if (this.type === 'wizard') {
-      originalDamage = 1.4; // Updated base damage
+      originalDamage = 1.2; // Updated base damage
     } else if (this.type === 'cannon') {
-      originalDamage = 2.4; // Updated base damage
+      originalDamage = 2.1; // Updated base damage
     } else {
       // Default or fallback damage if type is unknown
       originalDamage = 1.0;

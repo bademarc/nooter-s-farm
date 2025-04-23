@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useContext } from "react";
+import React, { useState, useEffect, useContext, useRef, useCallback } from "react";
 import { GameContext } from "@/context/game-context";
 import { FarmPlot } from "@/components/farm-plot";
 import { SeedSelector } from "@/components/seed-selector";
@@ -44,11 +44,23 @@ import {
 import { TokenSwap } from "@/components/token-swap";
 import { Switch } from "@/components/ui/switch";
 import DynamicWrapper from '@/components/dynamic-wrapper';
+import dynamic from 'next/dynamic'; // Import dynamic
 
 // Import the ClientWrapper instead of FarmGame directly
 import ClientWrapper from './farm-game/ClientWrapper';
 // Import CrashoutGame
 import { CrashoutGame } from './crashout-game'; // Assuming it's in the components folder
+// Dynamically import the P5 Platformer Wrapper
+const P5Wrapper = dynamic(() => import('./p5-platformer/P5Wrapper'), {
+  ssr: false,
+  loading: () => <div className="flex items-center justify-center h-64 text-white">Loading Platformer...</div>
+});
+
+// Dynamically import P5Wrapper with SSR disabled
+const DynamicP5Wrapper = dynamic(() => import('./p5-platformer/P5Wrapper'), { // Corrected path
+  ssr: false,
+  loading: () => <LoadingPlaceholder /> // Use your LoadingPlaceholder here
+});
 
 // Use the actual Plot interface from game-context
 interface Plot {
@@ -204,7 +216,7 @@ export function Farm() {
   }, [currentSeason, seeds]);
   
   // Update activeTab state type to include 'crashout'
-  const [activeTab, setActiveTab] = useState<"farm" | "quests" | "market" | "swap" | "social" | "profile" | "animals" | "crafting" | "boosters" | "defend" | "crashout">("farm");
+  const [activeTab, setActiveTab] = useState<"farm" | "quests" | "market" | "swap" | "social" | "profile" | "animals" | "crafting" | "boosters" | "defend" | "crashout" | "platformer">("farm");
   const [showParticles, setShowParticles] = useState(false);
   const [harvestAnimation, setHarvestAnimation] = useState<{
     plotIndex: number;
@@ -1937,6 +1949,11 @@ export function Farm() {
     setClientXpToNext(playerXpToNext);
   }, [playerLevel, playerXp, playerXpToNext]);
   
+  // Log activeTab changes
+  useEffect(() => {
+    console.log("[farm.tsx] Active tab changed to:", activeTab);
+  }, [activeTab]);
+  
   return (
     <div className="flex flex-col min-h-screen bg-black overflow-x-hidden text-white">
       {/* Expansion error alert */}
@@ -2125,9 +2142,16 @@ export function Farm() {
             onClick={() => setActiveTab("crashout")}
             className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${activeTab === "crashout" ? "bg-white text-black" : "text-white/80"}`}
           >
-            {/* You might want a better icon here */}
-            <Rocket className="h-3 w-3 sm:h-4 sm:w-4" /> 
+            <Rocket className="h-3 w-3 sm:h-4 sm:w-4" />
             Crashout
+          </button>
+          {/* Add Platformer Tab Button */}
+          <button 
+            onClick={() => setActiveTab("platformer")}
+            className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${activeTab === "platformer" ? "bg-white text-black" : "text-white/80"}`}
+          >
+            <Home className="h-3 w-3 sm:h-4 sm:w-4" />
+            Platformer
           </button>
         </div>
         
@@ -3457,31 +3481,32 @@ export function Farm() {
           </div>
         )}
 
-        {/* Defend Farm Tab */}
+        {/* Defend Farm Tab - Conditionally Render ClientWrapper */}
         {activeTab === "defend" && (
-          <div className="space-y-4">
-            <h2 className="text-xl font-semibold text-white border-b border-white/10 pb-2">
-              Defend Your Farm
-            </h2>
-            
-            <div className="noot-card p-1 overflow-hidden">
-              {isClient && (
-                <div className="w-full max-w-full overflow-x-auto">
-                  <ClientWrapper 
-                    farmCoins={farmCoins} 
-                    addFarmCoins={addFarmCoins}
-                  />
+          // Log when this section renders
+          (() => {
+            console.log("[farm.tsx] Rendering Defend Farm tab content (ClientWrapper)");
+            return (
+              <div className="space-y-4 animate-fadeIn"> 
+                <h2 className="text-xl font-semibold text-white border-b border-white/10 pb-2">
+                  Defend Your Farm
+                </h2>
+                <div className="noot-card p-1 overflow-hidden">
+                  {isClient ? (
+                    <div className="w-full max-w-full overflow-x-auto">
+                      <ClientWrapper 
+                         key="defend-game-instance" 
+                         farmCoins={farmCoins} 
+                         addFarmCoins={addFarmCoins}
+                      />
+                    </div>
+                  ) : (
+                     <LoadingPlaceholder />
+                  )}
                 </div>
-              )}
-              {!isClient && (
-                <div className="w-full h-[400px] sm:h-[500px] md:h-[600px] flex items-center justify-center bg-black/20">
-                  <div className="text-white text-center">
-                    <div className="mb-4">Loading farm defense...</div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
+              </div>
+            );
+          })()
         )}
         
         {/* Crashout Tab */}
@@ -3491,6 +3516,25 @@ export function Farm() {
               Crashout Game
             </h2>
             <CrashoutGame farmCoins={farmCoins} addFarmCoins={addFarmCoins} />
+          </div>
+        )}
+
+        {/* Platformer Tab */}
+        {activeTab === "platformer" && (
+          <div className="animate-fadeIn">
+            <h2 className="text-xl font-semibold text-white border-b border-white/10 pb-2 mb-4">
+              Platformer Game
+            </h2>
+            <div className="noot-card p-1 overflow-hidden">
+              {/* Use the dynamically imported component */}
+              <DynamicP5Wrapper /> 
+              {/* Remove the old isClient check here if desired, dynamic handles it */}
+              {/* {isClient ? (
+                <P5Wrapper />
+              ) : (
+                <LoadingPlaceholder /> 
+              )} */}
+            </div>
           </div>
         )}
       </div>
@@ -3526,6 +3570,17 @@ export function Farm() {
           </div>
         </div>
       </footer>
+    </div>
+  );
+}
+
+// Ensure LoadingPlaceholder is defined within or imported into farm.tsx if used here
+function LoadingPlaceholder() {
+  return (
+    <div className="w-full h-[400px] sm:h-[500px] md:h-[600px] flex items-center justify-center bg-black/20 border border-white/10">
+      <div className="text-white text-center px-4">
+        <div className="mb-4">Loading farm defense...</div>
+      </div>
     </div>
   );
 }

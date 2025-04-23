@@ -14,7 +14,7 @@ let GameSceneClass = null;
 const FarmGameInner = ({ farmCoins, addFarmCoins }) => {
   const [gameStarted, setGameStarted] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
-  const [isClient, setIsClient] = useState(false);
+  const isClient = useRef(false);
   const [isInitializing, setIsInitializing] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [localFarmCoins, setLocalFarmCoins] = useState(0);
@@ -45,54 +45,29 @@ const FarmGameInner = ({ farmCoins, addFarmCoins }) => {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
   
-  // This useEffect ensures we only run client-side code after mounting
+  // Mount effect
   useEffect(() => {
-    if (initializationAttempted.current) {
-      console.log("Initialization already attempted, skipping");
-      return;
-    }
-    
     console.log("FarmGame mounted on client side");
-    setIsClient(true);
-    setIsMounted(true);
-    initializationAttempted.current = true;
+    isClient.current = true;
     
-    // Safely parse farm coins to prevent overflow
-    const safeFarmCoins = Math.min(Number(farmCoins) || 0, 1000000); // Cap at 1 million
-    setLocalFarmCoins(safeFarmCoins);
-    
+    // Trigger initialization once after mount
+    initializeGame(farmCoins, addFarmCoins); 
+
+    // Cleanup function remains the same
     return () => {
       console.log("FarmGame unmounting, cleaning up...");
       if (gameInstanceRef.current) {
         try {
-          // Remove all event listeners first
-          if (gameInstanceRef.current.events) {
-            gameInstanceRef.current.events.removeAllListeners();
-          }
-          
-          // Destroy the game instance
           console.log("Destroying game instance");
-        gameInstanceRef.current.destroy(true);
-        gameInstanceRef.current = null;
+          gameInstanceRef.current.destroy(true);
+          gameInstanceRef.current = null;
         } catch (error) {
           console.error("Error destroying game on unmount:", error);
         }
       }
-      setIsMounted(false);
-      initializationAttempted.current = false;
+      isClient.current = false;
     };
   }, []);
-
-  // Update local state when prop changes
-  useEffect(() => {
-    if (isMounted && gameInstanceRef.current) {
-      // Safely parse farm coins to prevent overflow
-      const safeFarmCoins = Math.min(Number(farmCoins) || 0, 1000000); // Cap at 1 million
-      console.log("Updating farm coins from props:", safeFarmCoins);
-      setLocalFarmCoins(safeFarmCoins);
-      gameInstanceRef.current.registry.set('farmCoins', safeFarmCoins);
-    }
-  }, [farmCoins, isMounted]);
 
   // Preload game modules once to prevent repeated dynamic imports
   const preloadGameModules = async () => {
@@ -177,11 +152,11 @@ const FarmGameInner = ({ farmCoins, addFarmCoins }) => {
     }
   };
 
-  // Initialize game
-  const initializeGame = useCallback(async () => {
-    if (!isClient || !gameContainerRef.current || isInitializing || gameInstanceRef.current) {
-      console.log("Skipping game initialization:", {
-        isClient,
+  // Initialize game - Now takes dependencies as arguments
+  const initializeGame = useCallback(async (initialFarmCoins, addFarmCoinsCallback) => {
+    if (!isClient.current || !gameContainerRef.current || isInitializing || gameInstanceRef.current) {
+      console.log("Skipping game initialization (guard check):", {
+        isClient: isClient.current,
         hasContainer: !!gameContainerRef.current,
         isInitializing,
         hasGameInstance: !!gameInstanceRef.current
@@ -193,12 +168,9 @@ const FarmGameInner = ({ farmCoins, addFarmCoins }) => {
     console.log("Starting game initialization...");
 
     try {
-      // Try to use preloaded modules if available
       let Phaser;
       try {
-        // Try to load from preloaded modules first
         Phaser = await preloadGameModules();
-        console.log("Using preloaded Phaser module");
       } catch (error) {
         console.error("Failed to use preloaded modules, trying direct import:", error);
         
@@ -210,9 +182,8 @@ const FarmGameInner = ({ farmCoins, addFarmCoins }) => {
         Phaser = PhaserModule.default;
       }
 
-      // If still no Phaser, abort
       if (!Phaser) {
-        throw new Error("Failed to load Phaser module");
+        throw new Error("Failed to load Phaser module after all attempts");
       }
 
       // Load game modules individually with error handling
@@ -269,21 +240,17 @@ const FarmGameInner = ({ farmCoins, addFarmCoins }) => {
         throw error;
       }
 
-      // Reset farm coins to zero
-      const safeFarmCoins = 0;
-      setLocalFarmCoins(safeFarmCoins);
-      if (typeof addFarmCoins === 'function') {
-        addFarmCoins(-farmCoins); // Reset to zero
-      }
+      // Use the passed initialFarmCoins
+      const safeFarmCoins = Math.min(Number(initialFarmCoins) || 0, 1000000);
 
       // Create game configuration
-          const config = {
-            type: Phaser.AUTO,
-            parent: gameContainerRef.current,
-            width: 800,
-            height: 600,
-            physics: {
-              default: 'arcade',
+      const config = {
+        type: Phaser.AUTO,
+        parent: gameContainerRef.current,
+        width: 800,
+        height: 600,
+        physics: {
+          default: 'arcade',
           arcade: {
             gravity: { y: 0 },
             debug: false
@@ -315,10 +282,10 @@ const FarmGameInner = ({ farmCoins, addFarmCoins }) => {
         disableContextMenu: true
       };
 
-      // Create game instance
-      console.log("Creating game instance...");
+      console.log("Creating game instance with config:", config);
       const game = new Phaser.Game(config);
       gameInstanceRef.current = game;
+      window.game = game;
 
       // Store classes in game registry
       game.registry.set('EnemyClass', EnemyClass);
@@ -327,19 +294,19 @@ const FarmGameInner = ({ farmCoins, addFarmCoins }) => {
       game.registry.set('UpgradeClass', UpgradeClass);
       game.registry.set('farmCoins', safeFarmCoins);
 
-      // Store game instance in registry with safe farm coins value
-      game.registry.set('addFarmCoins', (amount) => {
-        try {
-          const currentCoins = game.registry.get('farmCoins') || 0;
-          const newCoins = Math.min(currentCoins + amount, 1000000); // Cap at 1 million
-          game.registry.set('farmCoins', newCoins);
-          setLocalFarmCoins(newCoins);
-          addFarmCoins(amount);
-          console.log("Farm coins updated in game:", newCoins);
-            } catch (error) {
-          console.error("Error updating farm coins:", error);
-        }
-      });
+      // Store the addFarmCoins callback correctly
+      if (typeof addFarmCoinsCallback === 'function') {
+        game.registry.set('addFarmCoins', (amount) => {
+          try {
+            console.log(`[Phaser Registry] Calling addFarmCoinsCallback with: ${amount}`);
+            addFarmCoinsCallback(amount); 
+          } catch (error) {
+            console.error("Error in registry addFarmCoins callback:", error);
+          }
+        });
+      } else {
+        console.error("addFarmCoins callback was not provided to initializeGame");
+      }
 
       // Wait for the game to be ready
       game.events.once('ready', () => {
@@ -348,38 +315,17 @@ const FarmGameInner = ({ farmCoins, addFarmCoins }) => {
       });
 
       console.log("Game initialization complete!");
-      } catch (error) {
-        console.error("Error initializing game:", error);
+    } catch (error) {
+      console.error("Error initializing game:", error);
       setHasError(true);
     } finally {
         setIsInitializing(false);
     }
-  }, [isClient, farmCoins, addFarmCoins]);
-
-  // Initialize game when component mounts
-  useEffect(() => {
-    if (isClient && !isInitializing && !gameInstanceRef.current) {
-    initializeGame();
-    }
-  }, [isClient, initializeGame]);
-    
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (gameInstanceRef.current) {
-        try {
-          gameInstanceRef.current.destroy(true);
-          gameInstanceRef.current = null;
-        } catch (error) {
-          console.error("Error destroying game:", error);
-        }
-      }
-    };
-  }, []);
+  }, [isInitializing]);
 
   // Wave progression check
   useEffect(() => {
-    if (!isClient || !gameInstanceRef.current || !gameStarted) return;
+    if (!isClient.current || !gameInstanceRef.current || !gameStarted) return;
     
     /* // Remove this interval - wave progression is handled in GameScene.js update loop
     const checkWaveProgression = setInterval(() => {
@@ -415,7 +361,6 @@ const FarmGameInner = ({ farmCoins, addFarmCoins }) => {
       try {
         // Reset farm coins to 0
         const safeFarmCoins = 0;
-        setLocalFarmCoins(safeFarmCoins);
         addFarmCoins(-farmCoins); // Reset to 0 by subtracting current amount
         
         // Reset game instance
@@ -518,7 +463,7 @@ const FarmGameInner = ({ farmCoins, addFarmCoins }) => {
             <p className="mb-2">2 - Place NOOT Mage (50 coins)</p>
           </div>
           
-          {isClient && (
+          {isClient.current && (
             <div className="mt-6 bg-black/30 p-4 rounded-lg">
               <h2 className="text-xl font-bold mb-2">Stats</h2>
               <p className="mb-2">Farm Coins: {localFarmCoins.toLocaleString()}</p>
@@ -528,7 +473,7 @@ const FarmGameInner = ({ farmCoins, addFarmCoins }) => {
       )}
       
       {/* Mobile controls banner - only shown on mobile */}
-      {isMobile && isClient && (
+      {isMobile && isClient.current && (
         <div className="w-full mb-2 p-2 bg-black/30 text-white text-sm flex justify-between items-center">
           <div>💰 {localFarmCoins.toLocaleString()} coins</div>
           <div>👆 Tap to attack</div>
@@ -537,7 +482,7 @@ const FarmGameInner = ({ farmCoins, addFarmCoins }) => {
       
       {/* Game container - with responsive classes based on mobile or desktop */}
       <div className={`${isMobile ? 'w-full' : 'w-[800px]'} ${isMobile ? 'h-[450px]' : 'h-[600px]'} bg-black/20 border border-white/10`} ref={gameContainerRef}>
-        {(!isClient || isInitializing) && (
+        {(!isClient.current || isInitializing) && (
           <div className="w-full h-full flex items-center justify-center">
             <p className="text-white">{isInitializing ? "Initializing game..." : "Loading game..."}</p>
           </div>

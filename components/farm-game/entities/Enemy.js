@@ -25,18 +25,18 @@ export default class Enemy {
     
     // Get current wave for scaling difficulty
     const currentWave = this.scene.gameState?.wave || 1;
-    // REDUCED SCALING: Lower multiplier
-    const waveScaling = Math.min(2.5, 1 + (currentWave * 0.15)); // Was: min(3.5, 1 + (currentWave * 0.3))
+    // INCREASED SCALING: Higher multiplier
+    const waveScaling = Math.min(3.0, 1 + (currentWave * 0.18)); // Was: min(2.5, 1 + (currentWave * 0.15))
     
     // Set properties based on type with wave scaling
     if (type === 'bird') {
       // Base properties
       this.baseSpeed = 1.8;
-      this.baseHealth = 5; // Back to 5
-      this.baseValue = 6; // Reduced from 8
+      this.baseHealth = 7; // Increased from 5
+      this.baseValue = 6;
       
       // Scale with wave
-      this.speed = this.baseSpeed + (currentWave * 0.1); // Reduced speed scaling slightly
+      this.speed = this.baseSpeed + (currentWave * 0.12); // Slightly faster scaling
       this.health = Math.floor(this.baseHealth * waveScaling);
       this.maxHealth = this.health;
       this.value = Math.floor(this.baseValue * waveScaling);
@@ -47,12 +47,12 @@ export default class Enemy {
     } else if (type === 'deer') {
       // Deer: Tougher, slower, higher value, appears later
       this.baseSpeed = 1.0; 
-      this.baseHealth = 15; // Back to 15
-      this.baseValue = 12; // Reduced from 15
+      this.baseHealth = 18; // Increased from 15
+      this.baseValue = 12;
       
       // Scale with wave
-      this.speed = this.baseSpeed + (currentWave * 0.06); // Reduced speed scaling
-      this.health = Math.floor(this.baseHealth * waveScaling * 1.15); // Slightly less scaling
+      this.speed = this.baseSpeed + (currentWave * 0.07); // Slightly faster scaling
+      this.health = Math.floor(this.baseHealth * waveScaling * 1.20); // Increased scaling slightly
       this.maxHealth = this.health;
       this.value = Math.floor(this.baseValue * waveScaling);
       
@@ -60,17 +60,17 @@ export default class Enemy {
       this.weakAgainst = 'cannon';
       this.weaknessMultiplier = 1.8;
       
-      // Deer might have higher damage resistance - Reduced scaling
-      this.damageResistance = Math.min(0.4, Math.max(0, currentWave - 3) * 0.05); // Was: min(0.6, ... * 0.07)
+      // Deer might have higher damage resistance - Increased scaling slightly
+      this.damageResistance = Math.min(0.5, Math.max(0, currentWave - 3) * 0.06); // Was: min(0.4, ... * 0.05)
       
     } else { // Rabbit (default)
       // Base properties
       this.baseSpeed = 1.5;
-      this.baseHealth = 6; // Back to 6
-      this.baseValue = 5; // Reduced from 6
+      this.baseHealth = 8; // Increased from 6
+      this.baseValue = 5;
       
       // Scale with wave
-      this.speed = this.baseSpeed + (currentWave * 0.08); // Reduced speed scaling
+      this.speed = this.baseSpeed + (currentWave * 0.09); // Slightly faster scaling
       this.health = Math.floor(this.baseHealth * waveScaling);
       this.maxHealth = this.health;
       this.value = Math.floor(this.baseValue * waveScaling);
@@ -81,7 +81,7 @@ export default class Enemy {
     }
     
     // Set a default damage value used when enemy reaches the end
-    this.damage = type === 'deer' ? 3 : 2; // Reduced base damage slightly
+    this.damage = type === 'deer' ? 3 : 2; // Keep base damage same for now
     
     // RE-ENABLED: Anti-stacking position variation
     this.x += (Math.random() - 0.5) * 40; 
@@ -91,35 +91,35 @@ export default class Enemy {
     // console.log(`Enemy ${this.id} after position variation: (${this.x}, ${this.y})`);
     
     // Ensure minimum values
-    this.health = Math.max(3, this.health); // Reduced min health
-    this.speed = Math.max(0.7, this.speed); // Reduced min speed
-    this.value = Math.max(3, this.value); // Reduced min value
+    this.health = Math.max(4, this.health); // Increased min health
+    this.speed = Math.max(0.8, this.speed); // Increased min speed
+    this.value = Math.max(3, this.value); // Keep min value
     
     // Cap maximum speed to prevent teleporting/sonic speed
-    this.speed = Math.min(2.5, this.speed); // Reduced max speed
+    this.speed = Math.min(2.8, this.speed); // Increased max speed slightly
     
     // Apply difficulty bonuses to later waves with reduced speed scaling
-    if (currentWave > 1) { 
-      // REDUCED flat health bonus
-      this.health += Math.floor(currentWave * 0.2); // Was: 0.4
+    if (currentWave > 1) {
+      // INCREASED flat health bonus
+      this.health += Math.floor(currentWave * 0.3); // Was: 0.2
       // Speed bonus removed here, handled in base scaling only
-      // Apply general damage resistance if not deer - Reduced scaling
+      // Apply general damage resistance if not deer - Increased scaling slightly
       if (type !== 'deer') {
-          this.damageResistance = Math.min(0.35, Math.max(0, currentWave - 1) * 0.04); // Was: min(0.5, ... * 0.05)
+          this.damageResistance = Math.min(0.40, Math.max(0, currentWave - 1) * 0.05); // Was: min(0.35, ... * 0.04)
       }
     }
     
     // Boss waves - Adjustments
     if (currentWave % 5 === 0) {
-      this.health = Math.floor(this.health * 1.4); // Slightly less multiplier
+      this.health = Math.floor(this.health * 1.5); // Slightly higher multiplier
       this.maxHealth = this.health;
-      this.value = Math.floor(this.value * 1.8); // Slightly less multiplier
+      this.value = Math.floor(this.value * 2.0); // Slightly higher multiplier
       this.isBoss = true;
       
       if (this.damageResistance) {
-        this.damageResistance = Math.min(0.5, this.damageResistance + 0.1); // Cap resistance
+        this.damageResistance = Math.min(0.55, this.damageResistance + 0.1); // Cap resistance slightly higher
       } else {
-        this.damageResistance = 0.1;
+        this.damageResistance = 0.15; // Slightly higher base for boss
       }
       
       // Use boss sprite for boss waves

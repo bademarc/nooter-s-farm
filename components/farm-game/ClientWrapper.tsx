@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
+import Phaser from 'phaser';
 
 // Type declarations for Phaser objects
 declare global {
@@ -390,13 +391,19 @@ function applyMageFixes() {
             try {
               obj.setInteractive({ useHandCursor: true });
               
-              // Add hover effects
-              obj.on('pointerover', function() {
-                if (this.setTint) this.setTint(0xddddff);
+              // Add hover effects with check for method existence
+              obj.on('pointerover', function(this: Phaser.GameObjects.GameObject) { 
+                // Check if setTint exists before calling
+                if (typeof (this as any).setTint === 'function') { 
+                  (this as any).setTint(0xddddff);
+                }
               });
               
-              obj.on('pointerout', function() {
-                if (this.clearTint) this.clearTint();
+              obj.on('pointerout', function(this: Phaser.GameObjects.GameObject) { 
+                // Check if clearTint exists before calling
+                if (typeof (this as any).clearTint === 'function') { 
+                  (this as any).clearTint();
+                }
               });
             } catch (e) {
               // Ignore errors
@@ -412,7 +419,10 @@ function applyMageFixes() {
           if (gameObject.setTint) {
             gameObject.setTint(0xffff00);
             setTimeout(() => {
-              if (gameObject.clearTint) gameObject.clearTint();
+              // FIX: Check if gameObject still exists and has clearTint before calling
+              if (gameObject && gameObject.active && typeof gameObject.clearTint === 'function') {
+                 gameObject.clearTint();
+              }
             }, 200);
           }
         });

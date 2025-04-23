@@ -68,6 +68,7 @@
     "react-hook-form": "^7.54.1",
     "react-hot-toast": "^2.5.2",
     "react-icons": "^5.5.0",
+    "react-p5-wrapper": "^4.1.2",
     "react-resizable-panels": "^2.1.7",
     "recharts": "2.15.0",
     "sonner": "^1.7.1",
@@ -82,6 +83,7 @@
   },
   "devDependencies": {
     "@types/node": "^22",
+    "@types/p5": "^1.7.6",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "@types/uuid": "^10.0.0",
