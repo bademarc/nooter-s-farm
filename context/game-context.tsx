@@ -136,7 +136,7 @@ export interface GameContextType {
   resetGame: () => void;
   upgradeSeed: (seedType: string) => void;
   cropInventory: CropInventory;
-  addCropToInventory: (cropType: string, adjustedValue?: number) => void;
+  addCropToInventory: (cropType: string, adjustedValue?: number, plotIndex?: number) => void;
   sellCrop: (cropType: string, count: number) => void;
   sellAllCrops: () => void;
   currentSeason: Season;
@@ -168,6 +168,11 @@ export interface GameContextType {
   applyBooster: (plotIndex: number, boosterType: string) => void;
   getPlotBoosters: (plotIndex: number) => BoostedPlot[];
   ownedBoosters: { [key: string]: number };
+  // --- ADD Profile State ---
+  nickname: string;
+  setNickname: (name: string) => void;
+  bio: string;
+  setBio: (bio: string) => void;
 }
 
 export const GameContext = createContext<GameContextType>({
@@ -227,7 +232,12 @@ export const GameContext = createContext<GameContextType>({
   buyBooster: () => {},
   applyBooster: () => {},
   getPlotBoosters: () => [],
-  ownedBoosters: {}
+  ownedBoosters: {},
+  // --- ADD Profile Defaults ---
+  nickname: 'Nooter', 
+  setNickname: () => {},
+  bio: 'I love farming!', 
+  setBio: () => {},
 })
 
 interface GameProviderProps {
@@ -560,8 +570,58 @@ export const GameProvider = ({ children }: GameProviderProps) => {
     return [];
   });
 
+  // --- ADD Profile State ---
+  const [nickname, setNicknameState] = useState<string>('Nooter');
+  const [bio, setBioState] = useState<string>('I love farming!');
+
+  // Load profile from localStorage on initial mount
   useEffect(() => {
     if (typeof window !== "undefined") {
+      const savedNickname = localStorage.getItem('player-nickname');
+      const savedBio = localStorage.getItem('player-bio');
+      if (savedNickname) {
+        setNicknameState(savedNickname);
+      }
+      if (savedBio) {
+        setBioState(savedBio);
+      }
+    }
+  }, []);
+
+  // --- ADD Profile Setters ---
+  const setNickname = (newName: string) => {
+    console.log(`[GameContext] Setting nickname to: "${newName}"`); // Log input
+    setNicknameState(newName);
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem('player-nickname', newName); // Saves nickname
+        // Try reading it back immediately (won't log, but ensures it tries)
+        const verifySave = localStorage.getItem('player-nickname'); 
+        console.log(`[GameContext] Saved nickname "${newName}" to localStorage. Verification: ${verifySave}`); 
+      } catch (e) {
+        console.error('[GameContext] Failed to save nickname to localStorage:', e); // Log error
+      }
+    }
+  };
+
+  const setBio = (newBio: string) => {
+    console.log(`[GameContext] Setting bio to: "${newBio}"`); // Log input
+    setBioState(newBio);
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem('player-bio', newBio); // Saves bio
+        // Try reading it back immediately
+        const verifySave = localStorage.getItem('player-bio');
+        console.log(`[GameContext] Saved bio "${newBio}" to localStorage. Verification: ${verifySave}`); 
+      } catch (e) {
+        console.error('[GameContext] Failed to save bio to localStorage:', e); // Log error
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      // Save all other state
       localStorage.setItem("farm-coins", JSON.stringify(farmCoins));
       localStorage.setItem("plots", JSON.stringify(plots))
       localStorage.setItem("farmSize", farmSize.toString())
@@ -578,8 +638,20 @@ export const GameProvider = ({ children }: GameProviderProps) => {
       localStorage.setItem("crafted-item-inventory", JSON.stringify(craftedItemInventory))
       localStorage.setItem("owned-boosters", JSON.stringify(ownedBoosters))
       localStorage.setItem("boosted-plots", JSON.stringify(boostedPlots))
+
+      // ---- ADD BACKUP SAVE FOR PROFILE ----
+      try {
+        localStorage.setItem('player-nickname', nickname);
+        localStorage.setItem('player-bio', bio);
+      } catch (e) {
+        console.error('[GameContext] Failed to save profile in main effect:', e);
+      }
+      // ---- END BACKUP SAVE ----
     }
-  }, [farmCoins, plots, farmSize, seeds, playerLevel, playerXp, playerXpToNext, cropsHarvested, seedsPlanted, totalCoinsEarned, cropInventory, animals, animalProductInventory, craftedItemInventory, ownedBoosters, boostedPlots])
+  }, [farmCoins, plots, farmSize, seeds, playerLevel, playerXp, playerXpToNext, cropsHarvested, seedsPlanted, totalCoinsEarned, cropInventory, animals, animalProductInventory, craftedItemInventory, ownedBoosters, boostedPlots,
+    // Add nickname and bio as dependencies here for the backup save
+    nickname, bio 
+  ])
 
   // Add a welcome bonus for players
   useEffect(() => {
@@ -752,7 +824,7 @@ export const GameProvider = ({ children }: GameProviderProps) => {
   }
 
   // Add crop to inventory
-  const addCropToInventory = (cropType: string, adjustedValue?: number) => {
+  const addCropToInventory = (cropType: string, adjustedValue?: number, plotIndex?: number) => {
     console.log(`Adding ${cropType} to inventory with adjusted value:`, adjustedValue);
     
     const seed = seeds.find(s => s.type === cropType);
@@ -761,9 +833,27 @@ export const GameProvider = ({ children }: GameProviderProps) => {
       return;
     }
     
+    // Check for active yield boosters on this plot
+    let yieldMultiplier = 1.0;
+    if (plotIndex !== undefined) {
+      const activeBoosters = getPlotBoosters(plotIndex);
+      
+      for (const boostedPlot of activeBoosters) {
+        const booster = boosters.find(b => b.type === boostedPlot.boosterType);
+        if (booster && booster.effect.type === "yield") {
+          yieldMultiplier *= booster.effect.multiplier;
+        }
+      }
+    }
+    
     setCropInventory(prev => {
       const updatedInventory = { ...prev };
-      const marketValue = adjustedValue !== undefined ? adjustedValue : Math.floor(seed.reward * 1.2);
+      let marketValue = adjustedValue !== undefined ? adjustedValue : Math.floor(seed.reward * 1.2);
+      
+      // Apply yield booster if available
+      if (yieldMultiplier > 1.0) {
+        marketValue = Math.floor(marketValue * yieldMultiplier);
+      }
       
       if (updatedInventory[cropType]) {
         // Increment count if crop already exists
@@ -787,6 +877,15 @@ export const GameProvider = ({ children }: GameProviderProps) => {
       
       return updatedInventory;
     });
+    
+    // If a booster affected the yield, show a notification
+    if (plotIndex !== undefined && yieldMultiplier > 1.0) {
+      if (typeof window !== "undefined") {
+        toast.success(`Booster increased crop yield by ${Math.floor((yieldMultiplier - 1) * 100)}%!`, {
+          duration: 3000
+        });
+      }
+    }
   };
   
   // Sell a crop from inventory
@@ -1499,71 +1598,6 @@ export const GameProvider = ({ children }: GameProviderProps) => {
     return updatedBoostedPlots.filter(bp => bp.plotIndex === plotIndex);
   };
   
-  // Modify addCropToInventory to account for yield boosters
-  const addCropToInventoryWithBoosters = (cropType: string, adjustedValue?: number, plotIndex?: number) => {
-    console.log(`Adding ${cropType} to inventory with adjusted value:`, adjustedValue);
-    
-    const seed = seeds.find(s => s.type === cropType);
-    if (!seed) {
-      console.error(`Seed not found for crop type: ${cropType}`);
-      return;
-    }
-    
-    // Check for active yield boosters on this plot
-    let yieldMultiplier = 1.0;
-    if (plotIndex !== undefined) {
-      const activeBoosters = getPlotBoosters(plotIndex);
-      
-      for (const boostedPlot of activeBoosters) {
-        const booster = boosters.find(b => b.type === boostedPlot.boosterType);
-        if (booster && booster.effect.type === "yield") {
-          yieldMultiplier *= booster.effect.multiplier;
-        }
-      }
-    }
-    
-    setCropInventory(prev => {
-      const updatedInventory = { ...prev };
-      let marketValue = adjustedValue !== undefined ? adjustedValue : Math.floor(seed.reward * 1.2);
-      
-      // Apply yield booster if available
-      if (yieldMultiplier > 1.0) {
-        marketValue = Math.floor(marketValue * yieldMultiplier);
-      }
-      
-      if (updatedInventory[cropType]) {
-        // Increment count if crop already exists
-        updatedInventory[cropType] = {
-          ...updatedInventory[cropType],
-          count: updatedInventory[cropType].count + 1,
-          marketValue: marketValue // Update the market value with the new adjusted value
-        };
-      } else {
-        // Add new crop entry
-        updatedInventory[cropType] = {
-          count: 1,
-          marketValue: marketValue
-        };
-      }
-      
-      // Save to localStorage
-      if (typeof window !== "undefined") {
-        localStorage.setItem("crop-inventory", JSON.stringify(updatedInventory));
-      }
-      
-      return updatedInventory;
-    });
-    
-    // If a booster affected the yield, show a notification
-    if (plotIndex !== undefined && yieldMultiplier > 1.0) {
-      if (typeof window !== "undefined") {
-        toast.success(`Booster increased crop yield by ${Math.floor((yieldMultiplier - 1) * 100)}%!`, {
-          duration: 3000
-        });
-      }
-    }
-  };
-  
   // Modify resetGame to also reset boosters
   const resetGameWithBoosters = () => {
     // ... existing reset code ...
@@ -1600,7 +1634,7 @@ export const GameProvider = ({ children }: GameProviderProps) => {
         incrementSeedsPlanted,
         addCoinsEarned,
         cropInventory,
-        addCropToInventory: addCropToInventoryWithBoosters,
+        addCropToInventory,
         sellCrop,
         sellAllCrops,
         currentSeason,
@@ -1610,7 +1644,6 @@ export const GameProvider = ({ children }: GameProviderProps) => {
         seasonDay,
         advanceDay,
         seasonLength,
-        // Animal-related values
         animals,
         animalProducts,
         animalProductInventory,
@@ -1619,19 +1652,22 @@ export const GameProvider = ({ children }: GameProviderProps) => {
         collectAnimalProduct,
         sellAnimalProduct,
         sellAllAnimalProducts,
-        // Crafting-related values
         craftableItems,
         craftedItemInventory,
         craftItem,
         sellCraftedItem,
         sellAllCraftedItems,
-        // Booster-related values
         boosters,
         boostedPlots,
         buyBooster,
         applyBooster,
         getPlotBoosters,
-        ownedBoosters
+        ownedBoosters,
+        // --- ADD Profile Values ---
+        nickname, 
+        setNickname,
+        bio,
+        setBio,
       }}
     >
       {children}

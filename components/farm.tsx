@@ -40,7 +40,10 @@ import {
   Shield,
   Package,
   Leaf,
-  Gem // Import Gem icon for slot machine tab
+  Gem, // Import Gem icon for slot machine tab
+  DollarSign, // Import DollarSign for Noot Gamble
+  ChevronDown, // Import ChevronDown for dropdown indicator
+  Gamepad2 // Import Gamepad2 for Noot Games
 } from "lucide-react";
 import { TokenSwap } from "@/components/token-swap";
 import { Switch } from "@/components/ui/switch";
@@ -157,13 +160,41 @@ declare global {
   }
 }
 
+// Define the possible active tab values, including the new Noot Gamble types
+type ActiveTab = "farm" | "quests" | "market" | "swap" | "social" | "profile" | "animals" | "crafting" | "boosters" | "defend" | "crashout" | "platformer" | "slot-machine" | "noot-case";
+
+
 export function Farm() {
+  // --- Restore Local Profile State & Loading ---
+  const [nickname, setNickname] = useState<string>("Nooter");
+  const [bio, setBio] = useState<string>("I love farming!");
+
+  useEffect(() => {
+    // Load profile from localStorage on mount
+    if (typeof window !== "undefined") {
+      const savedNickname = localStorage.getItem('player-nickname');
+      const savedBio = localStorage.getItem('player-bio');
+      if (savedNickname) {
+        setNickname(savedNickname);
+      }
+      if (savedBio) {
+        setBio(savedBio);
+      }
+      console.log('Profile loaded from localStorage (local state):', { 
+        nickname: savedNickname || 'not found', 
+        bio: savedBio || 'not found' 
+      });
+    }
+  }, []); // Runs only on mount
+  // --- End Local Profile State ---
+
+  // --- Remove Profile from Context Destructuring ---
   const { 
     plots: gamePlots, 
     setPlots: setGamePlots, 
     farmCoins,
     addFarmCoins,
-    seeds,
+    seeds, // Used by getCropName
     selectedSeed,
     setSelectedSeed,
     playerLevel,
@@ -209,8 +240,14 @@ export function Farm() {
     applyBooster,
     getPlotBoosters,
     ownedBoosters,
-    addCoinsEarned
+    addCoinsEarned,
+    // Remove profile context fields
+    // nickname: contextNickname, 
+    // setNickname: setContextNickname,
+    // bio: contextBio, 
+    // setBio: setContextBio
   } = useContext(GameContext);
+  // --- End Context Destructuring Update ---
   
   // Add debug logging for seasonal crops
   useEffect(() => {
@@ -219,22 +256,43 @@ export function Farm() {
     console.log("All seeds:", seeds);
   }, [currentSeason, seeds]);
   
-  // Update activeTab state type to include 'crashout' and 'slot-machine'
-  const [activeTab, setActiveTab] = useState<"farm" | "quests" | "market" | "swap" | "social" | "profile" | "animals" | "crafting" | "boosters" | "defend" | "crashout" | "platformer" | "slot-machine">("farm");
+  // Use the ActiveTab type here
+  const [activeTab, setActiveTab] = useState<ActiveTab>("farm");
   const [showParticles, setShowParticles] = useState(false);
   const [harvestAnimation, setHarvestAnimation] = useState<{
     plotIndex: number;
     amount: number;
   } | null>(null);
   
-  // User profile state
-  const [nickname, setNickname] = useState("Nooter");
-  const [bio, setBio] = useState("I love farming!");
+  // Use local state ONLY for managing the edit mode UI within this component
   const [editingProfile, setEditingProfile] = useState(false);
-  // Add a state for forcing rerenders
-  const [profileVersion, setProfileVersion] = useState(0);
+  // Use local state for the input fields while editing - Initialize from local state now
+  const [editNickname, setEditNickname] = useState(nickname);
+  const [editBio, setEditBio] = useState(bio);
+
+  // State for Noot Gamble dropdown visibility
+  const [showNootGambleDropdown, setShowNootGambleDropdown] = useState(false);
+  const gambleDropdownRef = useRef<HTMLDivElement>(null); // Ref for the dropdown
+
+  // State for Noot Farm dropdown visibility
+  const [showNootFarmDropdown, setShowNootFarmDropdown] = useState(false);
+  const farmDropdownRef = useRef<HTMLDivElement>(null); // Ref for the dropdown
+
+  // State for Noot Games dropdown visibility
+  const [showNootGamesDropdown, setShowNootGamesDropdown] = useState(false);
+  const gamesDropdownRef = useRef<HTMLDivElement>(null); // Ref for the dropdown
+
+
+  // Update local edit state when local nickname/bio changes (e.g., initial load)
+  useEffect(() => {
+    setEditNickname(nickname);
+  }, [nickname]);
+
+  useEffect(() => {
+    setEditBio(bio);
+  }, [bio]);
   
-  // Function to save profile data
+  // --- Modify saveProfileData to use local state and save ---
   const saveProfileData = (newNickname: string, newBio: string) => {
     // Validate inputs
     if (!newNickname.trim()) {
@@ -263,35 +321,28 @@ export function Farm() {
       return false;
     }
     
-    console.log("SAVING PROFILE:", { newNickname, newBio });
+    console.log("SAVING PROFILE LOCALLY:", { newNickname, newBio });
     
-    // Update state
+    // Update local React state
     setNickname(newNickname);
     setBio(newBio);
-    
-    // Force rerender of all components using profile data
-    setProfileVersion(v => v + 1);
-    
-    // Save to localStorage
-    if (typeof window !== 'undefined') {
+
+    // Save directly to localStorage
+    if (typeof window !== "undefined") {
       try {
         localStorage.setItem('player-nickname', newNickname);
         localStorage.setItem('player-bio', newBio);
-        console.log('Profile saved to localStorage:', { nickname: newNickname, bio: newBio });
-        
-        // Verify it was saved correctly
-        const savedNickname = localStorage.getItem('player-nickname');
-        const savedBio = localStorage.getItem('player-bio');
-        console.log('Verification - Read from localStorage:', { 
-          nickname: savedNickname, 
-          bio: savedBio 
-        });
+        console.log('Profile saved directly to localStorage:', { nickname: newNickname, bio: newBio });
       } catch (error) {
-        console.error('Error saving profile to localStorage:', error);
+        console.error('Error saving profile directly to localStorage:', error);
         toast.error("Error saving profile! Please try again.");
-        return false;
+        return false; // Indicate save failure
       }
     }
+    
+    // Update local edit state as well after successful save
+    setEditNickname(newNickname);
+    setEditBio(newBio);
     
     // Show success notification
     toast.success("Profile updated successfully!", {
@@ -307,6 +358,7 @@ export function Farm() {
     
     return true;
   };
+  // --- End saveProfileData modification ---
   
   // Daily tasks tracking with proper interface
   const [dailyTasks, setDailyTasks] = useState<DailyTasks>({
@@ -372,7 +424,7 @@ export function Farm() {
   // XP display with gain animation
   const [xpGainAnimation, setXpGainAnimation] = useState({ amount: 0, show: false });
   
-  // Load player data from localStorage on mount
+  // Load player data from localStorage on mount - Context handles profile loading now
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const savedDailyTasks = localStorage.getItem('daily-tasks');
@@ -410,7 +462,7 @@ export function Farm() {
         setDailyTasks(JSON.parse(savedDailyTasks));
       }
     }
-  }, []);
+  }, []); // Remove profileVersion from dependencies if it was there
   
   // Save daily tasks to localStorage when they change
   useEffect(() => {
@@ -418,6 +470,54 @@ export function Farm() {
       localStorage.setItem('daily-tasks', JSON.stringify(dailyTasks));
     }
   }, [dailyTasks]);
+
+  // Effect to handle clicks outside the Noot Gamble dropdown
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (gambleDropdownRef.current && !gambleDropdownRef.current.contains(event.target as Node)) {
+        setShowNootGambleDropdown(false);
+      }
+    }
+
+    // Bind the event listener
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      // Unbind the event listener on clean up
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [gambleDropdownRef]);
+
+  // Effect to handle clicks outside the Noot Farm dropdown
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (farmDropdownRef.current && !farmDropdownRef.current.contains(event.target as Node)) {
+        setShowNootFarmDropdown(false);
+      }
+    }
+
+    // Bind the event listener
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      // Unbind the event listener on clean up
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [farmDropdownRef]);
+  
+  // Effect to handle clicks outside the Noot Games dropdown
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (gamesDropdownRef.current && !gamesDropdownRef.current.contains(event.target as Node)) {
+        setShowNootGamesDropdown(false);
+      }
+    }
+
+    // Bind the event listener
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      // Unbind the event listener on clean up
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [gamesDropdownRef]);
   
   // Rain animation component for rainy weather
   const RainEffect = () => {
@@ -1037,99 +1137,11 @@ export function Farm() {
     message: string;
   } | null>(null);
   
-  // Add a unified profile management system
+  // Debug effect to track profile changes - Update to use context vars
   useEffect(() => {
-    // Load profile data from localStorage on mount
-    if (typeof window !== 'undefined') {
-      const savedNickname = localStorage.getItem('player-nickname');
-      const savedBio = localStorage.getItem('player-bio');
-      
-      // Apply saved profile data if available
-      if (savedNickname) setNickname(savedNickname);
-      if (savedBio) setBio(savedBio);
-      
-      console.log('Profile loaded from localStorage:', { 
-        nickname: savedNickname || 'not found', 
-        bio: savedBio || 'not found' 
-      });
-    }
-  }, [profileVersion]); // Run on component mount and when profileVersion changes
-
-  // Add a direct update function that can be called from any component
-  const updateProfile = (newNickname: string, newBio: string) => {
-    console.log('Direct profile update:', { nickname: newNickname, bio: newBio });
-    setNickname(newNickname);
-    setBio(newBio);
-    setProfileVersion(v => v + 1);
-  };
-  
-  // Helper to get crop name from type
-  const getCropName = (cropType: string) => {
-    const seed = seeds.find(s => s.type === cropType);
-    return seed ? seed.name : cropType;
-  };
-  
-  // Map seed types to appropriate icons
-  const getSeedIcon = (seedType: string) => {
-    const iconMap: Record<string, React.ReactNode> = {
-      eggplant: <span className="text-purple-500">🍆</span>, // aubergine
-      lettuce: <span className="text-green-500">🥦</span>, // broccoli
-      carrot: <span className="text-orange-500">🥕</span>, // carrot
-      corn: <span className="text-yellow-500">🌽</span>, // corn
-      tomato: <span className="text-red-500">🍅</span>, // tomato
-      watermelon: <span className="text-green-500">🍐</span>, // pear
-      radish: <span className="text-pink-500">🥬</span>, // radish 
-      strawberry: <span className="text-green-500">🥒</span>, // zucchini
-    };
-    
-    return iconMap[seedType] || <Sprout className="text-green-500 w-6 h-6" />;
-  };
-  
-  // Add animations for level-locked button
-  useEffect(() => {
-    if (typeof document !== "undefined") {
-      const style = document.createElement('style');
-      style.innerHTML = `
-        @keyframes float-up {
-          0% { transform: translateY(0); opacity: 0; }
-          20% { opacity: 1; }
-          80% { opacity: 1; }
-          100% { transform: translateY(-20px); opacity: 0; }
-        }
-        .animate-float-up {
-          animation: float-up 1.5s ease-out forwards;
-        }
-        
-        @keyframes glow-pulse {
-          0% { box-shadow: 0 0 0px rgba(255, 255, 255, 0); }
-          50% { box-shadow: 0 0 10px rgba(255, 255, 255, 0.5); }
-          100% { box-shadow: 0 0 0px rgba(255, 255, 255, 0); }
-        }
-        .progress-glow {
-          animation: glow-pulse 1.5s ease-out;
-        }
-        
-        @keyframes pulse-red {
-          0% { background-color: rgba(239, 68, 68, 0.1); }
-          50% { background-color: rgba(239, 68, 68, 0.2); }
-          100% { background-color: rgba(239, 68, 68, 0.1); }
-        }
-        .pulse-red {
-          animation: pulse-red 2s ease-in-out infinite;
-        }
-      `;
-      document.head.appendChild(style);
-
-      return () => {
-        document.head.removeChild(style);
-      };
-    }
-  }, []);
-  
-  // Debug effect to track profile changes
-  useEffect(() => {
-    console.log('Profile state changed:', { nickname, bio, profileVersion });
-  }, [nickname, bio, profileVersion]);
+    // Use local state variables now
+    console.log('Profile state changed (local state):', { nickname: nickname, bio: bio }); 
+  }, [nickname, bio]); // Use local state variables here
   
   // Add a manual day advance button for debugging/testing
   const handleAdvanceDay = () => {
@@ -1958,6 +1970,28 @@ export function Farm() {
     console.log("[farm.tsx] Active tab changed to:", activeTab);
   }, [activeTab]);
   
+  // Helper to get crop name from type
+  const getCropName = (cropType: string) => {
+    const seed = seeds.find(s => s.type === cropType);
+    return seed ? seed.name : cropType;
+  };
+  
+  // Map seed types to appropriate icons
+  const getSeedIcon = (seedType: string) => {
+    const iconMap: Record<string, React.ReactNode> = {
+      eggplant: <span className="text-purple-500">🍆</span>, // aubergine
+      lettuce: <span className="text-green-500">🥦</span>, // broccoli
+      carrot: <span className="text-orange-500">🥕</span>, // carrot
+      corn: <span className="text-yellow-500">🌽</span>, // corn
+      tomato: <span className="text-red-500">🍅</span>, // tomato
+      watermelon: <span className="text-green-500">🍐</span>, // pear
+      radish: <span className="text-pink-500">🥬</span>, // radish 
+      strawberry: <span className="text-green-500">🥒</span>, // zucchini
+    };
+    
+    return iconMap[seedType] || <Sprout className="text-green-500 w-6 h-6" />;
+  };
+  
   return (
     <div className="flex flex-col min-h-screen bg-black overflow-x-hidden text-white">
       {/* Expansion error alert */}
@@ -1996,8 +2030,9 @@ export function Farm() {
         </div>
       )}
       
-      {/* Sticky navigation bar */}
-      <header className="sticky top-0 z-10 bg-black border-b border-[#333]" key={`header-${profileVersion}`}>
+      {/* Sticky navigation bar - Use context nickname */}
+      <header className="sticky top-0 z-10 bg-black border-b border-[#333]"> 
+        {/* Remove key={`header-${profileVersion}`} */}
         <div className="container mx-auto py-3 px-4">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-2">
@@ -2011,7 +2046,8 @@ export function Farm() {
               {/* Player Level */}
               <div className="border border-[#333] px-2 py-1 flex items-center gap-1 text-white text-sm noot-text">
                 <User className="h-4 w-4 text-white/80" />
-                <span>{nickname}</span>
+                {/* Use local nickname state */}
+                <span>{nickname}</span> 
                 <div className="ml-1 w-5 h-5 rounded-none bg-white text-black flex items-center justify-center text-xs font-medium noot-title">
                   {typeof window !== 'undefined' ? clientPlayerLevel : 0}
                 </div>
@@ -2063,7 +2099,92 @@ export function Farm() {
       
       {/* Main tabbed interface */}
       <div className="container mx-auto py-6 px-4 flex-grow">
-        <div className="flex flex-wrap w-full bg-[#111] border border-[#333] mb-6 noot-text">
+        <div className="relative flex flex-wrap w-full bg-[#111] border border-[#333] mb-6 noot-text"> {/* Added relative positioning */}
+          {/* Noot Farm Dropdown */}
+          <div ref={farmDropdownRef} className="relative"> {/* Added ref */}
+            <button
+              onClick={() => setShowNootFarmDropdown(!showNootFarmDropdown)}
+              className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${
+                ["farm", "animals", "crafting", "boosters", "market"].includes(activeTab) ? "bg-white text-black" : "text-white/80"
+              }`}
+            >
+              <Sprout className="h-3 w-3 sm:h-4 sm:w-4" />
+              Noot Farm
+              <ChevronDown className={`h-3 w-3 transition-transform ${showNootFarmDropdown ? 'rotate-180' : ''}`} />
+            </button>
+            {showNootFarmDropdown && (
+              <div className="absolute top-full left-0 mt-1 w-48 bg-[#111] border border-[#333] shadow-lg z-20">
+                {/* Farm Button */}
+                <button 
+                  onClick={() => {
+                    setActiveTab("farm");
+                    setShowNootFarmDropdown(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm ${
+                    activeTab === "farm" ? "bg-white text-black" : "text-white/80 hover:bg-[#222]"
+                  }`}
+                >
+                  <Sprout className="h-3 w-3 sm:h-4 sm:w-4" />
+                  Farm
+                </button>
+                {/* Animals Button */}
+                <button 
+                  onClick={() => {
+                    setActiveTab("animals");
+                    setShowNootFarmDropdown(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm ${
+                    activeTab === "animals" ? "bg-white text-black" : "text-white/80 hover:bg-[#222]"
+                  }`}
+                >
+                  <span className="h-3 w-3 sm:h-4 sm:w-4 flex items-center justify-center">🐄</span>
+                  Animals
+                </button>
+                {/* Crafting Button */}
+                <button 
+                  onClick={() => {
+                    setActiveTab("crafting");
+                    setShowNootFarmDropdown(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm ${
+                    activeTab === "crafting" ? "bg-white text-black" : "text-white/80 hover:bg-[#222]"
+                  }`}
+                >
+                  <Hammer className="h-3 w-3 sm:h-4 sm:w-4" />
+                  Crafting
+                </button>
+                {/* Boosters Button */}
+                <button 
+                  onClick={() => {
+                    setActiveTab("boosters");
+                    setShowNootFarmDropdown(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm ${
+                    activeTab === "boosters" ? "bg-white text-black" : "text-white/80 hover:bg-[#222]"
+                  }`}
+                >
+                  <Rocket className="h-3 w-3 sm:h-4 sm:w-4" />
+                  Boosters
+                </button>
+                {/* Market Button */}
+                <button 
+                  onClick={() => {
+                    setActiveTab("market");
+                    setShowNootFarmDropdown(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm ${
+                    activeTab === "market" ? "bg-white text-black" : "text-white/80 hover:bg-[#222]"
+                  }`}
+                >
+                  <ShoppingBag className="h-3 w-3 sm:h-4 sm:w-4" />
+                  Market
+                </button>
+              </div>
+            )}
+          </div>
+          {/* End Noot Farm Dropdown */}
+          {/* Remove original Farm, Animals, Crafting, Boosters, Market buttons */}
+          {/* 
           <button 
             onClick={() => setActiveTab("farm")}
             className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${activeTab === "farm" ? "bg-white text-black" : "text-white/80"}`}
@@ -2093,18 +2214,19 @@ export function Farm() {
             Boosters
           </button>
           <button 
-            onClick={() => setActiveTab("quests")}
-            className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${activeTab === "quests" ? "bg-white text-black" : "text-white/80"}`}
-          >
-            <Trophy className="h-3 w-3 sm:h-4 sm:w-4" />
-            Quests
-          </button>
-          <button 
             onClick={() => setActiveTab("market")}
             className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${activeTab === "market" ? "bg-white text-black" : "text-white/80"}`}
           >
             <ShoppingBag className="h-3 w-3 sm:h-4 sm:w-4" />
             Market
+          </button>
+          */}
+          <button 
+            onClick={() => setActiveTab("quests")}
+            className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${activeTab === "quests" ? "bg-white text-black" : "text-white/80"}`}
+          >
+            <Trophy className="h-3 w-3 sm:h-4 sm:w-4" />
+            Quests
           </button>
           <button 
             onClick={() => setActiveTab("swap")}
@@ -2120,13 +2242,61 @@ export function Farm() {
             <Users className="h-3 w-3 sm:h-4 sm:w-4" />
             Social
           </button>
-          <button 
-            onClick={() => window.location.href = '/farm-cases/noot-case'}
-            className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm text-white/80 hover:text-white`}
-          >
-            <Leaf className="h-3 w-3 sm:h-4 sm:w-4" />
-            Noot Case
-          </button>
+          {/* Noot Gamble Dropdown */}
+          <div ref={gambleDropdownRef} className="relative"> {/* Added ref */}
+            <button
+              onClick={() => setShowNootGambleDropdown(!showNootGambleDropdown)}
+              className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${
+                ["crashout", "slot-machine", "noot-case"].includes(activeTab) ? "bg-white text-black" : "text-white/80"
+              }`}
+            >
+              <DollarSign className="h-3 w-3 sm:h-4 sm:w-4" />
+              Noot Gamble
+              <ChevronDown className={`h-3 w-3 transition-transform ${showNootGambleDropdown ? 'rotate-180' : ''}`} />
+            </button>
+            {showNootGambleDropdown && (
+              <div className="absolute top-full left-0 mt-1 w-48 bg-[#111] border border-[#333] shadow-lg z-20">
+                {/* Crashout Button */}
+                <button 
+                  onClick={() => {
+                    setActiveTab("crashout");
+                    setShowNootGambleDropdown(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm ${
+                    activeTab === "crashout" ? "bg-white text-black" : "text-white/80 hover:bg-[#222]"
+                  }`}
+                >
+                  <Rocket className="h-3 w-3 sm:h-4 sm:w-4" />
+                  Crashout
+                </button>
+                {/* Slot Machine Button */}
+                <button
+                  onClick={() => {
+                    setActiveTab("slot-machine");
+                    setShowNootGambleDropdown(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm ${
+                    activeTab === "slot-machine" ? "bg-white text-black" : "text-white/80 hover:bg-[#222]"
+                  }`}
+                >
+                  <Gem className="h-3 w-3 sm:h-4 sm:w-4" />
+                  Slot Machine
+                </button>
+                {/* Noot Case Button */}
+                <button 
+                  onClick={() => {
+                    window.location.href = '/farm-cases/noot-case';
+                    setShowNootGambleDropdown(false); // Close dropdown after navigation
+                  }}
+                  className={`w-full text-left px-3 py-2 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm text-white/80 hover:bg-[#222]`}
+                >
+                  <Leaf className="h-3 w-3 sm:h-4 sm:w-4" />
+                  Noot Case
+                </button>
+              </div>
+            )}
+          </div>
+          {/* End Noot Gamble Dropdown */}
           <button 
             onClick={() => setActiveTab("profile")}
             className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${activeTab === "profile" ? "bg-white text-black" : "text-white/80"}`}
@@ -2134,6 +2304,52 @@ export function Farm() {
             <User className="h-3 w-3 sm:h-4 sm:w-4" />
             Profile
           </button>
+          {/* Noot Games Dropdown */}
+          <div ref={gamesDropdownRef} className="relative"> {/* Added ref */}
+            <button
+              onClick={() => setShowNootGamesDropdown(!showNootGamesDropdown)}
+              className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${
+                ["defend", "platformer"].includes(activeTab) ? "bg-white text-black" : "text-white/80"
+              }`}
+            >
+              <Gamepad2 className="h-3 w-3 sm:h-4 sm:w-4" />
+              Noot Games
+              <ChevronDown className={`h-3 w-3 transition-transform ${showNootGamesDropdown ? 'rotate-180' : ''}`} />
+            </button>
+            {showNootGamesDropdown && (
+              <div className="absolute top-full left-0 mt-1 w-48 bg-[#111] border border-[#333] shadow-lg z-20">
+                {/* Defend Farm Button */}
+                <button 
+                  onClick={() => {
+                    setActiveTab("defend");
+                    setShowNootGamesDropdown(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm ${
+                    activeTab === "defend" ? "bg-white text-black" : "text-white/80 hover:bg-[#222]"
+                  }`}
+                >
+                  <Shield className="h-3 w-3 sm:h-4 sm:w-4" />
+                  Defend Farm
+                </button>
+                {/* Platformer Button */}
+                <button 
+                  onClick={() => {
+                    setActiveTab("platformer");
+                    setShowNootGamesDropdown(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm ${
+                    activeTab === "platformer" ? "bg-white text-black" : "text-white/80 hover:bg-[#222]"
+                  }`}
+                >
+                  <Home className="h-3 w-3 sm:h-4 sm:w-4" />
+                  Platformer
+                </button>
+              </div>
+            )}
+          </div>
+          {/* End Noot Games Dropdown */}
+          {/* Remove original Defend Farm and Platformer buttons */}
+          {/* 
           <button 
             onClick={() => setActiveTab("defend")}
             className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${activeTab === "defend" ? "bg-white text-black" : "text-white/80"}`}
@@ -2141,15 +2357,6 @@ export function Farm() {
             <Shield className="h-3 w-3 sm:h-4 sm:w-4" />
             Defend Farm
           </button>
-          {/* Add Crashout Tab Button */}
-          <button 
-            onClick={() => setActiveTab("crashout")}
-            className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${activeTab === "crashout" ? "bg-white text-black" : "text-white/80"}`}
-          >
-            <Rocket className="h-3 w-3 sm:h-4 sm:w-4" />
-            Crashout
-          </button>
-          {/* Add Platformer Tab Button */}
           <button 
             onClick={() => setActiveTab("platformer")}
             className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${activeTab === "platformer" ? "bg-white text-black" : "text-white/80"}`}
@@ -2157,14 +2364,7 @@ export function Farm() {
             <Home className="h-3 w-3 sm:h-4 sm:w-4" />
             Platformer
           </button>
-          {/* Add Slot Machine Tab Button */}
-          <button
-            onClick={() => setActiveTab("slot-machine")}
-            className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${activeTab === "slot-machine" ? "bg-white text-black" : "text-white/80"}`}
-          >
-            <Gem className="h-3 w-3 sm:h-4 sm:w-4" /> {/* Use Gem icon */}
-            Slot Machine
-          </button>
+          */}
         </div>
         
         {/* Farm Tab */}
@@ -3210,9 +3410,10 @@ export function Farm() {
           </div>
         )}
         
-        {/* Profile Tab */}
+        {/* Profile Tab - Use context state for display, local state for editing */}
         {activeTab === "profile" && (
-          <div className="animate-fadeIn" key={`profile-${profileVersion}`}>
+          <div className="animate-fadeIn"> 
+            {/* Remove key={`profile-${profileVersion}`} */}
             <div className="noot-card">
               <div className="border-b border-[#333] p-4">
                 <h2 className="noot-header flex items-center text-white noot-title">
@@ -3230,16 +3431,18 @@ export function Farm() {
                       <label className="block text-sm text-white mb-1">Nickname</label>
                       <input 
                         type="text" 
-                        value={nickname}
-                        onChange={(e) => setNickname(e.target.value)}
+                        // Use local edit state for controlled input
+                        value={editNickname} 
+                        onChange={(e) => setEditNickname(e.target.value)}
                         className="w-full bg-[#111] border border-[#333] p-2 text-white noot-text"
                       />
                     </div>
                     <div>
                       <label className="block text-sm text-white mb-1">Bio</label>
                       <textarea 
-                        value={bio}
-                        onChange={(e) => setBio(e.target.value)}
+                        // Use local edit state for controlled input
+                        value={editBio} 
+                        onChange={(e) => setEditBio(e.target.value)}
                         className="w-full bg-[#111] border border-[#333] p-2 text-white noot-text h-24"
                       />
                     </div>
@@ -3251,7 +3454,8 @@ export function Farm() {
                         <User className="h-8 w-8 text-white" />
                       </div>
                       <div>
-                        <h3 className="text-lg text-white font-bold">{nickname}</h3>
+                        {/* Display local nickname state */}
+                        <h3 className="text-lg text-white font-bold">{nickname}</h3> 
                         <div className="flex items-center text-white/60 text-sm gap-2">
                           <div className="w-6 h-6 rounded-none bg-white text-black flex items-center justify-center text-xs font-medium noot-title level-indicator">
                             {typeof window !== 'undefined' ? clientPlayerLevel : 0}
@@ -3261,7 +3465,8 @@ export function Farm() {
                       </div>
                     </div>
                     <div className="border border-[#333] p-3 bg-[#111] text-white/80 mb-4">
-                      <p>{bio}</p>
+                      {/* Display local bio state */}
+                      <p>{bio}</p> 
                     </div>
                     
                     {/* XP Progress Bar */}
@@ -3297,15 +3502,16 @@ export function Farm() {
                   variant="outline"
                   onClick={() => {
                     if (editingProfile) {
-                      // Save profile with our dedicated function
-                      const saveSuccessful = saveProfileData(nickname, bio);
+                      // Pass local edit state to save function
+                      const saveSuccessful = saveProfileData(editNickname, editBio); 
                       // Only exit edit mode if save was successful
                       if (saveSuccessful) {
-                        // Directly update profile for immediate reflection
-                        updateProfile(nickname, bio);
                         setEditingProfile(false);
                       }
                     } else {
+                      // Reset edit state to current local values before editing
+                      setEditNickname(nickname); 
+                      setEditBio(bio);
                       setEditingProfile(true);
                     }
                   }}
@@ -3535,7 +3741,7 @@ export function Farm() {
         {activeTab === "platformer" && (
           <div className="animate-fadeIn">
             <h2 className="text-xl font-semibold text-white border-b border-white/10 pb-2 mb-4">
-              Platformer Game
+              Noot's Platformer Adventure
             </h2>
             <div className="noot-card p-1 overflow-hidden">
               {/* Use the dynamically imported component */}
@@ -3564,7 +3770,8 @@ export function Farm() {
         )}
       </div>
       
-      <footer className="bg-black border-t border-[#333] py-3 px-4" key={`footer-${profileVersion}`}>
+      <footer className="bg-black border-t border-[#333] py-3 px-4"> 
+        {/* Remove key={`footer-${profileVersion}`} */}
         <div className="container mx-auto flex justify-between items-center">
           <div className="text-sm text-white/60">
             Nooter's Farm - First Noot Noot Playground on Abstract

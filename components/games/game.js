@@ -1921,4 +1921,17 @@ export default function platformerSketch(p) {
      // Handle other props if needed
    };
 
+   // --- Sketch Cleanup ---
+   p.remove = () => {
+     console.log("p5 sketch removing...");
+     if (soundsLoaded) {
+       if (bgMusic && bgMusic.isLoaded() && bgMusic.isPlaying()) {
+         bgMusic.stop();
+         console.log("Background music stopped during sketch removal.");
+       }
+       // Stop any other looping sounds here if needed
+     }
+     console.log("p5 sketch cleanup complete.");
+   };
+
  }

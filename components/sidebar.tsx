@@ -135,16 +135,21 @@ export const Sidebar = ({
     
     if (tab === "farm") {
       setActiveView('farm');
-      window.location.href = '/farm';
+      window.location.href = '/';
     } else if (tab === "market") {
       setActiveView('market');
-      window.location.href = '/market';
     } else if (tab === "social") {
       setActiveView('social');
       window.location.href = '/social';
     } else if (tab === "case-simulator") {
       setActiveView('case-simulator');
       window.location.href = '/case-simulator';
+    } else if (tab === "swap") {
+      setActiveView('swap');
+    } else if (tab === "profile" || tab === "settings") {
+      setActiveView(tab);
+    } else {
+      setActiveView(tab);
     }
     
     if (window.innerWidth < 768) {
@@ -231,36 +236,12 @@ export const Sidebar = ({
             )}
           </Button>
           
-          <Button
-            variant={activeTab === "swap" ? "default" : "ghost"}
-            className={`w-full justify-start rounded-none border border-transparent noot-text ${activeTab === "swap" ? "bg-white text-black hover:bg-white/90" : "text-white/80 hover:bg-[#222] hover:text-white"}`}
-            onClick={() => handleTabClick("swap")}
-          >
-            <ArrowRightLeft className="h-4 w-4 mr-2" />
-            <span>Token Swap</span>
-            {activeTab === "swap" && (
-              <ChevronRight className="h-4 w-4 ml-auto" />
-            )}
-          </Button>
-
-          <Button
-            variant={activeTab === "market" ? "default" : "ghost"}
-            className={`w-full justify-start rounded-none border border-transparent noot-text ${activeTab === "market" ? "bg-white text-black hover:bg-white/90" : "text-white/80 hover:bg-[#222] hover:text-white"}`}
-            onClick={() => handleTabClick("market")}
-          >
-            <ShoppingBag className="h-4 w-4 mr-2" />
-            <span>Market</span>
-            {activeTab === "market" && (
-              <ChevronRight className="h-4 w-4 ml-auto" />
-            )}
-          </Button>
-          
           <Link
             href="/farm-cases"
             className="flex w-full items-center rounded-none border border-transparent px-3 py-2 text-white/80 hover:bg-[#222] hover:text-white noot-text"
           >
             <Package className="h-4 w-4 mr-2" />
-            <span>Farm Cases</span>
+            <span>Noot Gamble</span>
           </Link>
           
           <Button
@@ -285,7 +266,7 @@ export const Sidebar = ({
                 onClick={handleResetGame}
               >
                 <Repeat className="h-4 w-4 mr-2" />
-                Reset Game
+                Delete Account
               </Button>
             </div>
           )}
