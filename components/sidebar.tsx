@@ -66,11 +66,30 @@ export const Sidebar = ({
   const [openTab, setOpenTab] = useState<string | null>("swap");
   const [collapsed, setCollapsed] = useState(false);
   const [clientSideFarmCoins, setClientSideFarmCoins] = useState<number>(0);
+  const [isCoinAnimating, setIsCoinAnimating] = useState(false);
   
   // Set farm coins only on client side to avoid hydration mismatch
   useEffect(() => {
-    setClientSideFarmCoins(farmCoins);
-  }, [farmCoins]);
+    // Check if the farmCoins value has actually changed from the displayed value
+    if (farmCoins !== clientSideFarmCoins) {
+        // Only trigger animation if it's not the initial load (where clientSideFarmCoins is 0)
+        if (clientSideFarmCoins !== 0) {
+            setIsCoinAnimating(true);
+            const timer = setTimeout(() => setIsCoinAnimating(false), 500); // Animation duration
+            // Cleanup function to clear the timeout
+             // Important: This cleanup needs to be returned correctly
+             const cleanup = () => clearTimeout(timer);
+             return cleanup;
+        }
+        // Update the displayed value regardless of animation
+        setClientSideFarmCoins(farmCoins);
+    }
+    // This handles the initial load case gracefully or when farmCoins becomes 0
+    else if ((clientSideFarmCoins === 0 && farmCoins !== 0) || (clientSideFarmCoins !== 0 && farmCoins === 0)) {
+       setClientSideFarmCoins(farmCoins);
+    }
+  
+  }, [farmCoins, clientSideFarmCoins]); // Add clientSideFarmCoins as a dependency
 
   const handleMintNFT = async () => {
     if (!provider || !isConnected) {
@@ -192,7 +211,7 @@ export const Sidebar = ({
         <nav className="px-2 py-4 space-y-1">
           <Button 
             variant={activeTab === "farm" ? "default" : "ghost"} 
-            className={`w-full justify-start rounded-none border border-transparent noot-text ${activeTab === "farm" ? "bg-white text-black hover:bg-white/90" : "text-white/80 hover:bg-[#222] hover:text-white"}`}
+            className={`w-full justify-start rounded-none border border-transparent noot-text transition-all duration-200 ${activeTab === "farm" ? "bg-white text-black hover:bg-white/90" : "text-white/80 hover:bg-[#222] hover:text-white hover:shadow-[0_0_15px_rgba(255,255,255,0.3)]"}`}
             onClick={() => handleTabClick("farm")}
           >
             <Home className="h-4 w-4 mr-2" />
@@ -205,7 +224,7 @@ export const Sidebar = ({
           <Link href="/guide" passHref legacyBehavior>
             <Button 
               variant={"ghost"}
-              className={`w-full justify-start rounded-none border border-transparent noot-text text-white/80 hover:bg-[#222] hover:text-white`}
+              className={`w-full justify-start rounded-none border border-transparent noot-text text-white/80 hover:bg-[#222] hover:text-white transition-all duration-200 hover:shadow-[0_0_15px_rgba(255,255,255,0.3)]`}
             >
               <BookOpen className="h-4 w-4 mr-2" />
               <span>Game Guide</span>
@@ -214,7 +233,7 @@ export const Sidebar = ({
           
           <Button 
             variant={activeTab === "profile" ? "default" : "ghost"} 
-            className={`w-full justify-start rounded-none border border-transparent noot-text ${activeTab === "profile" ? "bg-white text-black hover:bg-white/90" : "text-white/80 hover:bg-[#222] hover:text-white"}`}
+            className={`w-full justify-start rounded-none border border-transparent noot-text transition-all duration-200 ${activeTab === "profile" ? "bg-white text-black hover:bg-white/90" : "text-white/80 hover:bg-[#222] hover:text-white hover:shadow-[0_0_15px_rgba(255,255,255,0.3)]"}`}
             onClick={() => handleTabClick("profile")}
           >
             <User className="h-4 w-4 mr-2" />
@@ -226,7 +245,7 @@ export const Sidebar = ({
           
           <Button 
             variant={activeTab === "settings" ? "default" : "ghost"} 
-            className={`w-full justify-start rounded-none border border-transparent noot-text ${activeTab === "settings" ? "bg-white text-black hover:bg-white/90" : "text-white/80 hover:bg-[#222] hover:text-white"}`}
+            className={`w-full justify-start rounded-none border border-transparent noot-text transition-all duration-200 ${activeTab === "settings" ? "bg-white text-black hover:bg-white/90" : "text-white/80 hover:bg-[#222] hover:text-white hover:shadow-[0_0_15px_rgba(255,255,255,0.3)]"}`}
             onClick={() => handleTabClick("settings")}
           >
             <Settings className="h-4 w-4 mr-2" />
@@ -238,15 +257,15 @@ export const Sidebar = ({
           
           <Link
             href="/farm-cases"
-            className="flex w-full items-center rounded-none border border-transparent px-3 py-2 text-white/80 hover:bg-[#222] hover:text-white noot-text"
+            className="flex w-full items-center rounded-none border border-transparent px-3 py-2 text-white/80 hover:bg-[#222] hover:text-white noot-text transition-all duration-200 hover:shadow-[0_0_15px_rgba(255,255,255,0.3)]"
           >
             <Package className="h-4 w-4 mr-2" />
-            <span>Noot Gamble</span>
+            <span className="text-sm">Noot Gamble</span>
           </Link>
           
           <Button
             variant={activeTab === "social" ? "default" : "ghost"}
-            className={`w-full justify-start rounded-none border border-transparent noot-text ${activeTab === "social" ? "bg-white text-black hover:bg-white/90" : "text-white/80 hover:bg-[#222] hover:text-white"}`}
+            className={`w-full justify-start rounded-none border border-transparent noot-text transition-all duration-200 ${activeTab === "social" ? "bg-white text-black hover:bg-white/90" : "text-white/80 hover:bg-[#222] hover:text-white hover:shadow-[0_0_15px_rgba(255,255,255,0.3)]"}`}
             onClick={() => handleTabClick("social")}
           >
             <Users className="h-4 w-4 mr-2" />
@@ -262,7 +281,7 @@ export const Sidebar = ({
             <div className="pt-4 border-t border-[#333] mt-4">
               <Button
                 variant="outline"
-                className="w-full justify-start rounded-none border-[#333] text-white hover:bg-[#222] hover:text-white noot-text"
+                className="w-full justify-start rounded-none border-[#333] text-white hover:bg-[#222] hover:text-white noot-text transition-all duration-200 hover:shadow-[0_0_15px_rgba(255,255,255,0.3)]"
                 onClick={handleResetGame}
               >
                 <Repeat className="h-4 w-4 mr-2" />
@@ -278,8 +297,8 @@ export const Sidebar = ({
             <Coins className="h-5 w-5 text-yellow-500 mr-2" />
             <div>
               <div className="text-sm text-white/70 noot-text">Farm Coins</div>
-              <div className="font-bold text-lg noot-title">
-                {clientSideFarmCoins}
+              <div className={`font-bold text-lg noot-title transition-all duration-300 ${isCoinAnimating ? 'animate-pulse text-yellow-400 scale-105' : 'text-white'}`}>
+                {clientSideFarmCoins.toFixed(2)}
               </div>
             </div>
           </div>

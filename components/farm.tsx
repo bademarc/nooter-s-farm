@@ -2104,9 +2104,9 @@ export function Farm() {
           <div ref={farmDropdownRef} className="relative"> {/* Added ref */}
             <button
               onClick={() => setShowNootFarmDropdown(!showNootFarmDropdown)}
-              className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${
-                ["farm", "animals", "crafting", "boosters", "market"].includes(activeTab) ? "bg-white text-black" : "text-white/80"
-              }`}
+              className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${ // Apply hover effect here
+                ["farm", "animals", "crafting", "boosters", "market"].includes(activeTab) ? "bg-white text-black" : "text-white/80 hover:bg-[#222] hover:shadow-[0_0_15px_rgba(255,255,255,0.3)]"
+              } transition-all duration-200`}
             >
               <Sprout className="h-3 w-3 sm:h-4 sm:w-4" />
               Noot Farm
@@ -2120,9 +2120,9 @@ export function Farm() {
                     setActiveTab("farm");
                     setShowNootFarmDropdown(false);
                   }}
-                  className={`w-full text-left px-3 py-2 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm ${
-                    activeTab === "farm" ? "bg-white text-black" : "text-white/80 hover:bg-[#222]"
-                  }`}
+                  className={`w-full text-left px-3 py-2 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm ${ // Apply hover effect here
+                    activeTab === "farm" ? "bg-white text-black" : "text-white/80 hover:bg-[#222] hover:shadow-[0_0_15px_rgba(255,255,255,0.3)]"
+                  } transition-all duration-200`}
                 >
                   <Sprout className="h-3 w-3 sm:h-4 sm:w-4" />
                   Farm
@@ -2133,9 +2133,9 @@ export function Farm() {
                     setActiveTab("animals");
                     setShowNootFarmDropdown(false);
                   }}
-                  className={`w-full text-left px-3 py-2 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm ${
-                    activeTab === "animals" ? "bg-white text-black" : "text-white/80 hover:bg-[#222]"
-                  }`}
+                  className={`w-full text-left px-3 py-2 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm ${ // Apply hover effect here
+                    activeTab === "animals" ? "bg-white text-black" : "text-white/80 hover:bg-[#222] hover:shadow-[0_0_15px_rgba(255,255,255,0.3)]"
+                  } transition-all duration-200`}
                 >
                   <span className="h-3 w-3 sm:h-4 sm:w-4 flex items-center justify-center">🐄</span>
                   Animals
@@ -2146,9 +2146,9 @@ export function Farm() {
                     setActiveTab("crafting");
                     setShowNootFarmDropdown(false);
                   }}
-                  className={`w-full text-left px-3 py-2 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm ${
-                    activeTab === "crafting" ? "bg-white text-black" : "text-white/80 hover:bg-[#222]"
-                  }`}
+                  className={`w-full text-left px-3 py-2 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm ${ // Apply hover effect here
+                    activeTab === "crafting" ? "bg-white text-black" : "text-white/80 hover:bg-[#222] hover:shadow-[0_0_15px_rgba(255,255,255,0.3)]"
+                  } transition-all duration-200`}
                 >
                   <Hammer className="h-3 w-3 sm:h-4 sm:w-4" />
                   Crafting
@@ -2159,9 +2159,9 @@ export function Farm() {
                     setActiveTab("boosters");
                     setShowNootFarmDropdown(false);
                   }}
-                  className={`w-full text-left px-3 py-2 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm ${
-                    activeTab === "boosters" ? "bg-white text-black" : "text-white/80 hover:bg-[#222]"
-                  }`}
+                  className={`w-full text-left px-3 py-2 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm ${ // Apply hover effect here
+                    activeTab === "boosters" ? "bg-white text-black" : "text-white/80 hover:bg-[#222] hover:shadow-[0_0_15px_rgba(255,255,255,0.3)]"
+                  } transition-all duration-200`}
                 >
                   <Rocket className="h-3 w-3 sm:h-4 sm:w-4" />
                   Boosters
@@ -2172,9 +2172,9 @@ export function Farm() {
                     setActiveTab("market");
                     setShowNootFarmDropdown(false);
                   }}
-                  className={`w-full text-left px-3 py-2 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm ${
-                    activeTab === "market" ? "bg-white text-black" : "text-white/80 hover:bg-[#222]"
-                  }`}
+                  className={`w-full text-left px-3 py-2 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm ${ // Apply hover effect here
+                    activeTab === "market" ? "bg-white text-black" : "text-white/80 hover:bg-[#222] hover:shadow-[0_0_15px_rgba(255,255,255,0.3)]"
+                  } transition-all duration-200`}
                 >
                   <ShoppingBag className="h-3 w-3 sm:h-4 sm:w-4" />
                   Market
@@ -2223,21 +2223,21 @@ export function Farm() {
           */}
           <button 
             onClick={() => setActiveTab("quests")}
-            className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${activeTab === "quests" ? "bg-white text-black" : "text-white/80"}`}
+            className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${activeTab === "quests" ? "bg-white text-black" : "text-white/80 hover:bg-[#222] hover:shadow-[0_0_15px_rgba(255,255,255,0.3)]"} transition-all duration-200`}
           >
             <Trophy className="h-3 w-3 sm:h-4 sm:w-4" />
             Quests
           </button>
           <button 
             onClick={() => setActiveTab("swap")}
-            className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${activeTab === "swap" ? "bg-white text-black" : "text-white/80"}`}
+            className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${activeTab === "swap" ? "bg-white text-black" : "text-white/80 hover:bg-[#222] hover:shadow-[0_0_15px_rgba(255,255,255,0.3)]"} transition-all duration-200`}
           >
             <ArrowRightLeft className="h-3 w-3 sm:h-4 sm:w-4" />
             Swap
           </button>
           <button 
             onClick={() => setActiveTab("social")}
-            className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${activeTab === "social" ? "bg-white text-black" : "text-white/80"}`}
+            className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${activeTab === "social" ? "bg-white text-black" : "text-white/80 hover:bg-[#222] hover:shadow-[0_0_15px_rgba(255,255,255,0.3)]"} transition-all duration-200`}
           >
             <Users className="h-3 w-3 sm:h-4 sm:w-4" />
             Social
@@ -2246,9 +2246,9 @@ export function Farm() {
           <div ref={gambleDropdownRef} className="relative"> {/* Added ref */}
             <button
               onClick={() => setShowNootGambleDropdown(!showNootGambleDropdown)}
-              className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${
-                ["crashout", "slot-machine", "noot-case"].includes(activeTab) ? "bg-white text-black" : "text-white/80"
-              }`}
+              className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${ // Apply hover effect here
+                ["crashout", "slot-machine", "noot-case"].includes(activeTab) ? "bg-white text-black" : "text-white/80 hover:bg-[#222] hover:shadow-[0_0_15px_rgba(255,255,255,0.3)]"
+              } transition-all duration-200`}
             >
               <DollarSign className="h-3 w-3 sm:h-4 sm:w-4" />
               Noot Gamble
@@ -2262,9 +2262,9 @@ export function Farm() {
                     setActiveTab("crashout");
                     setShowNootGambleDropdown(false);
                   }}
-                  className={`w-full text-left px-3 py-2 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm ${
-                    activeTab === "crashout" ? "bg-white text-black" : "text-white/80 hover:bg-[#222]"
-                  }`}
+                  className={`w-full text-left px-3 py-2 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm ${ // Apply hover effect here
+                    activeTab === "crashout" ? "bg-white text-black" : "text-white/80 hover:bg-[#222] hover:shadow-[0_0_15px_rgba(255,255,255,0.3)]"
+                  } transition-all duration-200`}
                 >
                   <Rocket className="h-3 w-3 sm:h-4 sm:w-4" />
                   Crashout
@@ -2275,9 +2275,9 @@ export function Farm() {
                     setActiveTab("slot-machine");
                     setShowNootGambleDropdown(false);
                   }}
-                  className={`w-full text-left px-3 py-2 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm ${
-                    activeTab === "slot-machine" ? "bg-white text-black" : "text-white/80 hover:bg-[#222]"
-                  }`}
+                  className={`w-full text-left px-3 py-2 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm ${ // Apply hover effect here
+                    activeTab === "slot-machine" ? "bg-white text-black" : "text-white/80 hover:bg-[#222] hover:shadow-[0_0_15px_rgba(255,255,255,0.3)]"
+                  } transition-all duration-200`}
                 >
                   <Gem className="h-3 w-3 sm:h-4 sm:w-4" />
                   Slot Machine
@@ -2288,7 +2288,7 @@ export function Farm() {
                     window.location.href = '/farm-cases/noot-case';
                     setShowNootGambleDropdown(false); // Close dropdown after navigation
                   }}
-                  className={`w-full text-left px-3 py-2 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm text-white/80 hover:bg-[#222]`}
+                  className={`w-full text-left px-3 py-2 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm text-white/80 hover:bg-[#222] hover:shadow-[0_0_15px_rgba(255,255,255,0.3)] transition-all duration-200`}
                 >
                   <Leaf className="h-3 w-3 sm:h-4 sm:w-4" />
                   Noot Case
@@ -2299,7 +2299,7 @@ export function Farm() {
           {/* End Noot Gamble Dropdown */}
           <button 
             onClick={() => setActiveTab("profile")}
-            className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${activeTab === "profile" ? "bg-white text-black" : "text-white/80"}`}
+            className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${activeTab === "profile" ? "bg-white text-black" : "text-white/80 hover:bg-[#222] hover:shadow-[0_0_15px_rgba(255,255,255,0.3)]"} transition-all duration-200`}
           >
             <User className="h-3 w-3 sm:h-4 sm:w-4" />
             Profile
@@ -2308,9 +2308,9 @@ export function Farm() {
           <div ref={gamesDropdownRef} className="relative"> {/* Added ref */}
             <button
               onClick={() => setShowNootGamesDropdown(!showNootGamesDropdown)}
-              className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${
-                ["defend", "platformer"].includes(activeTab) ? "bg-white text-black" : "text-white/80"
-              }`}
+              className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${ // Apply hover effect here
+                ["defend", "platformer"].includes(activeTab) ? "bg-white text-black" : "text-white/80 hover:bg-[#222] hover:shadow-[0_0_15px_rgba(255,255,255,0.3)]"
+              } transition-all duration-200`}
             >
               <Gamepad2 className="h-3 w-3 sm:h-4 sm:w-4" />
               Noot Games
@@ -2324,9 +2324,9 @@ export function Farm() {
                     setActiveTab("defend");
                     setShowNootGamesDropdown(false);
                   }}
-                  className={`w-full text-left px-3 py-2 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm ${
-                    activeTab === "defend" ? "bg-white text-black" : "text-white/80 hover:bg-[#222]"
-                  }`}
+                  className={`w-full text-left px-3 py-2 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm ${ // Apply hover effect here
+                    activeTab === "defend" ? "bg-white text-black" : "text-white/80 hover:bg-[#222] hover:shadow-[0_0_15px_rgba(255,255,255,0.3)]"
+                  } transition-all duration-200`}
                 >
                   <Shield className="h-3 w-3 sm:h-4 sm:w-4" />
                   Defend Farm
@@ -2337,9 +2337,9 @@ export function Farm() {
                     setActiveTab("platformer");
                     setShowNootGamesDropdown(false);
                   }}
-                  className={`w-full text-left px-3 py-2 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm ${
-                    activeTab === "platformer" ? "bg-white text-black" : "text-white/80 hover:bg-[#222]"
-                  }`}
+                  className={`w-full text-left px-3 py-2 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm ${ // Apply hover effect here
+                    activeTab === "platformer" ? "bg-white text-black" : "text-white/80 hover:bg-[#222] hover:shadow-[0_0_15px_rgba(255,255,255,0.3)]"
+                  } transition-all duration-200`}
                 >
                   <Home className="h-3 w-3 sm:h-4 sm:w-4" />
                   Platformer

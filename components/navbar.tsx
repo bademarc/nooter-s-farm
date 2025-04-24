@@ -99,7 +99,7 @@ export function Navbar({
             variant="ghost"
             size="sm"
             onClick={() => setActiveTab("farm")}
-            className={`p-2 ${activeTab === "farm" ? "text-white bg-[#222]" : "text-white/70"}`}
+            className={`p-2 ${activeTab === "farm" ? "text-white bg-[#222]" : "text-white/70 hover:bg-[#222] hover:shadow-[0_0_15px_rgba(255,255,255,0.3)]"} transition-all duration-200`}
           >
             <Home className="h-4 w-4" />
           </Button>
@@ -108,7 +108,7 @@ export function Navbar({
             variant="ghost"
             size="sm"
             onClick={() => setActiveTab("quests")}
-            className={`p-2 ${activeTab === "quests" ? "text-white bg-[#222]" : "text-white/70"}`}
+            className={`p-2 ${activeTab === "quests" ? "text-white bg-[#222]" : "text-white/70 hover:bg-[#222] hover:shadow-[0_0_15px_rgba(255,255,255,0.3)]"} transition-all duration-200`}
           >
             <Trophy className="h-4 w-4" />
           </Button>
@@ -117,7 +117,7 @@ export function Navbar({
             variant="ghost"
             size="sm"
             onClick={() => setActiveTab("market")}
-            className={`p-2 ${activeTab === "market" ? "text-white bg-[#222]" : "text-white/70"}`}
+            className={`p-2 ${activeTab === "market" ? "text-white bg-[#222]" : "text-white/70 hover:bg-[#222] hover:shadow-[0_0_15px_rgba(255,255,255,0.3)]"} transition-all duration-200`}
           >
             <ShoppingBag className="h-4 w-4" />
           </Button>
@@ -126,7 +126,7 @@ export function Navbar({
             variant="ghost"
             size="sm"
             onClick={() => setActiveTab("social")}
-            className={`p-2 ${activeTab === "social" ? "text-white bg-[#222]" : "text-white/70"}`}
+            className={`p-2 ${activeTab === "social" ? "text-white bg-[#222]" : "text-white/70 hover:bg-[#222] hover:shadow-[0_0_15px_rgba(255,255,255,0.3)]"} transition-all duration-200`}
           >
             <Users className="h-4 w-4" />
           </Button>
@@ -135,7 +135,7 @@ export function Navbar({
             variant="ghost"
             size="sm"
             onClick={() => setActiveTab("profile")}
-            className={`p-2 ${activeTab === "profile" ? "text-white bg-[#222]" : "text-white/70"}`}
+            className={`p-2 ${activeTab === "profile" ? "text-white bg-[#222]" : "text-white/70 hover:bg-[#222] hover:shadow-[0_0_15px_rgba(255,255,255,0.3)]"} transition-all duration-200`}
           >
             <User className="h-4 w-4" />
           </Button>
@@ -144,7 +144,7 @@ export function Navbar({
             variant="ghost"
             size="sm"
             onClick={() => setActiveTab("swap")}
-            className={`p-2 ${activeTab === "swap" ? "text-white bg-[#222]" : "text-white/70"}`}
+            className={`p-2 ${activeTab === "swap" ? "text-white bg-[#222]" : "text-white/70 hover:bg-[#222] hover:shadow-[0_0_15px_rgba(255,255,255,0.3)]"} transition-all duration-200`}
           >
             <ArrowRightLeft className="h-4 w-4" />
           </Button>
