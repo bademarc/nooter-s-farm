@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ReactP5Wrapper, P5WrappedElementProps } from 'react-p5-wrapper';
 import platformerSketch from '../games/game'; // Import the sketch without extension
 
@@ -14,10 +14,25 @@ function P5Wrapper() {
   const [soundLibraryReady, setSoundLibraryReady] = useState(false); 
   const [errorLoading, setErrorLoading] = useState<string | null>(null);
   const [masterVolume, setMasterVolume] = useState(1.0); // Add state for volume
+  const gameInstanceRef = useRef<any>(null);
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
 
   // Ensure this only runs client-side first
   useEffect(() => {
     setIsClient(true);
+
+    // Cleanup function
+    return () => {
+      // Clean up any existing game instances
+      if (gameInstanceRef.current) {
+        console.log("P5Wrapper: Cleaning up previous game instance");
+        // Remove existing canvas elements
+        if (canvasContainerRef.current) {
+          const canvases = canvasContainerRef.current.querySelectorAll('canvas');
+          canvases.forEach(canvas => canvas.remove());
+        }
+      }
+    };
   }, []);
 
   // Dynamically import p5 core AND p5.sound *after* client mount
@@ -58,23 +73,48 @@ function P5Wrapper() {
       setMasterVolume(newVolume);
   };
 
-  // Create a function sketch wrapper that properly passes props
-  const wrappedSketch = (p: any) => platformerSketch(p);
+  // Create a memoized sketch wrapper to prevent recreating the sketch on every render
+  const wrappedSketch = useMemo(() => {
+    return (p: any) => {
+      let gameStarted = false;
+      
+      // Original sketch call - only called once for initialization
+      const sketchInstance = platformerSketch(p);
+      
+      // Store the instance for cleanup
+      gameInstanceRef.current = sketchInstance;
+      
+      // Handle prop updates (like volume changes)
+      p.updateWithProps = (props: SketchProps) => {
+        if (props.volume !== undefined && typeof p.setMasterVolume === 'function') {
+          p.setMasterVolume(props.volume);
+        } else if (props.volume !== undefined && p.internalMasterVolume !== undefined) {
+          // Fallback if setMasterVolume function doesn't exist but the game has a volume property
+          p.internalMasterVolume = props.volume;
+        }
+      };
+      
+      return sketchInstance;
+    };
+  }, []); // Empty dependency array means this is created only once
 
   // Render based on state
   return (
     // Wrap everything in a fragment or div to include the slider
     <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       {/* Canvas container */}
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%' /* Adjust width as needed */ }}>
+      <div 
+        ref={canvasContainerRef}
+        style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%' }} 
+      >
         {errorLoading && <div style={{color: 'red'}}>{errorLoading}</div>}
         {!isClient && <div>Loading Sketch...</div>} 
         {isClient && !errorLoading && !soundLibraryReady && <div>Loading Sound Library...</div>} 
-        {/* Use the wrapped sketch function */} 
         {isClient && !errorLoading && soundLibraryReady && 
           <ReactP5Wrapper 
             sketch={wrappedSketch} 
             volume={masterVolume} // Pass volume prop here
+            key="single-instance-p5-sketch" // Key helps ensure a single instance
           />}
       </div>
 

@@ -17,6 +17,7 @@ export default function platformerSketch(p) {
   let isGameWon; // Will represent winning the *current* level
   let isGameComplete; // Will represent winning the *entire* game - NOW LESS RELEVANT
   let gameFont; // Optional: Load a font if desired
+  // let levelGoal = null; // Add variable to store the level goal object - REMOVED
 
   // Add variables for level management
   let currentLevelIndex = 0;
@@ -65,14 +66,40 @@ export default function platformerSketch(p) {
   // let shakeDuration = 0;
   // let shakeIntensity = 0;
 
+  // Camera variables
+  let cameraX = 0;
+  let levelEndX = 800; // Initial guess, will be updated in loadLevelData
+
   // Volume control variables
   let internalMasterVolume = 1.0; // Renamed to avoid conflict with wrapper state
   const sfxVolumeMultiplier = 0.3; // Multiplier for sound effects (30%)
+
+  // Create volume setter method that can be called externally
+  p.setMasterVolume = function(value) {
+    if (typeof value === 'number' && value >= 0 && value <= 1) {
+      internalMasterVolume = value;
+      console.log(`Game: Setting master volume to ${value}`);
+      
+      // Update the actual volume of playing sounds
+      if (bgMusic && soundsLoaded) {
+        bgMusic.setVolume(internalMasterVolume);
+      }
+    }
+  };
+
+  // Add method to handle props from ReactP5Wrapper
+  p.updateWithProps = function(props) {
+    // Check if we have a volume prop
+    if (props.volume !== undefined) {
+      p.setMasterVolume(props.volume);
+    }
+  };
 
   // Level Dressing Assets
   let platformTexture;
   let decorationTree1;
   let decorations = []; // Array for decoration objects {img, x, y}
+  // let goalFlagImg; // Image for the goal flag - REMOVED
 
   // --- Preload Function --- 
   p.preload = () => {
@@ -212,35 +239,19 @@ export default function platformerSketch(p) {
 
   // Function to safely play a sound with volume control
   const playSound = (sound) => {
-    if (soundsLoaded && sound && sound.isLoaded()) {
-        try {
-           // Determine volume
-           let currentVolume = internalMasterVolume;
-           if (sound !== bgMusic) { // Apply SFX multiplier only if it's not background music
-               currentVolume *= sfxVolumeMultiplier;
-           }
-           sound.setVolume(currentVolume); // Set volume before playing
-
-           // Audio context handling
-           if (p.getAudioContext && p.getAudioContext().state !== 'running') {
-                p.getAudioContext().resume().then(() => {
-                    console.log(`playSound: Context resumed. State: ${p.getAudioContext().state}. Playing sound at volume ${currentVolume.toFixed(2)}`);
-                    sound.play();
-                }).catch(e => console.warn("playSound: Context resume failed:", e));
-           } else if (p.getAudioContext) {
-                console.log(`playSound: Playing sound (Context state: ${p.getAudioContext().state}) at volume ${currentVolume.toFixed(2)}`);
-                sound.play();
-           } else {
-                console.log(`playSound: Playing sound (AudioContext unavailable) at volume ${currentVolume.toFixed(2)}`);
-                sound.play();
-           }
-        } catch (e) {
-            console.error("Error playing sound:", e);
-        }
-    } else if (!soundsLoaded) {
-        // console.log("Attempted to play sound, but sounds not loaded."); // Optional
-    } else if (sound && !sound.isLoaded()){
-        console.warn("playSound: Attempted to play sound before it loaded individually.");
+    // Check if the sound exists and is loaded
+    if (sound && sound.isLoaded()) {
+      // Apply the volume setting (scaled by sfxVolumeMultiplier for effects)
+      const effectiveVolume = internalMasterVolume * (sound === bgMusic ? 1.0 : sfxVolumeMultiplier);
+      sound.setVolume(effectiveVolume);
+      
+      // Play the sound
+      if (sound.isPlaying()) {
+        sound.stop();
+      }
+      sound.play();
+    } else {
+      console.warn("Attempted to play sound that wasn't loaded");
     }
   };
 
@@ -473,10 +484,14 @@ export default function platformerSketch(p) {
           player.x = player.width / 2;
           player.velocityX = 0;
       }
-      if (player.x + player.width / 2 > p.width) {
-          player.x = p.width - player.width / 2;
+      // REMOVED: Check that previously prevented player moving beyond the right edge of the initial screen.
+      // The camera clamping now handles the right boundary visibility.
+      /* 
+      if (player.x + player.width / 2 > levelEndX) { // Optional: Add check against levelEndX if needed
+          player.x = levelEndX - player.width / 2;
           player.velocityX = 0;
       }
+      */
 
       // Update animation state
       if (!player.isOnGround) {
@@ -521,7 +536,8 @@ export default function platformerSketch(p) {
          // --- End Basic X Movement ---
 
          // --- Shooter Behavior --- 
-         if (enemy.type === 'shooter') {
+         // Check for both shooter types (if you add more later, adjust this)
+         if (enemy.type === 'shooter' || enemy.type === 'shooter_fox') { 
              if (!enemy.shootCooldown) {
                  enemy.shootCooldown = p.random(shootCooldownTime * 0.5, shootCooldownTime * 1.5); // Initialize cooldown randomly
              }
@@ -636,35 +652,62 @@ export default function platformerSketch(p) {
 
       // Player vs Platforms
       for (let platform of platforms) {
-         if (!platform) continue; 
-          if (rectRectCollision(player, platform)) {
-              let prevPlayerBottom = (player.y - player.velocityY) + player.height / 2;
-              let platformTop = platform.y - platform.height / 2;
+        if (!platform || platform.isVanished) continue; // Skip vanished platforms
+        
+        if (rectRectCollision(player, platform)) {
+            let prevPlayerBottom = (player.y - player.velocityY) + player.height / 2;
+            let platformTop = platform.y - platform.height / 2;
 
-              // Check if landing on top
-              if (player.velocityY >= 0 && prevPlayerBottom <= platformTop + 5 && !player.isOnGround) { // Only trigger landing once
-                  player.y = platformTop - player.height / 2; 
-                  player.velocityY = 0; 
-                  player.isJumping = false;
-                  player.isOnGround = true;
-                  player.canDoubleJump = false; 
-                  landedThisFrame = true; // Set landing flag
-                  player.standingOnPlatform = platform; // Link player to this platform
-                  
-                  // Landing Feedback
-                  // playSound(landSound); // TEMPORARILY COMMENTED OUT
-                  emitParticles(player.x, player.y + player.height / 2, 8, p.color(200, 200, 200, 100), { speed: 2, life: 20, size: 4 }); // Landing dust
+            // Check if landing on top
+            if (player.velocityY >= 0 && prevPlayerBottom <= platformTop + 5 && !player.isOnGround) { // Only trigger landing once
+                
+                // --- Handle Different Platform Types --- 
+                if (platform.type === 'bouncy') {
+                    player.y = platformTop - player.height / 2; 
+                    player.velocityY = player.jumpForce * (platform.bounceFactor || 1.5); // Apply bounce
+                    player.isJumping = true;
+                    player.isOnGround = false; // Not technically grounded
+                    player.canDoubleJump = true; // Refresh double jump on bounce
+                    playSound(jumpSound); // Bounce sound?
+                    emitParticles(player.x, player.y + player.height / 2, 15, p.color(150, 255, 150, 180), { speed: 3, life: 30 });
+                } else if (platform.type === 'crumbling') {
+                    if (!platform.isCrumbling && !platform.isVanished) {
+                         platform.isCrumbling = true;
+                         platform.crumbleTimer = platform.crumbleTime || 90; // Start timer (frames)
+                         console.log("Crumbling started!");
+                         // Play crumble start sound?
+                    }
+                    // Regular landing logic for crumbling platform (before it disappears)
+                    player.y = platformTop - player.height / 2; 
+                    player.velocityY = 0; 
+                    player.isJumping = false;
+                    player.isOnGround = true;
+                    player.canDoubleJump = false;
+                    player.standingOnPlatform = platform;
+                } else {
+                    // --- Normal Platform Landing --- 
+                    player.y = platformTop - player.height / 2; 
+                    player.velocityY = 0; 
+                    player.isJumping = false;
+                    player.isOnGround = true;
+                    player.canDoubleJump = false; 
+                    player.standingOnPlatform = platform; // Link player to this platform
+                    emitParticles(player.x, player.y + player.height / 2, 8, p.color(200, 200, 200, 100), { speed: 2, life: 20, size: 4 }); // Landing dust
+                    // playSound(landSound); // Add landing sound if desired
+                }
+                // --- End Platform Type Handling --- 
 
-                  // Reset combo count ONLY when landing
-                  if (stompComboCount > 0) {
-                       console.log(`Landed, resetting combo from ${stompComboCount}`);
-                       // Don't reset timer here, let it fade
-                  }
-                  stompComboCount = 0; 
-                  break; 
-              }
-          }
-      }
+                landedThisFrame = true; // Set landing flag regardless of platform type
+
+                // Reset combo count ONLY when landing/bouncing on a new surface
+                if (stompComboCount > 0) {
+                    console.log(`Landed/Bounced, resetting combo from ${stompComboCount}`);
+                }
+                stompComboCount = 0; 
+                break; // Stop checking other platforms for this frame after landing
+            }
+        } // End if rectRectCollision
+      } // End platform loop
 
       // Player vs Stars
       for (let i = stars.length - 1; i >= 0; i--) {
@@ -737,10 +780,6 @@ export default function platformerSketch(p) {
                      comboDisplayTimer = 0;
                      break; 
                   }
-                  // isGameOver = true; // Moved inside the else if
-                  // stompComboCount = 0; // Moved inside the else if
-                  // comboDisplayTimer = 0; // Moved inside the else if
-                  // break; 
               }
           }
       }
@@ -841,6 +880,16 @@ export default function platformerSketch(p) {
                       emitParticles(player.x, player.y, 40, p.color(255, 100, 0, 200), { speed: 5, life: 50, size: 10, gravity: -0.1 }); // Lava splash particles?
                       break; 
                   }
+              } else if (hazard.type === 'single_spike') {
+                  p.fill(150, 150, 150); // Grey color for spikes
+                  const spikeWidth = hazard.width || 15;
+                  const sHeight = hazard.height || 10;
+                  // Draw upward pointing triangle at hazard x,y (assuming y is base)
+                   p.triangle(
+                      hazard.x - spikeWidth / 2, hazard.y,         // Bottom-left
+                      hazard.x + spikeWidth / 2, hazard.y,         // Bottom-right
+                      hazard.x, hazard.y - sHeight                 // Top point
+                  );
               }
           }
       }
@@ -868,17 +917,70 @@ export default function platformerSketch(p) {
 
   // Checks if all stars have been collected to trigger the win condition.
   const checkWinCondition = () => {
-      if (!stars || stars.length === 0 || isGameWon || isGameOver) return; // Exit early if level already won/lost or no stars exist
+      // --- MODIFIED: Early exit logic --- 
+      // Exit if game over, already won, or if there are no stars to collect
+      if (isGameOver || isGameWon || !stars || stars.length === 0) {
+          return;
+      }
       
-      let allCollected = true;
+      // --- Star Collection Check --- 
+      let allStarsCollected = true;
       for (let star of stars) {
           if (!star || !star.isCollected) { // Check if star exists and is collected
-              allCollected = false;
+              allStarsCollected = false;
               break;
           }
       }
       
-      if (allCollected) {
+      // --- Win Condition based ONLY on stars --- 
+      if (allStarsCollected) {
+         console.log("[WinCheck] All stars collected! Setting isGameWon = true."); // <-- ADDED LOG
+         isGameWon = true; // Mark current level as won
+         playSound(victorySound);
+         if (bgMusic && bgMusic.isLoaded() && bgMusic.isPlaying()) bgMusic.stop();
+         console.log(`Generated Level ${currentLevelIndex + 1} Complete!`);
+         
+         // --- INFINITE PART ---
+         // Immediately load next level after a short delay
+         console.log("[WinCheck] Starting 2-second timeout for next level..."); // <-- ADDED LOG
+         setTimeout(() => {
+             console.log("[WinCheck] Timeout finished! Loading next level."); // <-- ADDED LOG
+             currentLevelIndex++;
+             loadLevelData(currentLevelIndex); // Load the next generated level
+         }, 2000); // 2 second delay before next level
+      }
+
+      /* // Check if goal has been reached - REMOVED
+      if (levelGoal && !levelGoal.isReached) {
+          // Simple distance check between player center and goal center
+          const distSq = (player.x - levelGoal.x) * (player.x - levelGoal.x) + (player.y - levelGoal.y) * (player.y - levelGoal.y);
+          const reachRadiusSq = (player.width / 2 + 20) * (player.width / 2 + 20); // Radius around the goal
+          if (distSq < reachRadiusSq) {
+              levelGoal.isReached = true; // Mark goal as reached
+              console.log("Goal Reached!");
+              // Optionally add score bonus for reaching goal
+              score += 100;
+              emitFloatingScore("+100", levelGoal.x, levelGoal.y - 30);
+              // Maybe add particles?
+              emitParticles(levelGoal.x, levelGoal.y, 40, p.color(255, 215, 0, 220), { speed: 4, life: 50, size: 10 });
+          }
+      }
+      */
+
+      /* // Old Win Condition logic (combined goal/stars) - REMOVED
+      let allStarsCollected = true;
+      if (stars && stars.length > 0) { // Only check stars if they exist
+          for (let star of stars) {
+              if (!star || !star.isCollected) {
+                  allStarsCollected = false;
+                  break;
+              }
+          }
+      } else {
+          allStarsCollected = false; // If no stars, star condition cannot be met
+      }
+
+      if (levelGoal && levelGoal.isReached || (stars && stars.length > 0 && allStarsCollected)) { // Win if goal OR all stars collected (and stars exist)
          isGameWon = true; // Mark current level as won
          playSound(victorySound);
          if (bgMusic && bgMusic.isLoaded() && bgMusic.isPlaying()) bgMusic.stop();
@@ -891,6 +993,7 @@ export default function platformerSketch(p) {
              loadLevelData(currentLevelIndex); // Load the next generated level
          }, 2000); // 2 second delay before next level
       }
+      */
   }
 
   // --- Drawing Functions (now nested) ---
@@ -949,74 +1052,58 @@ export default function platformerSketch(p) {
   }
 
   const drawPlatformsWithTexture = () => {
-    // Fallback color if texture fails
-    const fallbackColor = p.color(210, 180, 140, 200); // Semi-transparent Sand/Tan color
-
-    // Guard clause with texture check
+    // Fallback and platform colors
+    const platformColor = p.color(242, 210, 169, 255); // Solid sand color
+    const bouncyColor = p.color(180, 255, 180, 220); // Light green for bouncy
+    const crumblingColor = p.color(200, 160, 120, 200); // Dusty brown for crumbling
+    
+    // Guard clause
     if (!platforms) return;
-
+    
     p.push(); // Isolate settings
-    p.rectMode(p.CENTER); // Ensure rect is drawn from center like platform data
+    p.rectMode(p.CENTER);
+    p.noStroke();
+    
+    for (let platform of platforms) {
+        if (!platform || platform.isVanished) continue; // Don't draw vanished platforms
 
-    if (!platformTexture || !platformTexture.width || !platformTexture.height) {
-        // --- Fallback Drawing --- 
-        console.warn("drawPlatformsWithTexture: platformTexture invalid, drawing fallback rects.");
-        p.noStroke();
-        p.fill(fallbackColor);
-        for (let platform of platforms) {
-            if (!platform) continue;
-            p.rect(platform.x, platform.y, platform.width, platform.height);
+        let drawX = platform.x;
+        let drawY = platform.y;
+        let alpha = 255;
+
+        // Visual effect for crumbling
+        if (platform.isCrumbling) {
+            const shakeAmount = platform.crumbleTimer > 0 ? Math.sin(p.frameCount * 0.5) * (2 * (1 - platform.crumbleTimer / (platform.crumbleTime || 90))) : 0;
+            drawX += p.random(-shakeAmount, shakeAmount);
+            drawY += p.random(-shakeAmount, shakeAmount);
+            // Fade out slightly as it crumbles
+            alpha = platform.crumbleTimer > 0 ? p.map(platform.crumbleTimer, (platform.crumbleTime || 90), 0, 255, 150) : 255;
         }
-        // --- End Fallback --- 
-    } else {
-        // --- Original Texture Drawing --- 
-        const tileWidth = 32; // ASSUMPTION: Tile size is 32x32 pixels
-        const tileHeight = 32; // ASSUMPTION: Tile size is 32x32 pixels
-        const sourceTileX = 0; // Use the top-left tile from the tileset for now
-        const sourceTileY = 0;
-
-        p.noStroke();
-        p.imageMode(p.CORNER); // CORNER mode is best for tiling
-
-        for (let platform of platforms) {
-            if (!platform) continue;
-
-            const topLeftX = platform.x - platform.width / 2;
-            const topLeftY = platform.y - platform.height / 2;
-
-            // Calculate how many tiles to draw
-            const cols = Math.ceil(platform.width / tileWidth);
-            const rows = Math.ceil(platform.height / tileHeight);
-
-            for (let r = 0; r < rows; r++) {
-                for (let c = 0; c < cols; c++) {
-                    // Calculate position to draw the current tile
-                    const drawX = topLeftX + c * tileWidth;
-                    const drawY = topLeftY + r * tileHeight;
-
-                    // Calculate remaining width/height for the last tile in row/column
-                    const currentTileWidth = (c === cols - 1) ? platform.width - c * tileWidth : tileWidth;
-                    const currentTileHeight = (r === rows - 1) ? platform.height - r * tileHeight : tileHeight;
-
-                    // Draw the tile portion from the source image
-                    p.image(
-                        platformTexture,
-                        drawX,
-                        drawY,
-                        currentTileWidth, // Draw width (might be clipped)
-                        currentTileHeight, // Draw height (might be clipped)
-                        sourceTileX,
-                        sourceTileY,
-                        // Use the calculated width/height but ensure it doesn't exceed original tile size
-                        Math.min(currentTileWidth, tileWidth),
-                        Math.min(currentTileHeight, tileHeight)
-                    );
-                }
-            }
+        
+        // Select color based on type
+        let currentColor;
+        if (platform.type === 'bouncy') {
+            currentColor = bouncyColor;
+        } else if (platform.type === 'crumbling') {
+            currentColor = crumblingColor;
+        } else {
+            currentColor = platformColor;
         }
-        p.imageMode(p.CENTER); // Reset imageMode
-        // --- End Original Texture Drawing --- 
+        
+        // Apply alpha if crumbling
+        if (platform.isCrumbling) {
+             // Create a new color object to set alpha without modifying the original
+             let tempColor = p.color(currentColor);
+             tempColor.setAlpha(alpha);
+             p.fill(tempColor);
+        } else {
+            p.fill(currentColor);
+        }
+
+        // Draw the platform
+        p.rect(drawX, drawY, platform.width, platform.height);
     }
+    
     p.pop(); // Restore settings
   };
 
@@ -1136,258 +1223,19 @@ export default function platformerSketch(p) {
 
   // Function to generate level data procedurally
   const generateLevel = (levelIndex) => {
-      console.log(`Generating level ${levelIndex + 1}`);
-      const difficulty = levelIndex + 1; // Simple difficulty scale
-      const level = {
-          playerStart: { x: 100, y: p.height - 100 }, // Consistent start for now
-          platforms: [],
-          stars: [],
-          enemies: [],
-          hazards: [],
-          powerups: []
-      };
-
-      // --- Base Ground Platform ---
-      level.platforms.push({ x: p.width / 2, y: p.height - 20, width: p.width, height: 40 });
-      let lastPlatform = level.platforms[0];
-      let currentY = p.height - 80; // Start building platforms slightly above ground
-
-      // --- Procedural Platform Generation ---
-      const numPlatforms = p.constrain(5 + difficulty, 5, 20); // More platforms with difficulty
-      const minPlatformWidth = 80;
-      const maxPlatformWidth = 200 - difficulty * 5; // Smaller platforms at higher levels
-      // Refined height calculation
-      const maxJumpHeightForCheck = Math.abs(player ? player.baseJumpForce * 1.8 : jumpForce * 1.8); 
-      const maxJumpWidth = (player ? player.baseSpeed : 5) * 40; 
-      const minVerticalSeparation = 90; // <--- Slightly increased min again
-      const maxVerticalSeparation = 140; // <--- Tighter max range, less extreme height diff
-      const minHorizontalSeparation = 120; // <--- Increased horizontal separation
-
-      for (let i = 0; i < numPlatforms; i++) {
-          const newPlatform = {};
-          const platWidth = p.random(minPlatformWidth, Math.max(minPlatformWidth, maxPlatformWidth));
-          const platHeight = 20; // Standard platform height
-
-          let placed = false;
-          console.log(`--- Attempting to place Platform ${i+1} relative to Platform at (${lastPlatform.x.toFixed(0)}, ${lastPlatform.y.toFixed(0)}) ---`); // Log start
-          for (let attempts = 0; attempts < 10; attempts++) { // Try a few positions
-              const targetX = p.random(platWidth / 2, p.width - platWidth / 2);
-              // Use refined vertical range calculation
-              const targetY = p.constrain(
-                  lastPlatform.y - p.random(minVerticalSeparation, maxVerticalSeparation), // Use min/max separation
-                  100, // Don't go too high (absolute limit)
-                  p.height - 60 // Don't go below ground level
-              );
-
-              const dy = lastPlatform.y - targetY; // Positive if new platform is higher
-              const dxAbs = Math.abs(targetX - lastPlatform.x); // Absolute horizontal distance
-
-              // Check if the platform is actually higher and meets separation criteria
-              if (dy > minVerticalSeparation * 0.5 && dy < maxJumpHeightForCheck && dxAbs < maxJumpWidth && dxAbs > minHorizontalSeparation) { 
-                  console.log(`  SUCCESS on Attempt ${attempts + 1}: Platform placed at (${targetX.toFixed(0)}, ${targetY.toFixed(0)})`);
-                  newPlatform.x = targetX;
-                  newPlatform.y = targetY;
-                  newPlatform.width = platWidth; // Assign width/height here
-                  newPlatform.height = platHeight;
-
-                   // Add chance for moving platforms based on difficulty
-                  const movingChance = 0.05 + difficulty * 0.02;
-                  if (p.random() < movingChance) {
-                      newPlatform.isMoving = true;
-                      newPlatform.moveAxis = (p.random() < 0.6) ? 'x' : 'y'; 
-                      const moveRange = p.random(50, 100 + difficulty * 5);
-                      newPlatform.moveSpeed = p.random(1, 2 + difficulty * 0.1);
-                      newPlatform.moveMin = newPlatform[newPlatform.moveAxis] - moveRange / 2;
-                      newPlatform.moveMax = newPlatform[newPlatform.moveAxis] + moveRange / 2;
-                      newPlatform.initialMoveDirection = (p.random() < 0.5) ? 1 : -1;
-                  }
-
-                  level.platforms.push(newPlatform);
-                  lastPlatform = newPlatform; // Update last platform placed
-                  placed = true;
-                  break; // Platform placed successfully
-              } else {
-                  // Log failure reason (optional)
-                  // if (dy <= 0) console.log('    -> Fail: Too low or same level');
-                  if (dy >= maxJumpHeightForCheck) console.log(`    -> Fail Attempt ${attempts+1}: Too high (dy=${dy.toFixed(1)} >= maxH=${maxJumpHeightForCheck.toFixed(1)})`);
-                  if (dxAbs >= maxJumpWidth) console.log(`    -> Fail Attempt ${attempts+1}: Too far (dx=${dxAbs.toFixed(1)} >= maxW=${maxJumpWidth.toFixed(1)})`);
-                  if (dxAbs <= minHorizontalSeparation) console.log(`    -> Fail Attempt ${attempts+1}: Too close horizontally (dx=${dxAbs.toFixed(1)} <= minSep=${minHorizontalSeparation})`); // Log if too close
-              }
-          }
-          if (!placed) {
-               console.warn(`Could not place platform ${i + 1} reachably/spaced after 10 attempts. Placing default offset platform.`);
-               // --- Fallback Placement & Update lastPlatform --- 
-               let fallbackX = lastPlatform.x + p.random(minHorizontalSeparation * 1.1, maxJumpWidth * 0.7) * (p.random() < 0.5 ? 1 : -1);
-               fallbackX = p.constrain(fallbackX, platWidth / 2, p.width - platWidth / 2); 
-               
-               // Aim for a consistent mid-high range on fallback
-               newPlatform.x = fallbackX;
-               newPlatform.y = p.constrain(lastPlatform.y - (minVerticalSeparation + (maxVerticalSeparation - minVerticalSeparation) * 0.6), 100, p.height - 60); // Aim 60% up the allowed range 
-               newPlatform.width = platWidth;
-               newPlatform.height = platHeight; // Assign width/height
-
-               // Fallback moving platform chance?
-               const movingChance = 0.05 + difficulty * 0.02;
-               if (p.random() < movingChance) {
-                   newPlatform.isMoving = true;
-                   newPlatform.moveAxis = (p.random() < 0.6) ? 'x' : 'y'; 
-                   const moveRange = p.random(50, 100 + difficulty * 5);
-                   newPlatform.moveSpeed = p.random(1, 2 + difficulty * 0.1);
-                   newPlatform.moveMin = newPlatform[newPlatform.moveAxis] - moveRange / 2;
-                   newPlatform.moveMax = newPlatform[newPlatform.moveAxis] + moveRange / 2;
-                   newPlatform.initialMoveDirection = (p.random() < 0.5) ? 1 : -1;
-               }
-
-               level.platforms.push(newPlatform);
-               lastPlatform = newPlatform; // CRITICAL: Update lastPlatform even on fallback
-               // --- End Fallback --- 
-          } 
-          // No else needed, lastPlatform updated correctly on success
-      }
-
-      // --- Procedural Star Placement (One per platform, mostly) ---
-      level.stars = []; // Start fresh
-      const starSpawnChance = 0.8; // Chance to put a star on any given platform
-
-      for (let i = 1; i < level.platforms.length; i++) { // Iterate through generated platforms
-          if (p.random() < starSpawnChance) {
-              const targetPlatform = level.platforms[i];
-              level.stars.push({
-                  x: targetPlatform.x + p.random(-targetPlatform.width * 0.3, targetPlatform.width * 0.3), // Random horizontal offset
-                  y: targetPlatform.y - targetPlatform.height / 2 - 30, // Above platform
-                  size: 25
-              });
-          }
-      }
-      // Ensure at least *some* stars exist if generation was unlucky
-      if (level.stars.length < 2 && level.platforms.length > 2) { 
-          const targetPlatform1 = level.platforms[1]; // Put one on first generated platform
-          level.stars.push({ x: targetPlatform1.x, y: targetPlatform1.y - targetPlatform1.height / 2 - 30, size: 25 });
-          if (level.platforms.length > 3) {
-            const targetPlatformLast = level.platforms[level.platforms.length - 1]; // Put one on last platform
-            level.stars.push({ x: targetPlatformLast.x, y: targetPlatformLast.y - targetPlatformLast.height/2 - 30, size: 25 });
-          }
-      }
-
-      // --- Procedural Enemy Placement (Platform by Platform) --- 
-      level.enemies = []; // Start with empty array
-      const enemySpawnChanceBase = 0.5; // Base chance to spawn enemy on a platform
-      const enemySpawnChanceDifficultyMultiplier = 0.05;
-      const doubleEnemyChanceBase = 0.05; // Lower base chance for 2 enemies
-      const doubleEnemyChanceDifficultyMultiplier = 0.04; // Lower scaling for 2 enemies
-
-      for (let i = 1; i < level.platforms.length; i++) { // Start from index 1 to skip ground platform
-          const targetPlatform = level.platforms[i];
-          const spawnChance = p.constrain(enemySpawnChanceBase + difficulty * enemySpawnChanceDifficultyMultiplier, 0, 0.9);
-
-          if (p.random() < spawnChance) {
-              let enemyCount = 1;
-              const doubleChance = p.constrain(doubleEnemyChanceBase + difficulty * doubleEnemyChanceDifficultyMultiplier, 0, 0.5);
-              if (p.random() < doubleChance) {
-                  enemyCount = 2;
-              }
-
-              console.log(`Spawning ${enemyCount} enemy/enemies on platform ${i}`);
-
-              for (let j = 0; j < enemyCount; j++) {
-                  const enemyWidth = 35; // Default size, adjust per type later
-                  const enemyHeight = 35;
-                  const patrolPadding = enemyWidth / 2 + 10; // Buffer from platform edge
-
-                  // Ensure patrol range is valid
-                  let patrolStart = targetPlatform.x - targetPlatform.width / 2 + patrolPadding;
-                  let patrolEnd = targetPlatform.x + targetPlatform.width / 2 - patrolPadding;
-                  
-                  // If platform too small for patrol, center enemy or skip?
-                  if (patrolEnd <= patrolStart) {
-                      console.warn(`Platform ${i} too small for enemy patrol (width: ${targetPlatform.width}). Skipping enemy spawn.`);
-                      continue; // Skip this enemy
-                  }
-
-                  // Place enemy within the patrol range
-                  let enemyX = p.random(patrolStart + enemyWidth / 2, patrolEnd - enemyWidth / 2);
-                  // Ensure enemyX is valid if range is small
-                  enemyX = p.constrain(enemyX, patrolStart, patrolEnd); 
-
-                  const enemy = {
-                      x: enemyX,
-                      y: targetPlatform.y - targetPlatform.height / 2 - enemyHeight / 2, // Place feet near platform top
-                      width: enemyWidth, 
-                      height: enemyHeight, 
-                      velocityX: p.random(1, 2 + difficulty * 0.2) * (p.random() < 0.5 ? 1 : -1),
-                      patrolStart: patrolStart,
-                      patrolEnd: patrolEnd,
-                  };
-
-                  // Choose enemy type based on difficulty (similar to before)
-                  const enemyTypeRoll = p.random();
-                  if (difficulty > 4 && enemyTypeRoll < (0.1 + difficulty * 0.03)) {
-                      enemy.type = 'charger';
-                      enemy.img = enemyFoxImg; 
-                      enemy.width = 35; enemy.height = 35;
-                  } else if (difficulty > 2 && enemyTypeRoll < (0.3 + difficulty * 0.04)) {
-                      enemy.type = 'shooter';
-                      enemy.img = enemyBirdImg; 
-                      enemy.width = 30; enemy.height = 30;
-                      enemy.velocityX = 0; // Shooters stationary
-                  } else if (enemyTypeRoll < 0.6) {
-                      enemy.type = 'fox';
-                      enemy.img = enemyFoxImg;
-                      enemy.width = 35; enemy.height = 35;
-                  } else {
-                      enemy.type = 'rabbit';
-                      enemy.img = enemyRabbitImg;
-                      enemy.width = 30; enemy.height = 30;
-                  }
-                  console.log(`  -> Adding enemy of type ${enemy.type} to level.enemies (target platform index: ${i}, enemy j=${j})`); // <-- Added log
-                  level.enemies.push(enemy); // Add the created enemy
-              } // End inner loop (j)
-          } // End if (spawnChance)
-      } // End outer loop (i)
-
-      // --- Procedural Hazard Placement ---
-      const hazardChance = p.constrain(0.1 + difficulty * 0.05, 0.1, 0.5);
-      if (p.random() < hazardChance && level.platforms.length > 2) {
-          // Place spikes under a random platform (not ground, not first)
-          const platformIndex = Math.floor(p.random(2, level.platforms.length));
-          const targetPlatform = level.platforms[platformIndex];
-          level.hazards.push({
-              type: 'spikes',
-              x: targetPlatform.x,
-              y: targetPlatform.y + 20, // Below the platform
-              width: p.random(targetPlatform.width * 0.5, targetPlatform.width),
-              count: Math.floor(p.random(5, 10 + difficulty))
-          });
-      }
-      // Add chance for lava pit on ground floor
-      const lavaChance = p.constrain(0.05 + difficulty * 0.03, 0.05, 0.3);
-       if (difficulty > 1 && p.random() < lavaChance) {
-           level.hazards.push({
-               type: 'lava',
-               x: p.random(p.width * 0.2, p.width * 0.8), // Random position on ground
-               y: p.height - 20, // Ground level
-               width: p.random(80, 150 + difficulty * 10),
-               height: 30
-           });
-       }
-
-      // --- Procedural Powerup Placement ---
-      const powerupChance = 0.2 + difficulty * 0.02; // Chance increases slightly
-      if (p.random() < powerupChance && level.platforms.length > 1) {
-          const platformIndex = Math.floor(p.random(1, level.platforms.length));
-          const targetPlatform = level.platforms[platformIndex];
-          const powerupTypes = ['speedBoost', 'highJump', 'invincibility'];
-          const type = powerupTypes[Math.floor(p.random(powerupTypes.length))];
-          level.powerups.push({
-              type: type,
-              x: targetPlatform.x,
-              y: targetPlatform.y - 30 // Above platform
-          });
-      }
-
-      console.log("Generated Level Structure:", JSON.stringify(level, null, 2)); // <-- ADDED LOG
-      return level;
+    // Import the generator from mario-generator.js
+    const generator = require('./mario-generator');
+    // Create an assets object to pass
+    const assets = {
+        enemyFoxImg: enemyFoxImg,       // Pass the loaded image variable
+        enemyRabbitImg: enemyRabbitImg, // Pass the loaded image variable
+        // Add other assets if needed by the generator later
+    };
+    // Use the external generator with proper parameters, including assets
+    return generator.generateLevel(levelIndex, p, player, player.baseJumpForce, assets);
   };
+
+  // --- ACTUAL GAME SETUP AND INITIALIZATION ---
 
   // Function to load data for a specific level index (NOW USES GENERATOR)
   const loadLevelData = (levelIndex) => {
@@ -1415,12 +1263,19 @@ export default function platformerSketch(p) {
       platforms = level.platforms.map(platformData => ({
           ...platformData, 
           color: p.color(100, 200, 100), // Assign default color directly
+          // Initialize timers and vanished state for crumbling platforms
+          isVanished: false,
+          isCrumbling: false,
+          crumbleTimer: 0,
+          respawnTimer: 0,
+          vanishTime: 0,
           // Initialize moveDirection for moving platforms
           moveDirection: platformData.isMoving ? (platformData.initialMoveDirection || 1) : undefined 
       }));
       stars = level.stars.map(s => ({ ...s, isCollected: false, color: p.color(255, 223, 0) }));
       hazards = level.hazards ? level.hazards.map(h => ({ ...h })) : []; // Load hazards
       powerups = level.powerups ? level.powerups.map(pow => ({ ...pow, isCollected: false })) : []; // Load powerups
+      // levelGoal = level.goal ? { ...level.goal, isReached: false } : null; // Load the goal object if it exists - REMOVED
       
       // Initialize enemies, using the images assigned during generation
       enemies = [];
@@ -1428,7 +1283,23 @@ export default function platformerSketch(p) {
           enemies = level.enemies.map(e => {
                // Initialize cooldown for shooters
               let initialCooldown = (e.type === 'shooter') ? p.random(30, 120 - difficulty * 5) : undefined; // Cooldown potentially shorter at high levels
-              return { ...e, velocityX: e.velocityX || 1, shootCooldown: initialCooldown }; // Ensure velocityX exists
+              
+              // Convert image string references to actual image objects
+              let actualImg;
+              if (e.img === 'enemyFoxImg') {
+                  actualImg = enemyFoxImg;
+              } else if (e.img === 'enemyBirdImg') {
+                  actualImg = enemyBirdImg;
+              } else if (e.img === 'enemyRabbitImg') {
+                  actualImg = enemyRabbitImg;
+              }
+              
+              return { 
+                  ...e, 
+                  velocityX: e.velocityX || 1, 
+                  shootCooldown: initialCooldown,
+                  img: actualImg // Replace string reference with actual image object
+              };
           });
       }
 
@@ -1472,6 +1343,14 @@ export default function platformerSketch(p) {
       console.log(`  - Available Background Sets: ${backgroundSets ? backgroundSets.length : 'N/A'}`); // <-- Log available sets
       // End Added Logs
 
+      // Estimate level end based on the last platform generated
+      if (platforms && platforms.length > 0) {
+          levelEndX = platforms[platforms.length - 1].x + p.width / 2; // Allow camera to see a bit past the last platform
+      } else {
+          levelEndX = p.width; // Fallback if no platforms
+      }
+      console.log(`[LoadLevel] Estimated level end X: ${levelEndX.toFixed(0)}`);
+
       // Ensure game over flag is reset *here* as well, redundant but safe.
       isGameOver = false; 
       isGameWon = false;
@@ -1504,8 +1383,8 @@ export default function platformerSketch(p) {
 
    // Helper function to initialize player
    const initializePlayer = (startPos = null) => {
-       const baseSpeed = 5;
-       const baseJumpForce = -12;
+       const baseSpeed = 5.5; // Increased base speed
+       const baseJumpForce = -13; // Keep the increased jump force
        player = {
           x: startPos ? startPos.x : p.width / 2,
           y: startPos ? startPos.y : p.height - 100,
@@ -1515,8 +1394,8 @@ export default function platformerSketch(p) {
           velocityY: 0,
           speed: baseSpeed,
           baseSpeed: baseSpeed, // Store base value
-          jumpForce: baseJumpForce,
-          baseJumpForce: baseJumpForce, // Store base value
+          jumpForce: jumpForce, // Use the initialized jumpForce
+          baseJumpForce: jumpForce, // Store the initialized value as base
           isJumping: false,
           isOnGround: false,
           canDoubleJump: false,
@@ -1531,11 +1410,28 @@ export default function platformerSketch(p) {
   const initializeDecorations = () => {
     decorations = []; // Clear existing decorations
     if (decorationTree1) { // Ensure image is loaded
-        // Add some example trees - adjust positions as needed
-        decorations.push({ img: decorationTree1, x: 100, y: p.height - 60 }); // Near bottom left
-        decorations.push({ img: decorationTree1, x: 700, y: p.height - 60 }); // Near bottom right
-        // Add one potentially behind a platform
-        decorations.push({ img: decorationTree1, x: 450, y: 380 }); 
+        // Example placement, can be adjusted or made procedural
+        decorations.push({ img: decorationTree1, x: p.random(50, 150), y: p.height - 80 - p.random(40) });
+        decorations.push({ img: decorationTree1, x: p.random(p.width - 150, p.width - 50), y: p.height - 80 - p.random(40) });
+        // Add more based on level size or randomly?
+        const numDecor = Math.floor(p.width / 300); // Add one tree every 300 pixels roughly
+        for (let i = 0; i < numDecor; i++) {
+             // Avoid placing directly over player start or potential end goal areas
+             let potentialX = p.random(200, p.width - 200);
+             // Try to place near platforms, but not directly on them
+             let platformY = p.height - 80; // Default to near ground
+             let closestPlatDist = Infinity;
+             for(let plat of platforms) {
+                 if (Math.abs(plat.x - potentialX) < closestPlatDist && !plat.isGround) {
+                    closestPlatDist = Math.abs(plat.x - potentialX);
+                    // Place decoration slightly below the platform it's closest to horizontally
+                    platformY = plat.y + plat.height/2 + 40 + p.random(20); 
+                 }
+             }
+             // Clamp Y position
+             platformY = p.constrain(platformY, 100, p.height - 80);
+             decorations.push({ img: decorationTree1, x: potentialX, y: platformY });
+        }
     }
   };
 
@@ -1559,11 +1455,17 @@ export default function platformerSketch(p) {
 
       // Function to draw a tiled layer
       const drawLayer = (img, factor) => {
-          if (!img || !img.width || img.width <= 0) return;
+         if (!img || !img.width || img.width <= 0) {
+             console.warn(`[Background] Invalid image or width for layer with factor ${factor}. Skipping draw.`); // <-- ADDED WARNING
+             return; 
+         }
           const imgWidth = img.width;
           // Calculate the offset based on camera and factor
           // Modulo ensures the offset wraps around, creating the loop
           let offsetX = (cameraX * factor) % imgWidth;
+         if (p.frameCount % 120 === 1 && factor === 0.6) { // Log only layer 3 info once every 2 seconds
+             console.log(`[Background] Layer 3: cameraX=${cameraX.toFixed(1)}, imgWidth=${imgWidth}, offsetX=${offsetX.toFixed(1)}`); // <-- ADDED LOG
+         }
 
           // Draw the image twice to cover the screen during wrap-around
           // Use p.height for the height argument to fill the canvas vertically
@@ -1590,8 +1492,8 @@ export default function platformerSketch(p) {
 
       // Initialize parameters
       gravity = 0.6;
-      jumpForce = -12;
-      doubleJumpForce = -10; 
+      jumpForce = -13; // Increased jump force
+      doubleJumpForce = -11; // Increased double jump force
       // internalMasterVolume is now controlled by props
 
       // Player needs to be initialized *before* generateLevel is called
@@ -1606,8 +1508,15 @@ export default function platformerSketch(p) {
 
   // p5.js draw function: Called repeatedly to update and render the game frame.
   p.draw = () => {
-      drawBackground(); // Draw parallax background first
-      drawDecorations(); // Draw decorations on top of background
+      // --- Camera Update --- 
+      // Simple horizontal follow, centered on player, clamped to level bounds
+      let targetCameraX = player ? player.x : p.width / 2;
+      // Clamp camera between start (half screen width) and estimated end (levelEnd - half screen width)
+      cameraX = p.constrain(targetCameraX, p.width / 2, levelEndX - p.width / 2);
+      // For now, no vertical camera movement: cameraY = p.height / 2; 
+      
+      drawBackground(); // Draw parallax background first (uses its own offset calculation)
+      drawDecorations(); // Draw decorations on top of background (these currently don't move with camera, might need adjustment)
 
       // --- Game Logic Updates --- 
       updatePlayer();
@@ -1624,7 +1533,12 @@ export default function platformerSketch(p) {
       }
       // --- END ADDED LOGS ---
 
-      // --- Drawing Game Elements --- 
+      // --- Apply Camera Translation --- 
+      p.push(); // Isolate camera translation
+      // Translate the world so the camera position is centered
+      p.translate(-cameraX + p.width / 2, 0); // Only horizontal scroll for now
+
+      // --- Drawing Game Elements (Now inside translated view) --- 
       drawPlatformsWithTexture();
       drawStars();
       drawEnemies(); 
@@ -1637,7 +1551,10 @@ export default function platformerSketch(p) {
       // --- End shake effect scope - REMOVED ---
       // p.pop(); 
 
-      // --- Draw UI Elements --- 
+      p.pop(); // Restore view before drawing UI
+      // --- End Camera Translation --- 
+
+      // --- Draw UI Elements (Outside camera translation) --- 
       handleInput(); // Process input 
       updateFloatingScores(); // Update scores 
       drawScore(); // Draw score overlay 
@@ -1687,6 +1604,13 @@ export default function platformerSketch(p) {
       }
       */
 
+      // --- Draw UI Elements (Outside camera translation) --- 
+      handleInput(); // Process input 
+      updateFloatingScores(); // Update scores 
+      drawScore(); // Draw score overlay 
+      drawFloatingScores(); // Draw floating scores 
+      drawComboDisplay(); // Draw combo text
+
   };
 
   // --- Hazard Functions ---
@@ -1725,6 +1649,16 @@ export default function platformerSketch(p) {
                   p.fill(255, 50, 0, 180);
                   p.rect(topLeftX, topLeftY, hazard.width, hazard.height);
               }
+          } else if (hazard.type === 'single_spike') {
+              p.fill(150, 150, 150); // Grey color for spikes
+              const spikeWidth = hazard.width || 15;
+              const sHeight = hazard.height || 10;
+              // Draw upward pointing triangle at hazard x,y (assuming y is base)
+               p.triangle(
+                  hazard.x - spikeWidth / 2, hazard.y,         // Bottom-left
+                  hazard.x + spikeWidth / 2, hazard.y,         // Bottom-right
+                  hazard.x, hazard.y - sHeight                 // Top point
+              );
           }
       }
       p.pop();
@@ -1733,27 +1667,58 @@ export default function platformerSketch(p) {
 
   // --- Platform Update Function ---
   const updatePlatforms = () => {
-      if (!platforms) return;
-      for (let platform of platforms) {
-          if (platform.isMoving) {
-              if (platform.moveAxis === 'x') {
-                  platform.x += platform.moveSpeed * platform.moveDirection;
-                  if (platform.x >= platform.moveMax || platform.x <= platform.moveMin) {
-                      platform.moveDirection *= -1; // Reverse direction
-                      // Optional: Clamp position to prevent overshooting slightly
-                      platform.x = p.constrain(platform.x, platform.moveMin, platform.moveMax);
-                  }
-              } else if (platform.moveAxis === 'y') {
-                  platform.y += platform.moveSpeed * platform.moveDirection;
-                   if (platform.y >= platform.moveMax || platform.y <= platform.moveMin) {
-                      platform.moveDirection *= -1; // Reverse direction
-                      // Optional: Clamp position
-                      platform.y = p.constrain(platform.y, platform.moveMin, platform.moveMax);
-                  }
-              }
-          }
-      }
-  };
+    if (!platforms) return;
+    const now = p.millis(); // Get current time for timers
+
+    for (let platform of platforms) {
+        // Moving platform logic
+        if (platform.isMoving && !platform.isVanished) { // Don't move if vanished
+            if (platform.moveAxis === 'x') {
+                platform.x += platform.moveSpeed * platform.moveDirection;
+                if (platform.x >= platform.moveMax || platform.x <= platform.moveMin) {
+                    platform.moveDirection *= -1;
+                    platform.x = p.constrain(platform.x, platform.moveMin, platform.moveMax);
+                }
+            } else if (platform.moveAxis === 'y') {
+                platform.y += platform.moveSpeed * platform.moveDirection;
+                if (platform.y >= platform.moveMax || platform.y <= platform.moveMin) {
+                    platform.moveDirection *= -1;
+                    platform.y = p.constrain(platform.y, platform.moveMin, platform.moveMax);
+                }
+            }
+        }
+
+        // Crumbling platform logic
+        if (platform.type === 'crumbling') {
+            if (platform.isCrumbling && !platform.isVanished) {
+                // Decrement timer (using frame count)
+                if (platform.crumbleTimer > 0) {
+                    platform.crumbleTimer--;
+                    // Optional: Add shaking effect based on timer
+                } else {
+                    // Timer done, make platform vanish
+                    platform.isVanished = true;
+                    platform.isCrumbling = false; // Stop crumbling state
+                    platform.respawnTimer = platform.respawnTime || 3000; // Set respawn timer (milliseconds)
+                    platform.vanishTime = now; // Record vanish time
+                    console.log("Platform vanished!");
+                    // Play vanish sound?
+                }
+            }
+            
+            // Respawn logic (using millis for more accuracy)
+            if (platform.isVanished && platform.respawnTimer > 0) {
+                 if (now - platform.vanishTime >= platform.respawnTimer) {
+                    platform.isVanished = false;
+                    platform.isCrumbling = false; // Ensure it resets fully
+                    platform.respawnTimer = 0; // Clear timer
+                    console.log("Platform respawned!");
+                    // Play respawn sound?
+                }
+            }
+        }
+    }
+};
   // --- End Platform Update Function ---
 
   // --- Powerup Functions ---
@@ -1779,6 +1744,9 @@ export default function platformerSketch(p) {
               break;
           case 'invincibility':
               // Visual cue handled in drawPlayer maybe?
+              break;
+          case 'starMagnet': // Added star magnet type
+              player.starMagnet = true;
               break;
           // Add more types here
       }
@@ -1824,6 +1792,10 @@ export default function platformerSketch(p) {
                       powColor = p.color(255, 200, 0); // Yellow/Gold
                       symbol = '!';
                       break;
+                  case 'starMagnet': // Added star magnet type
+                      powColor = p.color(255, 105, 180); // Hot pink
+                      symbol = 'M';
+                      break;
               }
               p.fill(powColor);
               p.rect(pow.x, pow.y, 25, 25, 5); // Rounded rect
@@ -1837,6 +1809,31 @@ export default function platformerSketch(p) {
   };
 
   // --- End Powerup Functions ---
+
+  // --- Draw Goal Function ---
+  const drawGoal = () => {
+      if (levelGoal && !levelGoal.isReached) { // Only draw if it exists and hasn't been reached
+          p.push();
+          p.imageMode(p.CENTER);
+          // Use preloaded goal image if available, otherwise draw fallback
+          if (goalFlagImg) {
+              // Adjust size as needed
+              const goalWidth = 50;
+              const goalHeight = 70;
+              p.image(goalFlagImg, levelGoal.x, levelGoal.y, goalWidth, goalHeight);
+          } else {
+              // Fallback drawing (e.g., a yellow rectangle)
+              p.fill(255, 215, 0); // Gold color
+              p.noStroke();
+              p.rect(levelGoal.x, levelGoal.y, 30, 50);
+              p.fill(0);
+              p.textSize(12);
+              p.text("GOAL", levelGoal.x, levelGoal.y);
+          }
+          p.pop();
+      }
+  };
+  // --- End Goal Function ---
 
   // --- Input Handling ---
 
