@@ -39,7 +39,7 @@ export default function CurrencyDisplay({
         }
         transition={{ duration: 0.5 }}
       >
-        {activeCurrency === "virtual" ? virtualAmount.toLocaleString() : cryptoAmount.toFixed(5) + " BTC"}
+        {activeCurrency === "virtual" ? (virtualAmount ?? 0).toLocaleString() : (cryptoAmount ?? 0).toFixed(5) + " BTC"}
       </motion.span>
     </div>
   )

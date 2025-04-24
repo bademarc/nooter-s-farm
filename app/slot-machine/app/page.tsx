@@ -1,4 +1,4 @@
-import EnhancedSlotMachine from "@/components/enhanced-slot-machine"
+import EnhancedSlotMachine from "@/app/slot-machine/components/enhanced-slot-machine"
 
 export default function Home() {
   return (
