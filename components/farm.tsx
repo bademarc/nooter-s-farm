@@ -54,11 +54,6 @@ import dynamic from 'next/dynamic'; // Import dynamic
 import ClientWrapper from './farm-game/ClientWrapper';
 // Import CrashoutGame
 import { CrashoutGame } from './crashout-game'; // Assuming it's in the components folder
-// Dynamically import the P5 Platformer Wrapper
-const P5Wrapper = dynamic(() => import('./p5-platformer/P5Wrapper'), {
-  ssr: false,
-  loading: () => <div className="flex items-center justify-center h-64 text-white">Loading Platformer...</div>
-});
 // Import EnhancedSlotMachine
 import EnhancedSlotMachine from "@/app/slot-machine/components/enhanced-slot-machine";
 
@@ -3746,12 +3741,7 @@ export function Farm() {
             <div className="noot-card p-1 overflow-hidden">
               {/* Use the dynamically imported component */}
               <DynamicP5Wrapper /> 
-              {/* Remove the old isClient check here if desired, dynamic handles it */}
-              {/* {isClient ? (
-                <P5Wrapper />
-              ) : (
-                <LoadingPlaceholder /> 
-              )} */}
+              {/* Remove the old P5Wrapper reference entirely */}
             </div>
           </div>
         )}

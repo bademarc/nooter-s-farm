@@ -38,6 +38,7 @@ export default class SoundManager {
       // UI sounds
       this.scene.load.audio('click', ['/assets/sounds/game/ui_click.mp3']); 
       this.scene.load.audio('coins', ['/assets/sounds/game/coins.mp3']); 
+      this.scene.load.audio('coin_collect_batch', ['/assets/sounds/game/coin_collect_batch.mp3']);
       this.scene.load.audio('error', ['/assets/sounds/game/error.mp3']); 
       
       // Game sounds
@@ -110,7 +111,7 @@ export default class SoundManager {
     const categories = {
       music: ['bgm_gameplay'],
       ui: ['click', 'error'],
-      coin: ['coins'],
+      coin: ['coins', 'coin_collect_batch'],
       action: ['plant', 'harvest', 'defense_placed'],
       enemy: ['enemy_hit', 'enemy_defeat', 'enemy_escaped'],
       attack: [

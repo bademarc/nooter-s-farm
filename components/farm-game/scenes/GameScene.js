@@ -155,6 +155,9 @@ if (isBrowser) {
             this.load.image('fireball', '/fireball.png');
             this.load.image('iceball', '/iceball.png');
             
+            // Load coin asset for effects
+            this.load.image('coin', '/coin.png'); // <<<<<< ADD THIS LINE (ensure file exists)
+            
             // Load tileset assets
             this.load.image('tileset', '/characters/craftpix-net-504452-free-village-pixel-tileset-for-top-down-defense/1 Tiles/FieldsTileset.png');
             this.load.image('tileset2', '/characters/craftpix-net-504452-free-village-pixel-tileset-for-top-down-defense/1.1 Tiles/Tileset2.png');
@@ -920,6 +923,8 @@ if (isBrowser) {
               fontSize: '18px',
               color: '#FFFF00'
             });
+            // Store target position for coin animation
+            this.farmCoinsTargetPos = { x: this.farmCoinsText.x + 70, y: this.farmCoinsText.y + 10 }; // Adjust offset as needed
             
             this.waveText = this.add.text(10, 50, "Wave: 0", {
               fontFamily: 'Arial',
@@ -1278,38 +1283,57 @@ if (isBrowser) {
         // Create visual effect for click attack
         createClickAttackEffect(x, y) {
           try {
+            // Add a small screen shake on click
+            this.cameras.main.shake(50, 0.003); // Duration 50ms, Intensity 0.003
+
             // Create a larger burst effect for better visibility
             const burst = this.add.circle(x, y, 15, 0xFF0000, 0.7); // Increased size from 10
             burst.setStrokeStyle(3, 0xFFFFFF); // Thicker stroke
-            
+            burst.setDepth(2000); // Ensure effect is on top
+
             // Animate the burst with larger scale
             this.tweens.add({
               targets: burst,
-              scale: 3, // Increased from 2
+              scale: 3.5, // Increased from 3
               alpha: 0,
-              duration: 400, // Longer duration
+              duration: 300, // Slightly shorter duration for snappiness
+              ease: 'Cubic.easeOut', // Keep ease out for impact
               onComplete: () => burst.destroy()
             });
-            
+
             // Add more sparkles for better visual feedback
-            for (let i = 0; i < 10; i++) { // Increased from 6
+            for (let i = 0; i < 15; i++) { // Increased particle count from 10
               const angle = Math.random() * Math.PI * 2;
-              const distance = 20 + Math.random() * 15; // Increased range
-              const sparkX = x + Math.cos(angle) * distance;
-              const sparkY = y + Math.sin(angle) * distance;
-              
-              const spark = this.add.circle(sparkX, sparkY, 3, 0xFFFFFF, 1); // Larger sparks
-              
+              const distance = 10 + Math.random() * 25; // Increased range slightly
+              // Start sparks closer to the center for a tighter burst
+              const startX = x + Math.cos(angle) * (distance * 0.5);
+              const startY = y + Math.sin(angle) * (distance * 0.5);
+              const endX = x + Math.cos(angle) * (distance * 1.5); // Travel further out
+              const endY = y + Math.sin(angle) * (distance * 1.5);
+
+              // Vary spark color slightly
+              const sparkColor = Phaser.Math.Between(0xFFDD00, 0xFFFFFF); // Yellow/White sparks
+              const spark = this.add.circle(startX, startY, Phaser.Math.Between(2, 4), sparkColor, 1); // Slightly larger sparks
+              spark.setDepth(2001); // Above burst
+
               this.tweens.add({
                 targets: spark,
-                x: sparkX + Math.cos(angle) * 15, // Longer travel distance
-                y: sparkY + Math.sin(angle) * 15,
+                x: endX,
+                y: endY,
                 alpha: 0,
-                scale: 0.5,
-                duration: 300, // Longer duration
+                scale: 0.2, // Shrink more
+                duration: 350, // Slightly longer duration for travel
+                ease: 'Quad.easeOut', // Different ease for variety
                 onComplete: () => spark.destroy()
               });
             }
+
+            // Play a sharper click/attack sound
+            if (this.soundManager) {
+              // Assuming you have a sound like this - if not, it will fail gracefully
+              this.soundManager.play('attack_click', { volume: 0.6 }); 
+            }
+
           } catch (error) {
             console.error("Error creating click attack effect:", error);
           }
@@ -1517,28 +1541,48 @@ if (isBrowser) {
           try {
             // Create text with larger font size and a shadow for better visibility
             const textConfig = {
-              fontFamily: 'Arial',
-              fontSize: '24px', // Increased from default
+              fontFamily: 'Arial Black, Impact, sans-serif', // Bolder font
+              fontSize: '26px', // Slightly larger
               color: this.rgbToHex(color),
               stroke: '#000000',
-              strokeThickness: 4, // Added stroke for better visibility
+              strokeThickness: 5, // Thicker stroke
               shadow: {
                 offsetX: 2,
                 offsetY: 2,
                 color: '#000000',
-                blur: 2
+                blur: 4,
+                fill: true, // Ensure shadow fills
+                stroke: true // Ensure shadow strokes
               }
             };
-            
-            const floatingText = this.add.text(x, y, message, textConfig).setOrigin(0.5);
-            
-            // Add a rising and fading animation
+
+            const floatingText = this.add.text(x, y, message, textConfig)
+                .setOrigin(0.5)
+                .setDepth(3000); // Ensure text is above most things
+
+            // Initial state for animation
+            floatingText.setScale(0.5);
+            floatingText.setAlpha(0);
+
+            // Bounce in and fade out animation
             this.tweens.add({
               targets: floatingText,
-              y: y - 60, // Move further up for better visibility
-              alpha: 0,
-              duration: 1200, // Longer duration so text is visible longer
-              ease: 'Cubic.easeOut',
+              y: y - 70, // Move further up
+              alpha: { from: 1, to: 0 }, // Fade in quickly, then fade out
+              scale: { from: 0.5, to: 1.1 }, // Scale up with overshoot
+              duration: 1000, // Slightly shorter duration
+              ease: 'Back.easeOut', // Use Back ease for bounce effect
+              yoyo: false, // Don't yoyo the main movement
+              onStart: () => {
+                 // A small secondary tween for the bounce-back part of the scale
+                 this.tweens.add({
+                     targets: floatingText,
+                     scale: 1, // Settle back to 1
+                     duration: 300,
+                     ease: 'Sine.easeInOut',
+                     delay: 150 // Start after the initial overshoot
+                 });
+              },
               onComplete: () => {
                 floatingText.destroy();
               }
@@ -1736,27 +1780,58 @@ if (isBrowser) {
           try {
             const currentCoins = this.gameState.farmCoins || 0;
             const newCoins = Math.max(0, currentCoins + amount); // Ensure coins don't go below 0
+            const oldCoins = this.gameState.farmCoins; // Store old value for comparison
             this.gameState.farmCoins = newCoins;
-            
+
             // Update registry
             this.registry.set('farmCoins', newCoins);
-            
+
             // Update UI
             if (this.farmCoinsText) {
               this.farmCoinsText.setText(`Coins: ${newCoins}`);
+
+              // Add animation if coins increased or decreased
+              if (newCoins !== oldCoins) {
+                // Determine color based on gain/loss
+                const targetColor = amount > 0 ? '#FFFF00' : '#FF8888'; // Yellow for gain, reddish for loss
+                
+                // Reset scale and color before tweening
+                this.farmCoinsText.setScale(1);
+                this.farmCoinsText.setColor('#FFFF00'); // Reset to default yellow first
+
+                this.tweens.add({
+                  targets: this.farmCoinsText,
+                  scale: { from: 1.3, to: 1 }, // Start slightly larger and shrink
+                  duration: 300,
+                  ease: 'Sine.easeInOut',
+                  onStart: () => {
+                     // Briefly change color during the animation for emphasis
+                    this.farmCoinsText.setColor(targetColor);
+                    // Use a delayed call to reset the color back to default yellow
+                    this.time.delayedCall(250, () => {
+                         if (this.farmCoinsText) { // Check if text still exists
+                            this.farmCoinsText.setColor('#FFFF00');
+                         }
+                    });
+                  }
+                });
+              }
             }
-            
+
             // Call the callback if it exists
             const addFarmCoins = this.registry.get('addFarmCoins');
             if (typeof addFarmCoins === 'function') {
               addFarmCoins(amount);
             }
-            
+
             console.log("Farm coins updated:", newCoins);
-            
-            // Play coin sound if gaining coins
+
+            // Play coin sound if gaining coins - maybe a different sound for spending?
             if (amount > 0 && this.soundManager) {
-              this.soundManager.play('coins');
+               // Assuming these sounds exist - adjust keys if needed
+              this.soundManager.play('coin_gain', { volume: 0.7 }); 
+            } else if (amount < 0 && this.soundManager) {
+              this.soundManager.play('coin_spend', { volume: 0.5 }); 
             }
           } catch (error) {
             console.error("Error updating farm coins:", error);
@@ -2447,344 +2522,236 @@ if (isBrowser) {
         createToolbar() {
           try {
             // Create a larger background for the toolbar to accommodate all buttons
-            const toolbarBg = this.add.rectangle(200, 550, 420, 65, 0x333333, 0.8);
-            
+            const toolbarBg = this.add.rectangle(200, 550, 420, 65, 0x333333, 0.8).setDepth(1999); // Ensure toolbar BG is below buttons
+
+            // Store buttons for reference - Initialize object first
+            this.toolbarButtons = {};
+
+            // Function to add bounce effect on pointer down
+            const addBounceEffect = (button) => {
+                button.on('pointerdown', () => {
+                    // Play UI click sound
+                    if (this.soundManager) {
+                        this.soundManager.play('ui_click', { volume: 0.6 }); // Ensure you have 'ui_click' sound
+                    }
+                    // Add bounce tween
+                    this.tweens.add({
+                        targets: button,
+                        scaleY: { from: 1, to: 0.8 }, // Squish vertically
+                        scaleX: { from: 1, to: 1.1 }, // Stretch horizontally
+                        duration: 80,
+                        ease: 'Sine.easeInOut',
+                        yoyo: true // Return to original scale
+                    });
+                });
+            };
+
             // LARGER BUTTONS - Increase size from 60x40 to 70x50
-            
+            const buttonWidth = 70;
+            const buttonHeight = 50;
+            const iconSize = 40; // Size for icons/images within buttons
+            const costFontSize = '12px';
+            const labelFontSize = '12px';
+
             // Add attack button
-            const attackButton = this.add.rectangle(40, 550, 70, 50, 0xFF4400);
+            const attackButton = this.add.rectangle(40, 550, buttonWidth, buttonHeight, 0xFF4400).setDepth(2000);
             attackButton.setInteractive({ useHandCursor: true });
-            // Set much larger hit area to make it very easy to click
             attackButton.input.hitArea.setTo(-40, -30, 80, 60);
             attackButton.on('pointerdown', () => {
               this.pendingDefensePlacement = false; // Reset placement flag
               this.setToolMode('attack');
             });
-            
+            addBounceEffect(attackButton); // Add bounce effect
+            this.toolbarButtons.attack = attackButton; // Store reference
+
             const attackText = this.add.text(40, 550, '👆', {
               fontFamily: 'Arial',
               fontSize: '32px' // Increased from 24px
-            }).setOrigin(0.5);
-            // Make text interactive too for better touch/click response
+            }).setOrigin(0.5).setDepth(2001);
             attackText.setInteractive({ useHandCursor: true });
-            attackText.on('pointerdown', () => {
-              this.pendingDefensePlacement = false;
-              this.setToolMode('attack');
-            });
-            
+            attackText.on('pointerdown', () => attackButton.emit('pointerdown')); // Trigger button's event
+
+
             // Add crop button
-            const cropButton = this.add.rectangle(110, 550, 70, 50, 0x006600);
+            const cropButton = this.add.rectangle(110, 550, buttonWidth, buttonHeight, 0x006600).setDepth(2000);
             cropButton.setInteractive({ useHandCursor: true });
             cropButton.input.hitArea.setTo(-40, -30, 80, 60);
             cropButton.on('pointerdown', () => {
               this.pendingDefensePlacement = false; // Reset placement flag
               this.setToolMode('plant');
             });
-            
+            addBounceEffect(cropButton); // Add bounce effect
+            this.toolbarButtons.plant = cropButton; // Store reference
+
             // IMPORTANT: Always use tree images for crops - NEVER change this!
             let cropImage;
             if (this.textures.exists('Fruit_tree3')) {
-              cropImage = this.add.image(110, 550, 'Fruit_tree3');
-              cropImage.setDisplaySize(40, 40); // Increased from 32x32
-              // Make crop image interactive
+              cropImage = this.add.image(110, 550, 'Fruit_tree3').setDepth(2001);
+              cropImage.setDisplaySize(iconSize, iconSize); // Use variable size
               cropImage.setInteractive({ useHandCursor: true });
-              cropImage.on('pointerdown', () => {
-                this.pendingDefensePlacement = false;
-                this.setToolMode('plant');
-              });
+              cropImage.on('pointerdown', () => { cropButton.emit('pointerdown'); });
             } else {
               // Fallback to emoji if image doesn't exist
               cropImage = this.add.text(110, 550, '🌳', {
-                fontFamily: 'Arial',
-                fontSize: '32px' // Increased from 24px
-              }).setOrigin(0.5);
+                fontFamily: 'Arial', fontSize: '32px'
+              }).setOrigin(0.5).setDepth(2001);
               cropImage.setInteractive({ useHandCursor: true });
-              cropImage.on('pointerdown', () => {
-                this.pendingDefensePlacement = false;
-                this.setToolMode('plant');
-              });
+              cropImage.on('pointerdown', () => { cropButton.emit('pointerdown'); });
             }
-            
+
+
             // Add scarecrow button (ABS mage)
-            const scarecrowButton = this.add.rectangle(180, 550, 70, 50, 0x000066);
+            const scarecrowButton = this.add.rectangle(180, 550, buttonWidth, buttonHeight, 0x000066).setDepth(2000);
             scarecrowButton.setInteractive({ useHandCursor: true });
             scarecrowButton.input.hitArea.setTo(-40, -30, 80, 60);
             scarecrowButton.on('pointerdown', () => {
-              // Select defense without auto-placing
               this.pendingDefenseType = 'scarecrow';
               this.pendingDefensePlacement = true;
               this.setToolMode('scarecrow');
-              
-              // Show message to indicate selection
               this.showFloatingText(400, 300, "ABS Ice Mage selected - Click map to place", 0x0088FF);
-              
-              console.log("Scarecrow selected, waiting for placement click");
             });
-            
+             addBounceEffect(scarecrowButton); // Add bounce effect
+             this.toolbarButtons.scarecrow = scarecrowButton; // Store reference
+
             // Use ABS image instead of emoji
             const absImageKey = 'ABS_idle';
             let absImage;
             if (this.textures.exists(absImageKey)) {
-              absImage = this.add.image(180, 550, absImageKey);
-              absImage.setDisplaySize(40, 40); // Increased from 32x32
-              // Make the image interactive too
+              absImage = this.add.image(180, 550, absImageKey).setDepth(2001);
+              absImage.setDisplaySize(iconSize, iconSize); // Use variable size
               absImage.setInteractive({ useHandCursor: true });
-              absImage.on('pointerdown', () => {
-                this.pendingDefenseType = 'scarecrow';
-                this.pendingDefensePlacement = true;
-                this.setToolMode('scarecrow');
-                this.showFloatingText(400, 300, "ABS Ice Mage selected - Click map to place", 0x0088FF);
-              });
+              absImage.on('pointerdown', () => { scarecrowButton.emit('pointerdown'); });
             } else {
-              // Fallback to emoji if image doesn't exist
               absImage = this.add.text(180, 550, '🧙‍♂️', {
-                fontFamily: 'Arial',
-                fontSize: '32px' // Increased from 24px
-              }).setOrigin(0.5);
+                fontFamily: 'Arial', fontSize: '32px'
+              }).setOrigin(0.5).setDepth(2001);
               absImage.setInteractive({ useHandCursor: true });
-              absImage.on('pointerdown', () => {
-                this.pendingDefenseType = 'scarecrow';
-                this.pendingDefensePlacement = true;
-                this.setToolMode('scarecrow');
-                this.showFloatingText(400, 300, "ABS Ice Mage selected - Click map to place", 0x0088FF);
-              });
+              absImage.on('pointerdown', () => { scarecrowButton.emit('pointerdown'); });
             }
-            
+
+
             // Add dog button (NOOT mage)
-            const dogButton = this.add.rectangle(250, 550, 70, 50, 0x660000);
+            const dogButton = this.add.rectangle(250, 550, buttonWidth, buttonHeight, 0x660000).setDepth(2000);
             dogButton.setInteractive({ useHandCursor: true });
             dogButton.input.hitArea.setTo(-40, -30, 80, 60);
             dogButton.on('pointerdown', () => {
-              // Select defense without auto-placing
               this.pendingDefenseType = 'dog';
               this.pendingDefensePlacement = true;
               this.setToolMode('dog');
-              
-              // Show message to indicate selection
               this.showFloatingText(400, 300, "NOOT Fire Mage selected - Click map to place", 0xFF4400);
-              
-              console.log("Dog selected, waiting for placement click");
             });
-            
+            addBounceEffect(dogButton); // Add bounce effect
+            this.toolbarButtons.dog = dogButton; // Store reference
+
+
             // Use NOOT image instead of emoji
             const nootImageKey = 'NOOT_idle';
             let nootImage;
             if (this.textures.exists(nootImageKey)) {
-              nootImage = this.add.image(250, 550, nootImageKey);
-              nootImage.setDisplaySize(40, 40); // Increased from 32x32
-              // Make the image interactive too
+              nootImage = this.add.image(250, 550, nootImageKey).setDepth(2001);
+              nootImage.setDisplaySize(iconSize, iconSize); // Use variable size
               nootImage.setInteractive({ useHandCursor: true });
-              nootImage.on('pointerdown', () => {
-                this.pendingDefenseType = 'dog';
-                this.pendingDefensePlacement = true;
-                this.setToolMode('dog');
-                this.showFloatingText(400, 300, "NOOT Fire Mage selected - Click map to place", 0xFF4400);
-              });
+              nootImage.on('pointerdown', () => { dogButton.emit('pointerdown'); });
             } else {
-              // Fallback to emoji if image doesn't exist
               nootImage = this.add.text(250, 550, '🧙‍♀️', {
-                fontFamily: 'Arial',
-                fontSize: '32px' // Increased from 24px
-              }).setOrigin(0.5);
+                fontFamily: 'Arial', fontSize: '32px'
+              }).setOrigin(0.5).setDepth(2001);
               nootImage.setInteractive({ useHandCursor: true });
-              nootImage.on('pointerdown', () => {
-                this.pendingDefenseType = 'dog';
-                this.pendingDefensePlacement = true;
-                this.setToolMode('dog');
-                this.showFloatingText(400, 300, "NOOT Fire Mage selected - Click map to place", 0xFF4400);
-              });
+              nootImage.on('pointerdown', () => { dogButton.emit('pointerdown'); });
             }
-            
-            // Advanced defenses - only if unlocked in the upgrade system
+
+
+            // --- Advanced defenses ---
             let wizardButton, cannonButton;
-            
-            // ALWAYS show the wizard button regardless of upgrade system
-            // Add wizard button
-            wizardButton = this.add.rectangle(320, 550, 70, 50, 0x990099);
+            let wizardImage, cannonImage;
+            let wizardCostText, cannonCostText;
+
+            // Wizard Button
+            wizardButton = this.add.rectangle(320, 550, buttonWidth, buttonHeight, 0x990099).setDepth(2000);
             wizardButton.setInteractive({ useHandCursor: true });
             wizardButton.input.hitArea.setTo(-40, -30, 80, 60);
             wizardButton.on('pointerdown', () => {
-              // Select defense without auto-placing
               this.pendingDefenseType = 'wizard';
               this.pendingDefensePlacement = true;
               this.setToolMode('wizard');
-              
-              // Show message to indicate selection
               this.showFloatingText(400, 300, "Wizard selected - Click map to place", 0xFF00FF);
-              
-              console.log("Wizard selected, waiting for placement click");
             });
-            
-            // Use wizard image or emoji
-            let wizardImage;
+            addBounceEffect(wizardButton); // Add bounce effect
+            this.toolbarButtons.wizard = wizardButton; // Store reference
+
             if (this.textures.exists('wizard_idle')) {
-              wizardImage = this.add.image(320, 550, 'wizard_idle');
-              wizardImage.setDisplaySize(40, 40); // Increased from 32x32
-              // Make image interactive too
+              wizardImage = this.add.image(320, 550, 'wizard_idle').setDepth(2001);
+              wizardImage.setDisplaySize(iconSize, iconSize);
               wizardImage.setInteractive({ useHandCursor: true });
-              wizardImage.on('pointerdown', () => {
-                this.pendingDefenseType = 'wizard';
-                this.pendingDefensePlacement = true; 
-                this.setToolMode('wizard');
-                this.showFloatingText(400, 300, "Wizard selected - Click map to place", 0xFF00FF);
-              });
+              wizardImage.on('pointerdown', () => { wizardButton.emit('pointerdown'); });
             } else {
-              // Fallback to emoji if image doesn't exist
-              wizardImage = this.add.text(320, 550, '🧙', {
-                fontFamily: 'Arial',
-                fontSize: '32px' // Increased from 24px
-              }).setOrigin(0.5);
+              wizardImage = this.add.text(320, 550, '🧙', { fontFamily: 'Arial', fontSize: '32px' }).setOrigin(0.5).setDepth(2001);
               wizardImage.setInteractive({ useHandCursor: true });
-              wizardImage.on('pointerdown', () => {
-                this.pendingDefenseType = 'wizard';
-                this.pendingDefensePlacement = true;
-                this.setToolMode('wizard');
-                this.showFloatingText(400, 300, "Wizard selected - Click map to place", 0xFF00FF);
-              });
+              wizardImage.on('pointerdown', () => { wizardButton.emit('pointerdown'); });
             }
-            
-            // Add wizard cost
-            const wizardCostText = this.add.text(320, 570, '125', {
-              fontFamily: 'Arial',
-              fontSize: '12px',
-              color: '#FFFF00'
-            }).setOrigin(0.5);
-            
-            // Hide wizard by default
-            wizardButton.visible = false;
-            wizardImage.visible = false;
-            wizardCostText.visible = false;
-            
-            // ALWAYS show the cannon button regardless of upgrade system
-            // Add cannon button
-            cannonButton = this.add.rectangle(390, 550, 70, 50, 0x990000);
+            wizardCostText = this.add.text(320, 570, '125', { fontFamily: 'Arial', fontSize: costFontSize, color: '#FFFF00' }).setOrigin(0.5).setDepth(2001);
+            this.toolbarButtons.wizardImage = wizardImage; // Store reference
+            this.toolbarButtons.wizardCostText = wizardCostText; // Store reference
+
+            // Cannon Button
+            cannonButton = this.add.rectangle(390, 550, buttonWidth, buttonHeight, 0x990000).setDepth(2000);
             cannonButton.setInteractive({ useHandCursor: true });
             cannonButton.input.hitArea.setTo(-40, -30, 80, 60);
             cannonButton.on('pointerdown', () => {
-              // Select defense without auto-placing
               this.pendingDefenseType = 'cannon';
               this.pendingDefensePlacement = true;
               this.setToolMode('cannon');
-              
-              // Show message to indicate selection
               this.showFloatingText(400, 300, "Cannon selected - Click map to place", 0xFF0000);
-              
-              console.log("Cannon selected, waiting for placement click");
             });
-            
-            // Use cannon image or emoji
-            let cannonImage;
+            addBounceEffect(cannonButton); // Add bounce effect
+            this.toolbarButtons.cannon = cannonButton; // Store reference
+
+
             if (this.textures.exists('cannon_idle')) {
-              cannonImage = this.add.image(390, 550, 'cannon_idle');
-              cannonImage.setDisplaySize(40, 40); // Increased from 32x32
-              // Make image interactive too
+              cannonImage = this.add.image(390, 550, 'cannon_idle').setDepth(2001);
+              cannonImage.setDisplaySize(iconSize, iconSize);
               cannonImage.setInteractive({ useHandCursor: true });
-              cannonImage.on('pointerdown', () => {
-                this.pendingDefenseType = 'cannon';
-                this.pendingDefensePlacement = true;
-                this.setToolMode('cannon');
-                this.showFloatingText(400, 300, "Cannon selected - Click map to place", 0xFF0000);
-              });
+               cannonImage.on('pointerdown', () => { cannonButton.emit('pointerdown'); });
             } else {
-              // Fallback to emoji if image doesn't exist
-              cannonImage = this.add.text(390, 550, '💣', {
-                fontFamily: 'Arial',
-                fontSize: '32px' // Increased from 24px
-              }).setOrigin(0.5);
+              cannonImage = this.add.text(390, 550, '💣', { fontFamily: 'Arial', fontSize: '32px' }).setOrigin(0.5).setDepth(2001);
               cannonImage.setInteractive({ useHandCursor: true });
-              cannonImage.on('pointerdown', () => {
-                this.pendingDefenseType = 'cannon';
-                this.pendingDefensePlacement = true;
-                this.setToolMode('cannon');
-                this.showFloatingText(400, 300, "Cannon selected - Click map to place", 0xFF0000);
-              });
+               cannonImage.on('pointerdown', () => { cannonButton.emit('pointerdown'); });
             }
-            
-            // Add cannon cost
-            const cannonCostText = this.add.text(390, 570, '200', {
-              fontFamily: 'Arial',
-              fontSize: '12px',
-              color: '#FFFF00'
-            }).setOrigin(0.5);
-            
-            // Hide cannon by default
-            cannonButton.visible = false;
-            cannonImage.visible = false;
-            cannonCostText.visible = false;
-            
-            // Add upgrade button - moved to the right end
-            const upgradeButton = this.add.rectangle(460, 550, 70, 50, 0x555500);
+            cannonCostText = this.add.text(390, 570, '200', { fontFamily: 'Arial', fontSize: costFontSize, color: '#FFFF00' }).setOrigin(0.5).setDepth(2001);
+             this.toolbarButtons.cannonImage = cannonImage; // Store reference
+             this.toolbarButtons.cannonCostText = cannonCostText; // Store reference
+
+            // Hide advanced defenses by default
+            wizardButton.visible = false; wizardImage.visible = false; wizardCostText.visible = false;
+            cannonButton.visible = false; cannonImage.visible = false; cannonCostText.visible = false;
+
+
+            // Add upgrade button
+            const upgradeButton = this.add.rectangle(460, 550, buttonWidth, buttonHeight, 0x555500).setDepth(2000);
             upgradeButton.setInteractive({ useHandCursor: true });
             upgradeButton.input.hitArea.setTo(-40, -30, 80, 60);
             upgradeButton.on('pointerdown', () => this.toggleUpgradePanel());
-            
+            addBounceEffect(upgradeButton); // Add bounce effect
+            this.toolbarButtons.upgrade = upgradeButton; // Store reference
+
             const upgradeText = this.add.text(460, 550, '⚙️', {
-              fontFamily: 'Arial',
-              fontSize: '32px' // Increased from 24px
-            }).setOrigin(0.5);
+              fontFamily: 'Arial', fontSize: '32px'
+            }).setOrigin(0.5).setDepth(2001);
             upgradeText.setInteractive({ useHandCursor: true });
-            upgradeText.on('pointerdown', () => this.toggleUpgradePanel());
-            
-            // Store buttons for reference
-            this.toolbarButtons = {
-              attack: attackButton, // Add the attack button to the reference object
-              plant: cropButton,
-              scarecrow: scarecrowButton,
-              dog: dogButton,
-              upgrade: upgradeButton,
-              wizard: wizardButton,
-              cannon: cannonButton,
-              wizardImage: wizardImage,
-              wizardCostText: wizardCostText,
-              cannonImage: cannonImage,
-              cannonCostText: cannonCostText
-            };
-            
-            // Add advanced defense buttons if unlocked
-            if (this.upgradeSystem) {
-              if (this.upgradeSystem.unlockedDefenses.wizard && wizardButton) {
-                this.toolbarButtons.wizard = wizardButton;
-              }
-              if (this.upgradeSystem.unlockedDefenses.cannon && cannonButton) {
-                this.toolbarButtons.cannon = cannonButton;
-              }
-            }
-            
+            upgradeText.on('pointerdown', () => upgradeButton.emit('pointerdown'));
+
+
             // Add costs/labels underneath
-            this.add.text(40, 570, 'Attack', {
-              fontFamily: 'Arial',
-              fontSize: '12px',
-              color: '#FFFFFF'
-            }).setOrigin(0.5);
-            
-            this.add.text(110, 570, '5', {
-              fontFamily: 'Arial',
-              fontSize: '12px',
-              color: '#FFFF00'
-            }).setOrigin(0.5);
-            
-            this.add.text(180, 570, '45', {
-              fontFamily: 'Arial',
-              fontSize: '12px',
-              color: '#FFFF00'
-            }).setOrigin(0.5);
-            
-            this.add.text(250, 570, '65', {
-              fontFamily: 'Arial',
-              fontSize: '12px',
-              color: '#FFFF00'
-            }).setOrigin(0.5);
-            
-            // Add upgrade label
-            this.add.text(460, 570, 'Upgrade', {
-              fontFamily: 'Arial',
-              fontSize: '12px',
-              color: '#FFFFFF'
-            }).setOrigin(0.5);
-            
+            this.add.text(40, 570, 'Attack', { fontFamily: 'Arial', fontSize: labelFontSize, color: '#FFFFFF' }).setOrigin(0.5).setDepth(2001);
+            this.add.text(110, 570, '5', { fontFamily: 'Arial', fontSize: costFontSize, color: '#FFFF00' }).setOrigin(0.5).setDepth(2001);
+            this.add.text(180, 570, '45', { fontFamily: 'Arial', fontSize: costFontSize, color: '#FFFF00' }).setOrigin(0.5).setDepth(2001);
+            this.add.text(250, 570, '65', { fontFamily: 'Arial', fontSize: costFontSize, color: '#FFFF00' }).setOrigin(0.5).setDepth(2001);
+            this.add.text(460, 570, 'Upgrade', { fontFamily: 'Arial', fontSize: labelFontSize, color: '#FFFFFF' }).setOrigin(0.5).setDepth(2001);
+
+
             // Set initial tool to attack mode
             this.setToolMode('attack');
-            
+
             // Initialize advanced defense button visibility
             this.updateAdvancedDefenseButtons();
           } catch (error) {
@@ -4474,20 +4441,23 @@ if (isBrowser) {
         // Add this method to handle enemies that reach the end of the path
         enemyReachedEnd(enemy) {
           if (!enemy || !this.gameState) return;
-          
+
           console.log(`Enemy ${enemy.id} reached the end of the path`);
-          
+
           // Reduce lives
           this.gameState.lives--;
           if (typeof this.updateLivesText === 'function') {
             this.updateLivesText();
           }
-          
+
           // Show warning text
           if (typeof this.showFloatingText === 'function') {
             this.showFloatingText(50, 300, 'Farm Invaded! -1 Life', 0xFF0000);
           }
-          
+
+          // Add screen shake when a life is lost
+          this.cameras.main.shake(250, 0.008); // Longer duration, slightly higher intensity
+
           // Check for game over
           if (this.gameState.lives <= 0) {
             console.log("Game over! No lives remaining.");
@@ -4503,15 +4473,16 @@ if (isBrowser) {
               }).setOrigin(0.5);
             }
           }
-          
+
           // Destroy the enemy - using the internal destroy method
           if (typeof enemy.destroy === 'function') {
             enemy.destroy();
           }
-          
-          // Play enemy escaped sound
+
+          // Play enemy escaped sound - make it more alarming
           if (this.soundManager) {
-            this.soundManager.play('enemy_escaped');
+             // Use a more impactful sound - ensure this key exists
+            this.soundManager.play('enemy_escaped_alarm', { volume: 0.8 });
           }
         }
 
@@ -4519,26 +4490,28 @@ if (isBrowser) {
         endGame(victory = false) {
           try {
             console.log(`Game ended with ${victory ? 'victory' : 'defeat'}`);
-            
-            // --- CAPTURE STATS BEFORE CLEANUP --- 
+
+            // --- CAPTURE STATS BEFORE CLEANUP ---
             const finalScore = this.gameState.score || 0;
             const finalCoins = this.gameState.farmCoins || 0;
             const completedWaves = Math.max(0, this.gameState.wave - 1);
 
             // Set game to inactive
             this.gameState.isActive = false;
-            
+
             // IMPORTANT: Immediately clean up all game objects
-            // This will stop all defenses and enemies before showing the game over UI
             this.cleanupCurrentGame();
-            
+
+            // Add screen shake on game end - more intense for game over
+            this.cameras.main.shake(victory ? 400 : 600, victory ? 0.006 : 0.012);
+
             // Create overlay to dim the background
             const overlay = this.add.rectangle(400, 300, 800, 600, 0x000000, 0.7);
             overlay.setDepth(1000);
-            
-            // Calculate final stats
-            const coinsEarned = this.gameState.farmCoins;
-            
+
+            // Calculate final stats (Already captured above)
+            // const coinsEarned = finalCoins; // Use captured value
+
             // Add game over text
             const resultText = victory ? 'Victory!' : 'Game Over';
             const gameOverText = this.add.text(400, 200, resultText, {
@@ -4555,7 +4528,7 @@ if (isBrowser) {
               }
             }).setOrigin(0.5);
             gameOverText.setDepth(1001);
-            
+
             // Show statistics
             const scoreText = this.add.text(400, 280, `Score: ${finalScore}`, {
               fontFamily: 'Arial',
@@ -4565,7 +4538,7 @@ if (isBrowser) {
               strokeThickness: 3
             }).setOrigin(0.5);
             scoreText.setDepth(1001);
-            
+
             const wavesText = this.add.text(400, 330, `Waves: ${completedWaves}`, {
               fontFamily: 'Arial',
               fontSize: '28px',
@@ -4574,7 +4547,7 @@ if (isBrowser) {
               strokeThickness: 3
             }).setOrigin(0.5);
             wavesText.setDepth(1001);
-            
+
             const coinsText = this.add.text(400, 380, `Coins: ${finalCoins}`, {
               fontFamily: 'Arial',
               fontSize: '28px',
@@ -4583,14 +4556,14 @@ if (isBrowser) {
               strokeThickness: 3
             }).setOrigin(0.5);
             coinsText.setDepth(1001);
-            
+
             // Create restart button with proper styling
             const buttonWidth = 220;
             const buttonHeight = 60;
             const restartButton = this.add.rectangle(400, 500, buttonWidth, buttonHeight, 0x4CAF50, 1);
             restartButton.setStrokeStyle(4, 0x45A049);
             restartButton.setDepth(1001);
-            
+
             const restartText = this.add.text(400, 500, 'Play Again', {
               fontFamily: 'Arial',
               fontSize: '28px',
@@ -4599,55 +4572,63 @@ if (isBrowser) {
               strokeThickness: 1
             }).setOrigin(0.5);
             restartText.setDepth(1002);
-            
+
             // Add hover effect
             restartButton.setInteractive({ useHandCursor: true })
               .on('pointerover', () => {
                 restartButton.fillColor = 0x45A049;
+                // Add slight scale effect on hover
+                this.tweens.add({ targets: restartButton, scale: 1.05, duration: 100 });
                 this.input.setDefaultCursor('pointer');
               })
               .on('pointerout', () => {
                 restartButton.fillColor = 0x4CAF50;
+                // Reset scale
+                 this.tweens.add({ targets: restartButton, scale: 1.0, duration: 100 });
                 this.input.setDefaultCursor('default');
               })
               .on('pointerdown', () => {
                 // Play click sound if available
-                if (this.soundManager) { // Check soundManager instead of sound
-                  this.soundManager.play('click'); // Use consistent sound key
+                if (this.soundManager) {
+                    // Use a confirmation sound - ensure this key exists
+                  this.soundManager.play('ui_click_confirm', { volume: 0.8 }); 
                 }
-                
-                // Clean up game over UI elements BEFORE starting new game
-                overlay.destroy();
-                gameOverText.destroy();
-                scoreText.destroy();
-                wavesText.destroy();
-                coinsText.destroy();
-                restartButton.destroy();
-                restartText.destroy();
-                
-                // Update external farm coins if callback is available
-                // IMPORTANT: This should probably happen based on game logic,
-                // maybe only add coins on victory or based on score?
-                // For now, let's assume we don't add coins on simple restart.
-                // if (typeof this.addFarmCoins === 'function') {
-                //   this.addFarmCoins(finalCoins); // Pass the captured final coins
-                // }
-                
-                // Reset cursor
-                this.input.setDefaultCursor('default');
-                
-                // Start a new game - cleanup will happen inside startGame
-                this.startGame();
+
+                // Add quick scale down animation on click
+                this.tweens.add({
+                  targets: restartButton,
+                  scale: 0.95,
+                  duration: 80,
+                  yoyo: true, // Go back to original scale
+                  onComplete: () => {
+                      // Clean up game over UI elements BEFORE starting new game
+                      overlay.destroy();
+                      gameOverText.destroy();
+                      scoreText.destroy();
+                      wavesText.destroy();
+                      coinsText.destroy();
+                      restartButton.destroy();
+                      restartText.destroy();
+
+                      // Reset cursor
+                      this.input.setDefaultCursor('default');
+
+                      // Start a new game - cleanup will happen inside startGame
+                      this.startGame();
+                  }
+                });
               });
-            
+
             // Play victory or game over sound
             if (this.soundManager) {
               if (victory) {
-                this.soundManager.play('victory');
+                  // More epic victory sound - ensure this key exists
+                this.soundManager.play('victory_fanfare', { volume: 0.9 }); 
               } else {
-                this.soundManager.play('game_over');
+                   // More dramatic game over sound - ensure this key exists
+                this.soundManager.play('game_over_sting', { volume: 0.9 });
               }
-              
+
               // Stop the background music
               this.soundManager.stopMusic();
             }
@@ -4946,6 +4927,68 @@ if (isBrowser) {
                 repeat: Math.max(0, this.totalEnemiesInWave - this.enemiesSpawned -1)
             });
         }
+
+        // --- NEW: Create Flying Coin Effect --- 
+        createFlyingCoinEffect(startX, startY, amount) {
+            if (!this.textures.exists('coin') || !this.farmCoinsTargetPos) {
+                console.warn("Coin texture or target position missing for flying coin effect.");
+                // Directly update coins as fallback if effect can't run
+                this.updateFarmCoins(amount);
+                return;
+            }
+
+            // Limit the number of coin sprites for performance
+            const numCoins = Math.min(10, Math.max(1, Math.floor(amount / 2))); // e.g., 1 coin per 2 value, max 10
+            const coinValuePerSprite = amount / numCoins; // Distribute value for potential future logic
+
+            for (let i = 0; i < numCoins; i++) {
+                // Create coin slightly offset from start position
+                const coinX = startX + (Math.random() - 0.5) * 30;
+                const coinY = startY + (Math.random() - 0.5) * 30;
+
+                const coinSprite = this.add.sprite(coinX, coinY, 'coin');
+                coinSprite.setScale(0.5); // Start small
+                coinSprite.setDepth(4000); // Ensure coins are on top
+                coinSprite.setAlpha(0.8);
+
+                // Calculate target position with slight variation
+                const targetX = this.farmCoinsTargetPos.x + (Math.random() - 0.5) * 20;
+                const targetY = this.farmCoinsTargetPos.y + (Math.random() - 0.5) * 10;
+
+                // Random duration for staggered effect
+                const duration = 600 + Math.random() * 300;
+
+                // Tween animation
+                this.tweens.add({
+                    targets: coinSprite,
+                    x: targetX,
+                    y: targetY,
+                    scale: { from: 0.8, to: 0.2 }, // Scale up slightly then shrink
+                    alpha: { from: 1, to: 0 },
+                    angle: 360 + (Math.random() * 180), // Add rotation
+                    duration: duration,
+                    ease: 'Cubic.easeIn', // Ease in towards the target
+                    delay: i * 50, // Stagger the start of each coin
+                    onComplete: () => {
+                        coinSprite.destroy();
+                        // Optional: Play a small sound when coin reaches target?
+                        // if (i === numCoins - 1) { // Only play sound for last coin if desired
+                        //    if (this.soundManager) this.soundManager.play('coin_collect_single');
+                        // }
+                    }
+                });
+            }
+
+            // Play a general coin collect sound once for the batch
+            if (this.soundManager) {
+                this.soundManager.play('coin_collect_batch', { volume: 0.5, delay: 0.1 }); // Delay slightly
+            }
+
+            // IMPORTANT: Update the actual coin count *immediately* 
+            // The visual effect is just for show
+            this.updateFarmCoins(amount);
+        }
+        // --- End Flying Coin Effect ---
       }
       
       // Replace the placeholder with the real implementation

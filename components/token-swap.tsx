@@ -1793,20 +1793,35 @@ export const TokenSwap = () => {
           }));
           
           if (receipt && receipt.status === 1) {
-            toast.success(`Successfully swapped ${swapAmount} NOOT for ${swapAmount} ${farmToken}`);
+            toast.success(
+              // Enhanced Dopamine Toast! ✨
+              <div className="flex items-center space-x-3 p-2 bg-gradient-to-r from-green-400 to-blue-500 rounded-lg shadow-lg">
+                <span className="relative flex h-6 w-6">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-6 w-6 text-2xl">💰</span>
+                </span>
+                <div>
+                  <p className="font-bold text-white text-lg animate-pulse">SWAP SUCCESS!</p>
+                  <p className="text-sm text-white/90">You got {farmCoinsToReceive} Farm Coins!</p>
+                </div>
+              </div>,
+              {
+                duration: 4000, // Longer duration
+                icon: '🎉', // Fun icon
+                style: { // Remove default styling
+                  background: 'transparent',
+                  border: 'none',
+                  boxShadow: 'none',
+                  padding: '0',
+                },
+              }
+            );
             
             // Update farm coins
             updateFarmCoins(farmCoinsToReceive);
             
             // Update NOOT balance
             await fetchNootBalance(walletAddr);
-            
-            toast.success(
-              <div className="space-y-1">
-                <p className="font-semibold">Swap Successful!</p>
-                <p className="text-xs">You received {farmCoinsToReceive} Farm Coins</p>
-              </div>
-            );
             
             // Reset input
             setSwapAmount(0);
@@ -1824,6 +1839,8 @@ export const TokenSwap = () => {
         console.error("Error in swap process:", error);
         setError(error instanceof Error ? error.message : "Something went wrong with the swap");
         toast.error("Failed to complete the swap");
+      } finally {
+        setIsLoading(false);
       }
     } catch (error: unknown) {
       console.error("Error in swap process:", error);
@@ -2030,7 +2047,26 @@ export const TokenSwap = () => {
           await fetchNootBalance(walletAddr);
           
           toast.dismiss("swap-toast");
-          toast.success(`Successfully swapped ${farmToNootAmount} Farm Coins for ${nootToReceive} NOOT!`);
+          // Enhanced Dopamine Toast! ✨
+          toast.success(
+            <div className="flex items-center space-x-3 p-2 bg-gradient-to-r from-purple-400 to-pink-500 rounded-lg shadow-lg">
+              <span className="text-2xl animate-pulse">💎</span>
+              <div>
+                <p className="font-bold text-white text-lg animate-pulse">NOOT ACQUIRED!</p>
+                <p className="text-sm text-white/90">Got {nootToReceive.toFixed(2)} NOOT!</p>
+              </div>
+            </div>,
+            {
+              duration: 4000,
+              icon: '🚀',
+              style: {
+                background: 'transparent',
+                border: 'none',
+                boxShadow: 'none',
+                padding: '0',
+              },
+            }
+          );
           
           // Reset the input field after successful swap
           setFarmToNootAmount(0);
@@ -2078,7 +2114,26 @@ export const TokenSwap = () => {
             setFarmCoins(prevCoins => prevCoins - farmToNootAmount);
             await fetchNootBalance(walletAddr);
             
-            toast.success(`Successfully swapped ${farmToNootAmount} Farm Coins for ${nootToReceive} NOOT!`);
+            toast.success(
+              // Enhanced Dopamine Toast! ✨
+              <div className="flex items-center space-x-3 p-2 bg-gradient-to-r from-purple-400 to-pink-500 rounded-lg shadow-lg">
+                <span className="text-2xl animate-pulse">💎</span>
+                <div>
+                  <p className="font-bold text-white text-lg animate-pulse">NOOT ACQUIRED!</p>
+                  <p className="text-sm text-white/90">Got {nootToReceive.toFixed(2)} NOOT!</p>
+                </div>
+              </div>,
+              {
+                duration: 4000,
+                icon: '🚀',
+                style: {
+                  background: 'transparent',
+                  border: 'none',
+                  boxShadow: 'none',
+                  padding: '0',
+                },
+              }
+            );
             
             // Reset the input field after successful swap
             setFarmToNootAmount(0);
@@ -2497,11 +2552,23 @@ export const TokenSwap = () => {
             : swapAmount.toString();
             
           toast.success(
-            <div className="space-y-1">
-              <p className="font-semibold">Swap Successful!</p>
-              <p className="text-xs">You swapped {swapAmount} {selectedToken} for approximately {formattedOutput} NOOT</p>
+            <div className="flex items-center space-x-3 p-2 bg-gradient-to-r from-green-500 to-teal-500 rounded-lg shadow-lg">
+              <span className="text-2xl animate-bounce">✨</span>
+              <div>
+                <p className="font-bold text-white text-lg animate-pulse">SWAP COMPLETE!</p>
+                <p className="text-sm text-white/90">Swapped {swapAmount} NOOT for {swapAmount} {selectedToken}</p>
+              </div>
             </div>,
-            { duration: 5000 }
+            {
+              duration: 4000,
+              icon: '✅',
+              style: {
+                background: 'transparent',
+                border: 'none',
+                boxShadow: 'none',
+                padding: '0',
+              },
+            }
           );
           
           // Reset swap amount
@@ -3404,7 +3471,25 @@ export const TokenSwap = () => {
           }));
           
           if (receipt && receipt.status === 1) {
-            toast.success(`Successfully swapped ${swapAmount} NOOT for ${swapAmount} ${selectedToken}`);
+            toast.success(
+              <div className="flex items-center space-x-3 p-2 bg-gradient-to-r from-green-500 to-teal-500 rounded-lg shadow-lg">
+                <span className="text-2xl animate-bounce">✨</span>
+                <div>
+                  <p className="font-bold text-white text-lg animate-pulse">SWAP COMPLETE!</p>
+                  <p className="text-sm text-white/90">Swapped {swapAmount} NOOT for {swapAmount} {selectedToken}</p>
+                </div>
+              </div>,
+              {
+                duration: 4000,
+                icon: '✅',
+                style: {
+                  background: 'transparent',
+                  border: 'none',
+                  boxShadow: 'none',
+                  padding: '0',
+                },
+              }
+            );
             
             // Refresh balances
             await fetchNootBalance(walletAddress);
@@ -3515,7 +3600,25 @@ export const TokenSwap = () => {
           }));
           
           if (receipt && receipt.status === 1) {
-            toast.success(`Successfully swapped ${swapAmount} ${selectedToken} for ${swapAmount} NOOT`);
+            toast.success(
+              <div className="flex items-center space-x-3 p-2 bg-gradient-to-r from-blue-500 to-indigo-500 rounded-lg shadow-lg">
+                <span className="text-2xl animate-spin">🚀</span>
+                <div>
+                  <p className="font-bold text-white text-lg animate-pulse">SWAP COMPLETE!</p>
+                  <p className="text-sm text-white/90">Swapped {swapAmount} {selectedToken} for {swapAmount} NOOT</p>
+                </div>
+              </div>,
+              {
+                duration: 4000,
+                icon: '✅',
+                style: {
+                  background: 'transparent',
+                  border: 'none',
+                  boxShadow: 'none',
+                  padding: '0',
+                },
+              }
+            );
             
             // Refresh balances
             await fetchNootBalance(walletAddress);
@@ -3959,8 +4062,8 @@ export const TokenSwap = () => {
             <div className="space-y-2">
               <div className="text-sm font-medium text-white">Transaction Hash</div>
               <div className="flex items-center justify-between gap-2">
-                <div className="font-mono text-xs bg-black p-2 border border-[#333] flex-1 overflow-hidden text-ellipsis text-white/80">
-                  {currentTx.hash}
+                <div className="font-mono text-xs bg-black p-2 border border-[#333] flex-1 overflow-hidden text-ellipsis text-white/80" title={currentTx.hash}>
+                  {currentTx.hash.substring(0, 10)}...{currentTx.hash.substring(currentTx.hash.length - 8)}
                 </div>
                 <Button 
                   size="sm" 
@@ -3989,9 +4092,9 @@ export const TokenSwap = () => {
             
             <div className="space-y-2">
               <div className="text-sm font-medium text-white">Status</div>
-              <div className={`text-sm px-3 py-1.5 rounded inline-flex items-center
-                ${currentTx.status === 'pending' ? 'bg-yellow-500/20 text-yellow-300' : 
-                  currentTx.status === 'success' ? 'bg-green-500/20 text-green-300' : 
+              <div className={`text-sm px-3 py-1.5 rounded inline-flex items-center transition-all duration-300
+                ${currentTx.status === 'pending' ? 'bg-yellow-500/20 text-yellow-300 animate-pulse' : 
+                  currentTx.status === 'success' ? 'bg-green-500/20 text-green-300 ring-2 ring-green-500/50 shadow-lg shadow-green-500/30' : 
                   'bg-red-500/20 text-red-300'}`}
               >
                 {currentTx.status === 'pending' ? (

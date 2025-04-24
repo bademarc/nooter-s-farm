@@ -1,9 +1,13 @@
-import React, { useState, useEffect } from 'react';
-import { ReactP5Wrapper } from 'react-p5-wrapper';
-import platformerSketch from '../games/game.js'; // Import the sketch
+import React, { useState, useEffect, useRef } from 'react';
+import { ReactP5Wrapper, P5WrappedElementProps } from 'react-p5-wrapper';
+import platformerSketch from '../games/game'; // Import the sketch without extension
 
 // Remove static p5 import
 // import 'p5'; 
+
+interface SketchProps extends P5WrappedElementProps {
+  volume: number;
+}
 
 function P5Wrapper() {
   const [isClient, setIsClient] = useState(false);
@@ -54,6 +58,9 @@ function P5Wrapper() {
       setMasterVolume(newVolume);
   };
 
+  // Create a function sketch wrapper that properly passes props
+  const wrappedSketch = (p: any) => platformerSketch(p);
+
   // Render based on state
   return (
     // Wrap everything in a fragment or div to include the slider
@@ -63,10 +70,10 @@ function P5Wrapper() {
         {errorLoading && <div style={{color: 'red'}}>{errorLoading}</div>}
         {!isClient && <div>Loading Sketch...</div>} 
         {isClient && !errorLoading && !soundLibraryReady && <div>Loading Sound Library...</div>} 
-        {/* Pass masterVolume as 'volume' prop */} 
+        {/* Use the wrapped sketch function */} 
         {isClient && !errorLoading && soundLibraryReady && 
           <ReactP5Wrapper 
-            sketch={platformerSketch} 
+            sketch={wrappedSketch} 
             volume={masterVolume} // Pass volume prop here
           />}
       </div>

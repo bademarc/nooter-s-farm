@@ -685,43 +685,116 @@ export default class Enemy {
   
   defeatAnimation() {
     if (!this.scene || !this.active) return;
-    
+
     try {
-      // Create a more dramatic explosion effect
-      const explosion = this.scene.add.circle(this.x, this.y, 40, 0xFFFF00, 0.8);
-      
-      // Add particles if available
-      if (this.scene.add.particles) {
-        try {
-          // Create particles in the enemy's color
-          const particleColor = this.type === 'bird' ? 0x3498db : 0x9b59b6;
-          const particles = this.scene.add.particles(this.x, this.y, 'pixel', {
-            speed: 150,
-            scale: { start: 2, end: 0 },
-            blendMode: 'ADD',
-            lifespan: 800,
-            tint: particleColor
-          });
-          
-          // Explode with more particles
-          particles.explode(30);
-          
-          // Destroy after animation completes
-          this.scene.time.delayedCall(800, () => particles.destroy());
-        } catch (error) {
-          console.log("Particle system not available:", error);
-        }
+      // --- Enhanced Death Effects --- 
+      let particleColor = 0xFFFFFF; // Default particle color
+      let particleLifespan = 600;
+      let particleQuantity = 20;
+      let particleScale = { start: 1.5, end: 0 };
+      let particleSpeed = 100;
+      let particleGravityY = 0; // No gravity by default
+      let particleTexture = 'pixel'; // Default particle texture
+
+      // Customize effects based on enemy type
+      switch (this.type) {
+        case 'bird':
+          particleColor = 0xADD8E6; // Light blue for feathers/air
+          particleQuantity = 25;
+          particleLifespan = 800;
+          particleGravityY = 80; // Particles drift down slightly
+          // Could load a 'feather' particle texture if available
+          break;
+        case 'rabbit':
+          particleColor = 0xD3D3D3; // Grey/white for fur
+          particleQuantity = 15;
+          particleScale = { start: 1.2, end: 0 };
+          break;
+        case 'fox':
+          particleColor = 0xFF8C00; // Orange
+          particleQuantity = 22;
+          particleSpeed = 120;
+          break;
+        case 'slime':
+          particleColor = 0x90EE90; // Light green goo
+          particleQuantity = 30;
+          particleLifespan = 1000;
+          particleScale = { start: 2.5, end: 0.5 }; // Larger, goo-like particles
+          particleSpeed = 50;
+          particleGravityY = 100; // Goo falls
+          break;
+        case 'ghost':
+          particleColor = 0xE6E6FA; // Lavender/ethereal
+          particleQuantity = 15;
+          particleLifespan = 1200; // Lingering effect
+          particleSpeed = 40;
+          particleScale = { start: 2.0, end: 0 };
+          // Use BlendMode ADD for glow?
+          break;
+        case 'skeleton':
+          particleColor = 0xFFFFFF; // White bone fragments
+          particleQuantity = 35;
+          particleLifespan = 500;
+          particleSpeed = 150; // Faster scatter
+          // Could load a 'bone' particle texture
+          break;
+        // Add cases for other enemy types here...
+        case 'boss': // Special effect for bosses
+           particleColor = 0xFFFF00; // Gold/yellow
+           particleQuantity = 50; 
+           particleLifespan = 1500;
+           particleSpeed = 180;
+           particleScale = { start: 3, end: 0 }; 
+           break;
+        default:
+          particleColor = 0xFFC0CB; // Pinkish default
       }
       
-      // Animate explosion with more dramatic effect
-      this.scene.tweens.add({
-        targets: explosion,
-        alpha: 0,
-        scale: 3,
-        duration: 500,
-        onComplete: () => explosion.destroy()
-      });
-      
+      // Create particles if the system is available
+      if (this.scene.add.particles) {
+        try {
+          // Check if the base texture exists, fallback if needed
+          if (!this.scene.textures.exists(particleTexture)) {
+              particleTexture = 'pixel'; // Ensure fallback
+          }
+          
+          const particles = this.scene.add.particles(this.x, this.y, particleTexture, {
+            speed: particleSpeed,
+            lifespan: particleLifespan,
+            scale: particleScale,
+            gravityY: particleGravityY,
+            blendMode: 'NORMAL', // Use ADD for ghosts? 
+            tint: particleColor,
+            quantity: particleQuantity, // Emit all at once
+            emitting: false // Control emission manually
+          });
+          particles.setDepth(2500); // Ensure particles are visible
+
+          // Explode particles
+          particles.explode(particleQuantity);
+
+          // Destroy particle emitter after lifespan
+          this.scene.time.delayedCall(particleLifespan + 100, () => {
+             if (particles) particles.destroy(); 
+          });
+        } catch (particleError) {
+          console.warn("Particle system error:", particleError);
+        }
+      } else {
+         // Fallback: Simple circle flash if particles unavailable
+         const fallbackExplosion = this.scene.add.circle(this.x, this.y, 10, particleColor, 0.8);
+         fallbackExplosion.setDepth(2500);
+         this.scene.tweens.add({
+             targets: fallbackExplosion,
+             scale: 4,
+             alpha: 0,
+             duration: 300,
+             ease: 'Expo.easeOut',
+             onComplete: () => { if(fallbackExplosion) fallbackExplosion.destroy(); }
+         });
+      }
+      // --- End Enhanced Death Effects ---
+
       // Add defeat text with coin value - make it more visible
       const defeatText = this.scene.add.text(this.x, this.y - 20, `+${this.value}`, {
         fontSize: '24px',
@@ -730,7 +803,8 @@ export default class Enemy {
         stroke: '#000000',
         strokeThickness: 3
       }).setOrigin(0.5);
-      
+      defeatText.setDepth(2501); // Above particles
+
       // Animate the text with a more dramatic effect
       this.scene.tweens.add({
         targets: defeatText,
@@ -893,33 +967,28 @@ export default class Enemy {
       this.dead = true;
       this.destroyed = true;
       
-      // Add coins to player
-      if (this.scene && this.scene.gameState) {
-        // Ensure value is a number
-        this.value = typeof this.value === 'number' ? this.value : 10;
-        
-        // Update coins
-        if (typeof this.scene.gameState.farmCoins === 'number') {
-          this.scene.gameState.farmCoins += this.value;
-          
-          // Update UI elements for coins
-          if (typeof this.scene.updateFarmCoins === 'function') {
-            this.scene.updateFarmCoins(this.value);
-          }
+      // Call the flying coin effect instead of directly updating coins here
+      if (typeof this.scene.createFlyingCoinEffect === 'function') {
+        this.scene.createFlyingCoinEffect(this.x, this.y, this.value);
+      } else {
+        // Fallback if the effect function doesn't exist
+        console.warn("createFlyingCoinEffect not found on scene, updating coins directly.");
+        if (typeof this.scene.updateFarmCoins === 'function') { 
+            this.scene.updateFarmCoins(this.value); 
         }
-        
-        // Update score
-        if (typeof this.scene.gameState.score === 'number') {
-          this.scene.gameState.score += this.value * 10;
-          if (typeof this.scene.updateScoreText === 'function') {
-            this.scene.updateScoreText();
-          }
+      }
+      
+      // Update score
+      if (typeof this.scene.gameState.score === 'number') {
+        this.scene.gameState.score += this.value * 10;
+        if (typeof this.scene.updateScoreText === 'function') {
+          this.scene.updateScoreText();
         }
-        
-        // Show floating text for COINS earned
-        if (typeof this.scene.showFloatingText === 'function') {
-          this.scene.showFloatingText(this.x, this.y - 20, `+${this.value}`, 0xFFFF00); 
-        }
+      }
+      
+      // Show floating text for COINS earned
+      if (typeof this.scene.showFloatingText === 'function') {
+        this.scene.showFloatingText(this.x, this.y - 20, `+${this.value}`, 0xFFFF00); 
       }
       
       // Play defeat animation - but don't call destroy from there to avoid loop
