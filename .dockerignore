@@ -6,3 +6,5 @@ Dockerfile
 fly.toml
 .next/cache
 .vercel
+/nooter contract
+
