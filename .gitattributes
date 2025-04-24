@@ -1,0 +1,2 @@
+# Ensure pnpmfile uses LF line endings
+*.pnpmfile.cjs text eol=lf 
