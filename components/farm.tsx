@@ -43,7 +43,8 @@ import {
   Gem, // Import Gem icon for slot machine tab
   DollarSign, // Import DollarSign for Noot Gamble
   ChevronDown, // Import ChevronDown for dropdown indicator
-  Gamepad2 // Import Gamepad2 for Noot Games
+  Gamepad2, // Import Gamepad2 for Noot Games
+  Activity // Import Activity icon for Sport Betting
 } from "lucide-react";
 import { TokenSwap } from "@/components/token-swap";
 import { Switch } from "@/components/ui/switch";
@@ -56,6 +57,8 @@ import ClientWrapper from './farm-game/ClientWrapper';
 import { CrashoutGame } from './crashout-game'; // Assuming it's in the components folder
 // Import EnhancedSlotMachine
 import EnhancedSlotMachine from "@/app/slot-machine/components/enhanced-slot-machine";
+// Import SportBettingPage (aliased from Home)
+import SportBettingPage from "@/app/sport-betting/app/page"; // Assuming this is the correct path now
 
 
 // Dynamically import P5Wrapper with SSR disabled
@@ -156,7 +159,7 @@ declare global {
 }
 
 // Define the possible active tab values, including the new Noot Gamble types
-type ActiveTab = "farm" | "quests" | "market" | "swap" | "social" | "profile" | "animals" | "crafting" | "boosters" | "defend" | "crashout" | "platformer" | "slot-machine" | "noot-case";
+type ActiveTab = "farm" | "quests" | "market" | "swap" | "social" | "profile" | "animals" | "crafting" | "boosters" | "defend" | "crashout" | "platformer" | "slot-machine" | "noot-case" | "sport-betting";
 
 
 export function Farm() {
@@ -2242,7 +2245,7 @@ export function Farm() {
             <button
               onClick={() => setShowNootGambleDropdown(!showNootGambleDropdown)}
               className={`px-3 py-2 sm:px-4 flex items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm ${ // Apply hover effect here
-                ["crashout", "slot-machine", "noot-case"].includes(activeTab) ? "bg-white text-black" : "text-white/80 hover:bg-[#222] hover:shadow-[0_0_15px_rgba(255,255,255,0.3)]"
+                ["crashout", "slot-machine", "noot-case", "sport-betting"].includes(activeTab) ? "bg-white text-black" : "text-white/80 hover:bg-[#222] hover:shadow-[0_0_15px_rgba(255,255,255,0.3)]"
               } transition-all duration-200`}
             >
               <DollarSign className="h-3 w-3 sm:h-4 sm:w-4" />
@@ -2287,6 +2290,19 @@ export function Farm() {
                 >
                   <Leaf className="h-3 w-3 sm:h-4 sm:w-4" />
                   Noot Case
+                </button>
+                {/* Sport Betting Button */}
+                <button
+                  onClick={() => {
+                    setActiveTab("sport-betting");
+                    setShowNootGambleDropdown(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm ${ // Apply hover effect here
+                    activeTab === "sport-betting" ? "bg-white text-black" : "text-white/80 hover:bg-[#222] hover:shadow-[0_0_15px_rgba(255,255,255,0.3)]"
+                  } transition-all duration-200`}
+                >
+                  <Activity className="h-3 w-3 sm:h-4 sm:w-4" />
+                  Sport Betting
                 </button>
               </div>
             )}
@@ -3755,6 +3771,19 @@ export function Farm() {
             <div className="noot-card p-1 overflow-hidden">
               {/* Render the EnhancedSlotMachine component, passing props */}
               <EnhancedSlotMachine farmCoins={farmCoins} addFarmCoins={addFarmCoins} />
+            </div>
+          </div>
+        )}
+        
+        {/* Sport Betting Tab */}
+        {activeTab === "sport-betting" && (
+          <div className="animate-fadeIn">
+            <h2 className="text-xl font-semibold text-white border-b border-white/10 pb-2 mb-4 flex items-center">
+              <Activity className="h-5 w-5 mr-2 text-blue-400"/> Sport Betting
+            </h2>
+            <div className="noot-card p-1 overflow-hidden">
+              {/* Pass farmCoins and addFarmCoins to SportBettingPage similar to SlotMachine */}
+              <SportBettingPage farmCoins={farmCoins} addFarmCoins={addFarmCoins} /> 
             </div>
           </div>
         )}
