@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Noot.io - Multiplayer Cell Game</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <div id="game-container">
+    <!-- Game Menu -->
+    <div id="start-menu">
+      <div class="menu-container">
+        <h1 class="game-title">Noot.io</h1>
+        <p class="game-subtitle">A multiplayer cell survival game</p>
+        
+        <div class="form-group">
+          <input type="text" id="nickname" placeholder="Enter your nickname" maxlength="15" autofocus>
+        </div>
+        
+        <button id="start-button" class="start-button">Play</button>
+        
+        <div class="instructions">
+          <h3>How to Play</h3>
+          <ul>
+            <li>Move your mouse to control your cell</li>
+            <li>Eat food (small dots) to grow</li>
+            <li>Consume smaller players to get even bigger</li>
+            <li>Avoid larger players or you'll be consumed!</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Game Canvas -->
+    <div id="game-canvas" style="display: none;">
+      <canvas id="canvas"></canvas>
+      <div id="game-stats">
+        <div id="score">Mass: 10</div>
+        <button id="restart-button" style="display: none;">Play Again</button>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Server status message if not connected -->
+  <div id="server-status" class="hidden">
+    <p>Connecting to server...</p>
+    <p class="server-message">
+      Not connected to a multiplayer server. <br>
+      Playing in local demo mode.
+    </p>
+  </div>
+
+  <!-- Load Socket.io -->
+  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+  <!-- Load Game Client -->
+  <script src="./js/app.js"></script>
+</body>
+</html> 

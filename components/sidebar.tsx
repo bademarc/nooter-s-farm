@@ -159,7 +159,7 @@ export const Sidebar = ({
       setActiveView('market');
     } else if (tab === "social") {
       setActiveView('social');
-      window.location.href = '/social';
+      window.location.href = '/social-hub';
     } else if (tab === "case-simulator") {
       setActiveView('case-simulator');
       window.location.href = '/case-simulator';
@@ -269,7 +269,7 @@ export const Sidebar = ({
             onClick={() => handleTabClick("social")}
           >
             <Users className="h-4 w-4 mr-2" />
-            <span>Social</span>
+            <span>Social Hub</span>
             {activeTab === "social" && (
               <ChevronRight className="h-4 w-4 ml-auto" />
             )}

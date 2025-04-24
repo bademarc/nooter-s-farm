@@ -59,6 +59,8 @@ import { CrashoutGame } from './crashout-game'; // Assuming it's in the componen
 import EnhancedSlotMachine from "@/app/slot-machine/components/enhanced-slot-machine";
 // Import SportBettingPage (aliased from Home)
 import SportBettingPage from "@/app/sport-betting/app/page"; // Assuming this is the correct path now
+// Import SocialHubPage for social tab
+import { SocialHubPage } from "@/app/social-hub/app/social-hub-page"; // Path to the new SocialHubPage component
 
 
 // Dynamically import P5Wrapper with SSR disabled
@@ -3392,31 +3394,18 @@ export function Farm() {
         
         {/* Social Tab */}
         {activeTab === "social" && (
-          <div className="noot-card animate-fadeIn">
-            <div className="border-b border-[#333] p-4">
-              <h2 className="noot-header flex items-center text-white noot-title">
-                <Users className="h-5 w-5 mr-2" />
-                Social Hub
-              </h2>
-              <p className="text-white/60 text-sm noot-text">
-                Connect with other farmers
-              </p>
-            </div>
-            <div className="p-8 flex flex-col items-center justify-center">
-              <p className="text-white/60 text-center noot-text">Social features coming soon!</p>
-              <div className="grid grid-cols-1 gap-2 mt-6 w-full max-w-md">
-                {[1, 2, 3].map((item) => (
-                  <div key={item} className="border border-[#333] bg-[#111] p-4 flex items-center">
-                    <div className="w-10 h-10 border border-[#333] rounded-full flex items-center justify-center mr-3">
-                      <User className="h-4 w-4 text-white/50" />
-                    </div>
-                    <div className="flex-1">
-                      <div className="h-3 bg-[#222] w-3/4 mb-2"></div>
-                      <div className="h-2 bg-[#222] w-1/2"></div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+          <div className="animate-fadeIn">
+            <h2 className="text-xl font-semibold text-white border-b border-white/10 pb-2 mb-4 flex items-center">
+              <Users className="h-5 w-5 mr-2 text-green-400"/> Social Hub
+            </h2>
+            <div className="noot-card p-1 overflow-hidden">
+              {/* Pass farmCoins, addFarmCoins, nickname and playerLevel to SocialHubPage */}
+              <SocialHubPage 
+                farmCoins={farmCoins} 
+                addFarmCoins={addFarmCoins} 
+                nickname={nickname}
+                playerLevel={clientPlayerLevel} 
+              />
             </div>
           </div>
         )}
