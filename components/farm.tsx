@@ -28,7 +28,7 @@ import {
   RefreshCwIcon,
   CheckIcon,
   LockIcon,
-  CircleDollarSign,
+  CircleDollarSign, // Used for Noot.io and other components
   Store,
   CloudLightning,
   Wind,
@@ -62,6 +62,8 @@ import SportBettingPage from "@/app/sport-betting/app/page"; // Assuming this is
 // Import SocialHubPage for social tab
 import { SocialHubPage } from "@/app/social-hub/app/social-hub-page"; // Path to the new SocialHubPage component
 
+// Import NootIoWrapper for Noot.io game
+import NootIoWrapper from '@/components/noot-io/NootIoWrapper';
 
 // Dynamically import P5Wrapper with SSR disabled
 const DynamicP5Wrapper = dynamic(() => import('./p5-platformer/P5Wrapper'), { // Corrected path
@@ -161,7 +163,7 @@ declare global {
 }
 
 // Define the possible active tab values, including the new Noot Gamble types
-type ActiveTab = "farm" | "quests" | "market" | "swap" | "social" | "profile" | "animals" | "crafting" | "boosters" | "defend" | "crashout" | "platformer" | "slot-machine" | "noot-case" | "sport-betting";
+type ActiveTab = "farm" | "quests" | "market" | "swap" | "social" | "profile" | "animals" | "crafting" | "boosters" | "defend" | "crashout" | "platformer" | "slot-machine" | "noot-case" | "sport-betting" | "noot-io";
 
 
 export function Farm() {
@@ -2357,6 +2359,19 @@ export function Farm() {
                   <Home className="h-3 w-3 sm:h-4 sm:w-4" />
                   Platformer
                 </button>
+                {/* Noot.io Button */}
+                <button 
+                  onClick={() => {
+                    setActiveTab("noot-io");
+                    setShowNootGamesDropdown(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 flex items-center gap-1 sm:gap-2 text-xs sm:text-sm ${ // Apply hover effect here
+                    activeTab === "noot-io" ? "bg-white text-black" : "text-white/80 hover:bg-[#222] hover:shadow-[0_0_15px_rgba(255,255,255,0.3)]"
+                  } transition-all duration-200`}
+                >
+                  <CircleDollarSign className="h-3 w-3 sm:h-4 sm:w-4" />
+                  Noot.io
+                </button>
               </div>
             )}
           </div>
@@ -3773,6 +3788,18 @@ export function Farm() {
             <div className="noot-card p-1 overflow-hidden">
               {/* Pass farmCoins and addFarmCoins to SportBettingPage similar to SlotMachine */}
               <SportBettingPage farmCoins={farmCoins} addFarmCoins={addFarmCoins} /> 
+            </div>
+          </div>
+        )}
+
+        {/* Noot.io Game Tab */}
+        {activeTab === "noot-io" && (
+          <div className="animate-fadeIn">
+            <h2 className="text-xl font-semibold text-white border-b border-white/10 pb-2 mb-4 flex items-center">
+              <CircleDollarSign className="h-5 w-5 mr-2 text-cyan-400"/> Noot.io
+            </h2>
+            <div className="noot-card p-1 overflow-hidden">
+              <NootIoWrapper farmCoins={farmCoins} addFarmCoins={addFarmCoins} />
             </div>
           </div>
         )}
