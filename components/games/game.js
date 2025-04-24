@@ -57,14 +57,22 @@ export default function platformerSketch(p) {
   let powerups = []; // Array for power-up items
   let isGodMode = false; // For testing
 
+  // Control Feel Variables
+  let coyoteTimeCounter = 0;
+  const COYOTE_TIME_DURATION = 6; // Frames (0.1 seconds)
+  let jumpBufferCounter = 0;
+  const JUMP_BUFFER_DURATION = 8; // Frames (~0.13 seconds)
+
   // Combo System variables
   let stompComboCount = 0;
   let comboDisplayTimer = 0; // How long to show combo text
   const COMBO_DISPLAY_DURATION = 90; // Frames (1.5 seconds)
 
-  // Screen Shake variables - REMOVED
-  // let shakeDuration = 0;
-  // let shakeIntensity = 0;
+  // Screen Shake variables - RE-ADDED
+  let shakeDuration = 0;
+  let shakeIntensity = 0;
+  let currentShakeX = 0;
+  let currentShakeY = 0;
 
   // Camera variables
   let cameraX = 0;
@@ -73,6 +81,34 @@ export default function platformerSketch(p) {
   // Volume control variables
   let internalMasterVolume = 1.0; // Renamed to avoid conflict with wrapper state
   const sfxVolumeMultiplier = 0.3; // Multiplier for sound effects (30%)
+
+  // --- ADDED: Screen Shake Function ---
+  const triggerShake = (intensity, duration) => {
+      // Don't override a stronger shake with a weaker one
+      if (intensity >= shakeIntensity || duration > shakeDuration) { 
+          shakeIntensity = intensity;
+          shakeDuration = duration;
+          console.log(`Screen shake triggered: intensity=${intensity}, duration=${duration}`);
+      }
+  };
+
+  // --- Helper to update shake effect ---
+  const updateShake = () => {
+      if (shakeDuration > 0) {
+          shakeDuration--;
+          currentShakeX = p.random(-shakeIntensity, shakeIntensity);
+          currentShakeY = p.random(-shakeIntensity, shakeIntensity);
+          if (shakeDuration <= 0) {
+              shakeIntensity = 0;
+              currentShakeX = 0;
+              currentShakeY = 0;
+          }
+      } else {
+          currentShakeX = 0;
+          currentShakeY = 0;
+      }
+  };
+  // --- END Screen Shake ---
 
   // Create volume setter method that can be called externally
   p.setMasterVolume = function(value) {
@@ -290,7 +326,9 @@ export default function platformerSketch(p) {
     p.noStroke();
     for (let part of particles) {
       const alpha = p.map(part.life, 0, part.maxLife, 0, 255); // Fade out
-      const currentSize = p.map(part.life, 0, part.maxLife, 0, part.size); // Shrink
+      // --- ADDED: Slight size pulsing for particles ---
+      const sizePulse = p.sin(p.frameCount * 0.5 + part.life * 0.1) * 0.15 + 1.0; // Gentle pulse
+      const currentSize = p.map(part.life, 0, part.maxLife, 0, part.size * sizePulse); // Shrink and pulse
       // Ensure color object exists and alpha is valid before setting fill
       if (part.color && alpha > 0 && currentSize > 0) {
            // Check if part.color is a p5.Color object with setAlpha method
@@ -314,15 +352,6 @@ export default function platformerSketch(p) {
       }
     }
   };
-
-  // --- Screen Shake Function - REMOVED --- 
-  /*
-  const triggerShake = (intensity, duration) => {
-      shakeIntensity = intensity;
-      shakeDuration = duration;
-      console.log(`Screen shake triggered: intensity=${intensity}, duration=${duration}`);
-  };
-  */
 
   // --- Floating Score Functions --- 
   const emitFloatingScore = (scoreText, x, y) => {
@@ -450,6 +479,15 @@ export default function platformerSketch(p) {
        player.standingOnPlatform = null; 
        // --- End Sticking Logic --- 
 
+       // --- Update Combo Perk Timer --- 
+       if (player.comboPerkTimer > 0) {
+           player.comboPerkTimer--;
+           if (player.comboPerkTimer <= 0) {
+               removeComboPerk(); // Call function to deactivate perk
+           }
+       }
+       // --- End Combo Perk Timer ---
+
        // --- Update Powerup Timer --- 
        if (player.powerupTimer > 0) {
            player.powerupTimer--;
@@ -462,6 +500,18 @@ export default function platformerSketch(p) {
       player.velocityY += gravity;
       player.x += player.velocityX + platformMovementX; // Add platform movement
       player.y += player.velocityY + platformMovementY; // Add platform movement
+
+      // --- Coyote Time Update ---
+      if (player.isOnGround) {
+          coyoteTimeCounter = COYOTE_TIME_DURATION;
+      } else {
+          coyoteTimeCounter--;
+      }
+
+      // --- Jump Buffer Update ---
+      if (jumpBufferCounter > 0) {
+          jumpBufferCounter--;
+      }
 
       // Use p.height provided by the sketch instance
       if (player.y - player.height / 2 > p.height) {
@@ -503,7 +553,29 @@ export default function platformerSketch(p) {
 
       // Reset ground state before collision checks
       player.isOnGround = false;
-  }
+
+      // --- Visual Squash/Stretch (Subtle) ---
+      if (!player.isOnGround && player.velocityY > 1.0) { // Falling
+          player.visualHeight = player.baseHeight * 1.05;
+          player.visualWidth = player.baseWidth * 0.95;
+      } else if (player.isJumping && player.velocityY < -1.0) { // Rising
+          player.visualHeight = player.baseHeight * 1.1;
+          player.visualWidth = player.baseWidth * 0.9;
+      } else {
+          // Lerp back to normal size when grounded or velocity is low
+          player.visualHeight = p.lerp(player.visualHeight, player.baseHeight, 0.2);
+          player.visualWidth = p.lerp(player.visualWidth, player.baseWidth, 0.2);
+      }
+      // --- End Squash/Stretch ---
+
+      // --- Star Magnet Logic (Part 1: Adjust radius based on perk) ---
+      if (player.activeComboPerk === 'magnet' || player.activePowerup === 'starMagnet') {
+          player.starMagnetRadius = 120; // Increased radius when magnet active
+      } else {
+          player.starMagnetRadius = 0; // Turn off magnet
+      }
+      // --- End Star Magnet Logic (Part 1) ---
+   }
 
   // Updates enemy positions based on their patrol behavior OR shooting or charging behavior.
   const updateEnemies = () => {
@@ -717,8 +789,22 @@ export default function platformerSketch(p) {
               star.isCollected = true;
               score += 10;
               playSound(coinSound); 
-              emitParticles(star.x, star.y, 25, p.color(255, 223, 0, 220), { speed: 3.5, life: 40, size: 10 }); // More star particles!
+              // --- Enhanced Star Collection Feedback ---
+              emitParticles(star.x, star.y, 35, p.color(255, 235, 50, 240), { speed: 4.5, life: 50, size: 12, gravity: 0.05 }); // Brighter, more particles, slight lift
               emitFloatingScore("+10", star.x, star.y - 20); // Emit score pop-up
+              triggerShake(1.5, 8); // Gentle shake on star collect
+          } else if (!star.isCollected && player.starMagnetRadius > 0) {
+              // --- Star Magnet Logic (Part 2: Pull stars) ---
+              const dx = player.x - star.x;
+              const dy = player.y - star.y;
+              const distSq = dx*dx + dy*dy;
+              if (distSq < player.starMagnetRadius * player.starMagnetRadius) {
+                  const dist = Math.sqrt(distSq);
+                  const pullStrength = p.map(dist, 0, player.starMagnetRadius, 6, 1); // Stronger pull when closer
+                  star.x += (dx / dist) * pullStrength;
+                  star.y += (dy / dist) * pullStrength;
+              }
+              // --- End Star Magnet Logic (Part 2) ---
           }
       }
 
@@ -743,11 +829,15 @@ export default function platformerSketch(p) {
                   let enemyY = enemy.y;
                   enemies.splice(i, 1); 
                   
-                  player.velocityY = jumpForce * 0.7; // Bounce
+                  player.velocityY = player.jumpForce * 0.75; // Slightly stronger bounce
                   player.isJumping = true;
                   player.isOnGround = false; // Important: Don't reset combo here!
                   player.canDoubleJump = true; 
                   player.state = 'jump';
+                  
+                  // --- Player bounce squash/stretch ---
+                  player.visualHeight = player.baseHeight * 0.8; 
+                  player.visualWidth = player.baseWidth * 1.2;
                   
                   // Sound with pitch shift based on combo
                   const pitch = 1.0 + stompComboCount * 0.05;
@@ -758,10 +848,14 @@ export default function platformerSketch(p) {
 
                   // More particles/shake with combo?
                   const particleCount = 25 + stompComboCount * 5; // More particles based on combo
-                  // const shakeIntensity = 2 + stompComboCount * 0.4; // REMOVED SHAKE reference
+                  const shakeIntensityValue = 3 + stompComboCount * 0.8; // Increased shake intensity with combo
                   emitParticles(enemyX, enemyY, particleCount, p.color(150, 0, 0, 200), { speed: 4.5, life: 45, size: 8, gravity: 0.2 }); // Enemy defeat poof!
-                  // triggerShake(shakeIntensity, 18); // REMOVED SHAKE
+                  triggerShake(shakeIntensityValue, 15 + stompComboCount * 2); // Trigger shake, longer duration with combo
                   emitFloatingScore(`+${comboScore} (x${stompComboCount})`, enemyX, enemyY - 20); // Show combo score
+
+                  // --- Check for Combo Perk Activation ---
+                  checkComboPerks(stompComboCount);
+                  // --- End Combo Perk Check ---
 
               } else if (!landedThisFrame) { // Only game over if not landing simultaneously and not stomping
                   // Collided from side or bottom - Game Over (unless invincible/god mode)
@@ -773,6 +867,7 @@ export default function platformerSketch(p) {
                       // Let's just ignore damage for now.
                   } else if (!isGameOver) { 
                      playSound(gameOverSound);
+                     triggerShake(8, 30); // Strong shake on getting hit
                      if (bgMusic && bgMusic.isLoaded() && bgMusic.isPlaying()) bgMusic.stop();
                      console.log("Game Over - Player hit enemy");
                      isGameOver = true;
@@ -804,6 +899,7 @@ export default function platformerSketch(p) {
                   }
                   if (!isGameOver) { 
                      playSound(gameOverSound); // Use the same sound as hitting an enemy for now
+                     triggerShake(6, 25); // Shake on projectile hit
                      if (bgMusic && bgMusic.isLoaded() && bgMusic.isPlaying()) bgMusic.stop();
                      console.log("Game Over - Player hit by projectile");
                   }
@@ -844,6 +940,7 @@ export default function platformerSketch(p) {
                       }
                       if (!isGameOver) { 
                          playSound(gameOverSound); // Use same sound
+                         triggerShake(12, 40); // Very strong shake for spikes
                          if (bgMusic && bgMusic.isLoaded() && bgMusic.isPlaying()) bgMusic.stop();
                          console.log("Game Over - Player hit hazard (spikes)");
                       }
@@ -871,13 +968,14 @@ export default function platformerSketch(p) {
                       }
                       if (!isGameOver) { 
                          playSound(gameOverSound); // Use same sound
+                         triggerShake(12, 40); // Very strong shake for lava
                          if (bgMusic && bgMusic.isLoaded() && bgMusic.isPlaying()) bgMusic.stop();
                          console.log("Game Over - Player hit hazard (lava)");
                       }
                       isGameOver = true;
                       stompComboCount = 0; 
                       comboDisplayTimer = 0;
-                      emitParticles(player.x, player.y, 40, p.color(255, 100, 0, 200), { speed: 5, life: 50, size: 10, gravity: -0.1 }); // Lava splash particles?
+                      emitParticles(player.x, player.y, 50, p.color(255, 100, 0, 220), { speed: 6, life: 60, size: 12, gravity: -0.15 }); // More lava particles
                       break; 
                   }
               } else if (hazard.type === 'single_spike') {
@@ -915,6 +1013,67 @@ export default function platformerSketch(p) {
       // --- End Player vs Powerups --- 
   }
 
+  // --- Combo Perk Functions ---
+  const COMBO_PERK_DURATION = 240; // Frames (4 seconds)
+
+  const checkComboPerks = (comboCount) => {
+      if (!player) return;
+
+      let newPerk = null;
+      if (comboCount >= 10) {
+          newPerk = 'magnet';
+      } else if (comboCount >= 5) {
+          newPerk = 'speed';
+      }
+
+      // Activate perk only if it's new or different from the current one
+      if (newPerk && newPerk !== player.activeComboPerk) {
+          activateComboPerk(newPerk);
+      }
+      // Extend timer if the same perk tier is reached again
+      else if (newPerk && newPerk === player.activeComboPerk) {
+          player.comboPerkTimer = COMBO_PERK_DURATION; // Refresh timer
+          console.log(`Combo Perk Refreshed: ${newPerk}`);
+      }
+  };
+
+  const activateComboPerk = (perkType) => {
+      if (!player) return;
+      removeComboPerk(); // Remove existing perk first
+
+      player.activeComboPerk = perkType;
+      player.comboPerkTimer = COMBO_PERK_DURATION;
+      console.log(`Combo Perk Activated: ${perkType}`);
+      // Add visual/audio cue for perk activation
+      triggerShake(4, 20);
+      emitParticles(player.x, player.y - player.height / 2, 30, p.color(255, 255, 100, 200), { speed: 3.5, life: 40, size: 7 });
+      // playSound(perkActivateSound); // Optional: Add a specific sound
+
+      // Apply perk effect
+      if (perkType === 'speed') {
+          player.speed = player.baseSpeed * 1.4; // Apply speed boost
+      } else if (perkType === 'magnet') {
+          player.starMagnetRadius = 120; // Activate magnet radius
+      }
+  };
+
+  const removeComboPerk = () => {
+      if (!player || !player.activeComboPerk) return;
+      console.log(`Combo Perk Expired: ${player.activeComboPerk}`);
+      
+      // Revert specific perk effect
+      if (player.activeComboPerk === 'speed') {
+          player.speed = player.baseSpeed; // Revert speed
+      }
+      if (player.activeComboPerk === 'magnet') {
+         player.starMagnetRadius = 0; // Deactivate magnet
+      }
+      // Note: We don't reset combo perk timer here, it runs down naturally
+      player.activeComboPerk = null;
+      // Remove visual cue if needed
+  };
+  // --- End Combo Perk Functions ---
+
   // Checks if all stars have been collected to trigger the win condition.
   const checkWinCondition = () => {
       // --- MODIFIED: Early exit logic --- 
@@ -949,51 +1108,6 @@ export default function platformerSketch(p) {
              loadLevelData(currentLevelIndex); // Load the next generated level
          }, 2000); // 2 second delay before next level
       }
-
-      /* // Check if goal has been reached - REMOVED
-      if (levelGoal && !levelGoal.isReached) {
-          // Simple distance check between player center and goal center
-          const distSq = (player.x - levelGoal.x) * (player.x - levelGoal.x) + (player.y - levelGoal.y) * (player.y - levelGoal.y);
-          const reachRadiusSq = (player.width / 2 + 20) * (player.width / 2 + 20); // Radius around the goal
-          if (distSq < reachRadiusSq) {
-              levelGoal.isReached = true; // Mark goal as reached
-              console.log("Goal Reached!");
-              // Optionally add score bonus for reaching goal
-              score += 100;
-              emitFloatingScore("+100", levelGoal.x, levelGoal.y - 30);
-              // Maybe add particles?
-              emitParticles(levelGoal.x, levelGoal.y, 40, p.color(255, 215, 0, 220), { speed: 4, life: 50, size: 10 });
-          }
-      }
-      */
-
-      /* // Old Win Condition logic (combined goal/stars) - REMOVED
-      let allStarsCollected = true;
-      if (stars && stars.length > 0) { // Only check stars if they exist
-          for (let star of stars) {
-              if (!star || !star.isCollected) {
-                  allStarsCollected = false;
-                  break;
-              }
-          }
-      } else {
-          allStarsCollected = false; // If no stars, star condition cannot be met
-      }
-
-      if (levelGoal && levelGoal.isReached || (stars && stars.length > 0 && allStarsCollected)) { // Win if goal OR all stars collected (and stars exist)
-         isGameWon = true; // Mark current level as won
-         playSound(victorySound);
-         if (bgMusic && bgMusic.isLoaded() && bgMusic.isPlaying()) bgMusic.stop();
-         console.log(`Generated Level ${currentLevelIndex + 1} Complete!`);
-         
-         // --- INFINITE PART ---
-         // Immediately load next level after a short delay
-         setTimeout(() => {
-             currentLevelIndex++;
-             loadLevelData(currentLevelIndex); // Load the next generated level
-         }, 2000); // 2 second delay before next level
-      }
-      */
   }
 
   // --- Drawing Functions (now nested) ---
@@ -1123,7 +1237,11 @@ export default function platformerSketch(p) {
       for (let star of stars) {
           if (!star) continue; // Skip if star is null/undefined
           if (!star.isCollected) {
-              p.fill(star.color);
+              // Pulsating brightness/size for stars
+              const pulse = p.sin(p.frameCount * 0.08 + star.x * 0.1) * 0.1 + 1.0;
+              const starBrightness = p.map(pulse, 0.9, 1.1, 200, 255);
+              const starSize = star.size * p.map(pulse, 0.9, 1.1, 0.95, 1.05);
+              p.fill(255, starBrightness, 0); // Yellow/Orange pulsating color
               p.push();
               p.translate(star.x, star.y);
               p.rotate(p.frameCount * 0.02); // Gentle rotation
@@ -1131,12 +1249,12 @@ export default function platformerSketch(p) {
               p.beginShape();
               for (let i = 0; i < 5; i++) {
                   let angle = p.TWO_PI / 5 * i - p.HALF_PI; // Outer point angle
-                  let xOuter = p.cos(angle) * star.size / 2;
-                  let yOuter = p.sin(angle) * star.size / 2;
+                  let xOuter = p.cos(angle) * starSize / 2;
+                  let yOuter = p.sin(angle) * starSize / 2;
                   p.vertex(xOuter, yOuter);
                   angle += p.TWO_PI / 10; // Inner point angle
-                  let xInner = p.cos(angle) * star.size / 4; // Inner radius
-                  let yInner = p.sin(angle) * star.size / 4;
+                  let xInner = p.cos(angle) * starSize / 4; // Inner radius
+                  let yInner = p.sin(angle) * starSize / 4;
                   p.vertex(xInner, yInner);
               }
               p.endShape(p.CLOSE);
@@ -1403,8 +1521,16 @@ export default function platformerSketch(p) {
           state: 'idle',
           standingOnPlatform: null, // Reference to the platform the player is currently standing on
           activePowerup: null, // { type: 'speedBoost', timer: 180 }
-          powerupTimer: 0
-      };
+          powerupTimer: 0,
+          baseHeight: 55, // Store base height
+          baseWidth: 45, // Store base width
+          visualHeight: 55, // For drawing squash/stretch
+          visualWidth: 45, // For drawing squash/stretch
+          // Combo Perk Tracking
+          comboPerkTimer: 0,
+          activeComboPerk: null, // e.g., 'speed', 'magnet'
+          starMagnetRadius: 0, // Base magnet radius (0 = off)
+       };
    }
 
   const initializeDecorations = () => {
@@ -1512,8 +1638,15 @@ export default function platformerSketch(p) {
       // Simple horizontal follow, centered on player, clamped to level bounds
       let targetCameraX = player ? player.x : p.width / 2;
       // Clamp camera between start (half screen width) and estimated end (levelEnd - half screen width)
-      cameraX = p.constrain(targetCameraX, p.width / 2, levelEndX - p.width / 2);
+      // Smooth camera movement with lerp
+      const cameraLerpFactor = 0.08; // Adjust for desired smoothness (lower = smoother/slower)
+      let clampedTargetX = p.constrain(targetCameraX, p.width / 2, levelEndX - p.width / 2);
+      cameraX = p.lerp(cameraX, clampedTargetX, cameraLerpFactor);
       // For now, no vertical camera movement: cameraY = p.height / 2; 
+      
+      // --- Update Screen Shake ---
+      updateShake();
+      // --- End Update Screen Shake ---
       
       drawBackground(); // Draw parallax background first (uses its own offset calculation)
       drawDecorations(); // Draw decorations on top of background (these currently don't move with camera, might need adjustment)
@@ -1526,6 +1659,7 @@ export default function platformerSketch(p) {
       checkWinCondition(); // Now handles infinite progression
       updateParticles(); 
       updateProjectiles(); // Add projectile updates
+      updateFloatingScores(); // Update floating scores BEFORE drawing
 
       // --- ADDED LOGS (before drawing) ---
       if (p.frameCount % 120 === 0) { // Log counts every 2 seconds to avoid spam
@@ -1535,6 +1669,8 @@ export default function platformerSketch(p) {
 
       // --- Apply Camera Translation --- 
       p.push(); // Isolate camera translation
+      // Add screen shake offset *before* camera translation for world shake effect
+      p.translate(currentShakeX, currentShakeY);
       // Translate the world so the camera position is centered
       p.translate(-cameraX + p.width / 2, 0); // Only horizontal scroll for now
 
@@ -1848,6 +1984,33 @@ export default function platformerSketch(p) {
       }
 
       if (p.keyCode === p.UP_ARROW || p.keyCode === 32) { // Up arrow or Spacebar
+          // --- Jump Buffering: Set buffer instead of jumping directly ---
+          jumpBufferCounter = JUMP_BUFFER_DURATION;
+
+          // --- Actual Jump Logic (Uses Coyote Time & Buffer) ---
+          if (player && (player.isOnGround || coyoteTimeCounter > 0)) {
+               player.velocityY = player.jumpForce;
+               player.isJumping = true;
+               player.isOnGround = false;
+               player.canDoubleJump = true; // Allow double jump after initial jump
+               playSound(jumpSound);
+               player.state = 'jump';
+               player.standingOnPlatform = null; // Ensure not stuck to platform when jumping
+               coyoteTimeCounter = 0; // Consume coyote time if used
+               jumpBufferCounter = 0; // Consume buffer if used immediately
+               // --- Jump Stretch ---
+               player.visualHeight = player.baseHeight * 1.1;
+               player.visualWidth = player.baseWidth * 0.9;
+               // Jump particles
+               emitParticles(player.x, player.y + player.height / 2, 12, p.color(220, 220, 255, 180), { speed: 2.5, life: 25, size: 5 });
+
+          } else if (player && !player.isOnGround && player.canDoubleJump) { // Double Jump
+               player.velocityY = doubleJumpForce; // Use double jump force
+               player.canDoubleJump = false; // Consume double jump
+               playSound(jumpSound); // Play sound again? Optional
+               player.state = 'jump';
+               // --- Double Jump Stretch ---
+               player.visualHeight = player.baseHeight * 1.15;
           if (player && player.isOnGround) {
               player.velocityY = player.jumpForce;
               player.isJumping = true;
@@ -1931,4 +2094,6 @@ export default function platformerSketch(p) {
      console.log("p5 sketch cleanup complete.");
    };
 
+  
+  }
  }
