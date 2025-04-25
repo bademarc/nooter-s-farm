@@ -186,8 +186,8 @@ function setupSocketListeners() {
         otherPlayersFromServer.some(serverPlayer => serverPlayer.id === localPlayer.id)
     );
 
-    foods = data.foods; // Update food list
-    massFood = data.massFood; // Update mass food list
+    // Update mass food
+    massFood = data.massFood || [];
     leaderboard = data.leaderboard; // Update leaderboard
   });
 
@@ -236,10 +236,10 @@ function setupSocketListeners() {
         renderX: p.x,
         renderY: p.y,
         serverX: p.x,
-        serverY: p.serverY // FIX: should be serverY, was p.x
+        serverY: p.y // Corrected typo here from previous step
     }));
 
-    foods = data.foods || [];
+    foods = data.foods || []; // Initialize local food list from initGame
     massFood = data.massFood || [];
     leaderboard = []; // Leaderboard comes via 'update'
     lastKnownMass = player.mass || 0;
@@ -278,6 +278,35 @@ function setupSocketListeners() {
     players = players.filter(p => p.id !== playerId);
   });
 
+  // Handle food spawning
+  socket.on('foodSpawned', function(food) {
+    if (!foods.find(f => f.id === food.id)) {
+      foods.push(food);
+    }
+  });
+
+  // Handle food eating
+  socket.on('foodEaten', function(foodId) {
+    foods = foods.filter(f => f.id !== foodId);
+  });
+
+  // Handle respawn confirmation
+  socket.on('respawned', function(data) {
+    console.log('[Noot.io App] Respawned');
+    if (player) {
+        player.x = data.x;
+        player.y = data.y;
+        player.mass = data.mass;
+        player.serverX = data.x;
+        player.serverY = data.y;
+        player.renderX = data.x;
+        player.renderY = data.y;
+    }
+    isGameRunning = true; // Restart game loop
+    // Hide restart button if shown
+    const restartButton = document.getElementById('restart-button');
+    if (restartButton) restartButton.style.display = 'none';
+  });
 }
 
 // Simple Linear Interpolation function
@@ -509,7 +538,7 @@ async function initApp() {
   const websocketURL = getWebSocketURL();
   socket = io(websocketURL, {
     reconnectionAttempts: 3, // Example: Limit reconnection attempts
-    timeout: 5000 // Example: Connection timeout
+    timeout: 10000 // Increase timeout to 10 seconds
   });
 
   setupSocketListeners();

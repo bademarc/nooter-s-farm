@@ -37,6 +37,11 @@ const FEED_MASS_SPAWNED = 8; // Mass of the ejected food
 const MASS_FOOD_SPEED = 15; // Speed of ejected food
 const MASS_FOOD_DECAY_RATE = 0.005; // Decay rate for ejected food
 
+// Spatial Grid Constants
+const GRID_CELL_SIZE = 200; // Size of each grid cell (adjust based on typical player size)
+const GRID_COLS = Math.ceil(WORLD_WIDTH / GRID_CELL_SIZE);
+const GRID_ROWS = Math.ceil(WORLD_HEIGHT / GRID_CELL_SIZE);
+
 // Game state
 let players = {};
 let foods = [];
@@ -46,6 +51,12 @@ let massFood = []; // Array to store ejected mass
 
 // Add a basic health check endpoint for Fly.io
 app.get('/', (req, res) => {
+  // Add a check for players object existence
+  if (typeof players === 'undefined') {
+    console.error('[Health Check] CRITICAL: players object is undefined!');
+    return res.status(500).send('Server Error: Game state corrupted');
+  }
+  // Basic check is okay, potentially add more checks (e.g., loop running?)
   res.status(200).send('Noot.io Server OK');
 });
 
@@ -57,9 +68,11 @@ function getRandomColor() {
 
 // Initialize food
 function initializeFood() {
+  foods = []; // Clear existing food first
   for (let i = 0; i < MAX_FOOD; i++) {
-    generateFood();
+    generateFood(); // This now also emits spawn event
   }
+  console.log(`Initialized ${foods.length} food items.`);
 }
 
 // Generate a food at random position
@@ -72,6 +85,7 @@ function generateFood() {
     mass: FOOD_MASS
   };
   foods.push(food);
+  io.emit('foodSpawned', food); // Broadcast new food to all clients
   return food;
 }
 
@@ -87,80 +101,196 @@ function updateLeaderboard() {
   }));
 }
 
-// Check for collisions between player and food
-function checkFoodCollision(player) {
-  for (let i = 0; i < foods.length; i++) {
-    const food = foods[i];
-    const dx = player.x - food.x;
-    const dy = player.y - food.y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
+// --- Collision Detection using Spatial Grid ---
 
-    // If distance is less than player radius (use mass directly for radius approximation)
-    if (distance < player.mass) { // Simplified: radius ~ mass
-      // Remove the food
-      foods.splice(i, 1);
-      // Increase player mass
-      player.mass += food.mass;
-      // Generate new food
-      generateFood();
-      // Return true to indicate collision
-      return true;
+// Helper to get grid cell coordinates
+function getGridCell(x, y) {
+  const cellX = Math.floor(x / GRID_CELL_SIZE);
+  const cellY = Math.floor(y / GRID_CELL_SIZE);
+  return { cellX, cellY };
+}
+
+// Helper to get key for grid map
+function getGridKey(cellX, cellY) {
+  return `${cellX}_${cellY}`;
+}
+
+// Build the spatial grid for players and food
+function buildSpatialGrid() {
+    const grid = new Map(); // Use Map for better performance than object
+
+    // Add players to grid
+    for (const id in players) {
+        const p = players[id];
+        const { cellX, cellY } = getGridCell(p.x, p.y);
+        const key = getGridKey(cellX, cellY);
+        if (!grid.has(key)) grid.set(key, []);
+        grid.get(key).push(p); // Store the player object itself
+    }
+
+    // Add foods to grid
+    foods.forEach(f => {
+        const { cellX, cellY } = getGridCell(f.x, f.y);
+        const key = getGridKey(cellX, cellY);
+        if (!grid.has(key)) grid.set(key, []);
+        grid.get(key).push(f); // Store the food object itself
+    });
+
+    // Add mass foods to grid
+    massFood.forEach(mf => {
+        const { cellX, cellY } = getGridCell(mf.x, mf.y);
+        const key = getGridKey(cellX, cellY);
+        if (!grid.has(key)) grid.set(key, []);
+        grid.get(key).push(mf); // Store the mass food object itself
+    });
+
+    return grid;
+}
+
+// Get entities from surrounding cells (including center)
+function getNearbyEntities(grid, cellX, cellY) {
+    const nearby = [];
+    for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+            const checkX = cellX + dx;
+            const checkY = cellY + dy;
+            // Skip cells outside world grid (optional, assumes world starts at 0,0)
+            if (checkX < 0 || checkX >= GRID_COLS || checkY < 0 || checkY >= GRID_ROWS) {
+                continue;
+            }
+            const key = getGridKey(checkX, checkY);
+            if (grid.has(key)) {
+                nearby.push(...grid.get(key)); // Add all entities from this cell
+            }
+        }
+    }
+    return nearby;
+}
+
+// Check for collisions between player and food (using grid)
+function checkFoodCollision(player, nearbyEntities) {
+    let eatenFood = null;
+    for (let i = nearbyEntities.length - 1; i >= 0; i--) {
+        const entity = nearbyEntities[i];
+        // Check if entity is food (might need a type property or duck typing)
+        if (entity.mass === FOOD_MASS && !players[entity.id] && !massFood.some(mf => mf.id === entity.id)) { // Basic check: is it food?
+            const food = entity;
+            const dx = player.x - food.x;
+            const dy = player.y - food.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            const playerRadius = Math.sqrt(player.mass / Math.PI); // More accurate radius calc
+            const foodRadius = Math.sqrt(food.mass / Math.PI); // More accurate radius calc
+
+            if (distance < playerRadius) { // Player must overlap center of food
+                // Find the actual food index in the global 'foods' array to remove it
+                const foodIndex = foods.findIndex(f => f.id === food.id);
+                if (foodIndex !== -1) {
+                    eatenFood = foods[foodIndex];
+                    foods.splice(foodIndex, 1); // Remove from global list
+                    // Increase player mass
+                    player.mass += eatenFood.mass;
+                    io.emit('foodEaten', eatenFood.id); // Broadcast food eaten event
+                    // Generate new food
+                    generateFood(); // This also broadcasts spawn
+                    return true; // Collision occurred, exit check for this player tick
+                } else {
+                    console.warn(`Food ${food.id} found in grid but not in global list?`);
+                }
+            }
+        }
+    }
+    return false;
+}
+
+// Check for collisions between player and mass food (using grid)
+function checkMassFoodCollision(player, nearbyEntities) {
+  for (let i = nearbyEntities.length - 1; i >= 0; i--) {
+    const entity = nearbyEntities[i];
+    // Check if entity is mass food (duck typing)
+    if (entity.speedX !== undefined && entity.ownerId !== undefined) {
+        const mf = entity;
+        // Don't let players eat their own ejected mass immediately
+        const age = Date.now() - mf.creationTime;
+        if (mf.ownerId === player.id && age < 1000) continue; // 1 second immunity
+
+        const dx = player.x - mf.x;
+        const dy = player.y - mf.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const playerRadius = Math.sqrt(player.mass / Math.PI);
+        const mfRadius = Math.sqrt(mf.mass / Math.PI);
+
+        if (distance < playerRadius + mfRadius * 0.5) { // Player radius needs to overlap significantly
+            // Find the actual mass food index in the global 'massFood' array
+            const mfIndex = massFood.findIndex(m => m.id === mf.id);
+            if (mfIndex !== -1) {
+                // Increase player mass
+                player.mass += massFood[mfIndex].mass;
+                // Remove the mass food
+                massFood.splice(mfIndex, 1);
+                 // No need to broadcast mass food removal? Clients get full list in 'update'
+                return true; // Collision occurred
+            } else {
+                 console.warn(`Mass Food ${mf.id} found in grid but not in global list?`);
+            }
+        }
     }
   }
   return false;
 }
 
-// Check for collisions between players
-function checkPlayerCollisions() {
-  const playerIds = Object.keys(players);
+// Check for collisions between players (using grid)
+function checkPlayerCollisions(player, nearbyEntities) {
+    for (let i = 0; i < nearbyEntities.length; i++) {
+        const otherEntity = nearbyEntities[i];
+        // Check if entity is another player and not self
+        if (players[otherEntity.id] && otherEntity.id !== player.id) {
+            const player1 = player;
+            const player2 = otherEntity;
 
-  for (let i = 0; i < playerIds.length; i++) {
-    const player1 = players[playerIds[i]];
-    if (!player1) continue; // Check if player still exists
+            // Calculate distance between players
+            const dx = player1.x - player2.x;
+            const dy = player1.y - player2.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
 
-    for (let j = i + 1; j < playerIds.length; j++) {
-      const player2 = players[playerIds[j]];
-      if (!player2) continue; // Check if player still exists
+            const radius1 = Math.sqrt(player1.mass / Math.PI);
+            const radius2 = Math.sqrt(player2.mass / Math.PI);
 
-      // Calculate distance between players
-      const dx = player1.x - player2.x;
-      const dy = player1.y - player2.y;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-
-      // Use mass directly for radius approximation
-      const radius1 = player1.mass;
-      const radius2 = player2.mass;
-
-      // If distance is less than the larger radius (simplistic overlap check)
-      if (distance < Math.max(radius1, radius2)) {
-        // Determine which player is larger (add threshold for eating)
-        if (player1.mass > player2.mass * 1.1) { // Player 1 eats player 2
-          player1.mass += player2.mass * 0.8; // Gain percentage of mass
-          io.to(player2.id).emit('eaten', { by: player1.name });
-          respawnPlayer(player2);
+            // Check for overlap (distance < sum of radii, minus a bit to ensure engulfment)
+            if (distance < radius1 + radius2 * 0.8) { // Player 1 must substantially overlap Player 2 center
+                // Determine which player is larger (add threshold for eating)
+                if (player1.mass > player2.mass * 1.1 && distance < radius1 - radius2 * 0.5) { // P1 mass > P2 mass AND P1 mostly engulfs P2
+                    console.log(`${player1.name} ate ${player2.name}`);
+                    player1.mass += player2.mass * 0.8; // Gain percentage of mass
+                    io.to(player2.id).emit('eaten', { by: player1.name });
+                    respawnPlayer(player2);
+                    // No need to return, player1 might eat others in the same tick
+                } 
+                // Player 2 eating player 1 is handled when the loop gets to player 2
+            }
         }
-        else if (player2.mass > player1.mass * 1.1) { // Player 2 eats player 1
-          player2.mass += player1.mass * 0.8;
-          io.to(player1.id).emit('eaten', { by: player2.name });
-          respawnPlayer(player1);
-        }
-      }
     }
-  }
 }
 
 // Respawn a player at a random position
 function respawnPlayer(player) {
     if (!player) return; // Check if player exists
     const socket = sockets[player.id]; // Get the socket
+    if (!socket) {
+        console.warn(`Cannot respawn player ${player.id}, socket not found.`);
+        // Player might have fully disconnected between being eaten and respawn attempt
+        delete players[player.id]; // Clean up player data
+        updateLeaderboard();
+        return;
+    }
     console.log(`Respawning player ${player.name} (${player.id})`);
     player.x = Math.random() * WORLD_WIDTH;
     player.y = Math.random() * WORLD_HEIGHT;
     player.mass = START_MASS;
-    // Optionally, notify the specific player about their respawn details
-    if (socket) {
-        socket.emit('respawned', { x: player.x, y: player.y, mass: player.mass });
-    }
+    player.targetX = player.x; // Reset target
+    player.targetY = player.y;
+    // Notify the specific player about their respawn details
+    socket.emit('respawned', { x: player.x, y: player.y, mass: player.mass });
+    // No need to update leaderboard here, happens in main loop
 }
 
 
@@ -179,31 +309,6 @@ function spawnMassFood(player, angle) {
   };
   massFood.push(spawnedMass);
   return spawnedMass;
-}
-
-// Check for collisions between player and mass food
-function checkMassFoodCollision(player) {
-  for (let i = massFood.length - 1; i >= 0; i--) {
-    const mf = massFood[i];
-    // Don't let players eat their own ejected mass immediately
-    const age = Date.now() - mf.creationTime;
-    if (mf.ownerId === player.id && age < 1000) continue; // 1 second immunity
-
-    const dx = player.x - mf.x;
-    const dy = player.y - mf.y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
-
-    // If distance is less than player radius + mass food radius (approx sqrt(mass))
-    if (distance < player.mass + Math.max(2, Math.sqrt(mf.mass))) { // Use sqrt(mass) for radius
-      // Increase player mass
-      player.mass += mf.mass;
-      // Remove the mass food
-      massFood.splice(i, 1);
-      // Return true to indicate collision
-      return true;
-    }
-  }
-  return false;
 }
 
 // Socket.IO connection handling
@@ -281,18 +386,19 @@ io.on('connection', function(socket) {
   // Handle Feed command
   socket.on('feed', function() {
     const player = players[socket.id];
-    // Use targetX/Y for feed direction instead of mouseX/Y
+    if (!player) return;
     const angle = Math.atan2(player.targetY - player.y, player.targetX - player.x);
-    if (player && player.mass >= MIN_MASS_TO_FEED) {
+    if (player.mass >= MIN_MASS_TO_FEED) {
         player.mass -= FEED_MASS_COST;
-        spawnMassFood(player, angle); // Pass angle to spawn function
+        spawnMassFood(player, angle);
     }
   });
 
   // Handle Split command
   socket.on('split', function() {
     const player = players[socket.id];
-    if (player && player.mass >= MIN_MASS_TO_SPLIT) {
+    if (!player) return;
+    if (player.mass >= MIN_MASS_TO_SPLIT) {
         console.log(`Player ${player.name} requested split (mass: ${player.mass}). Split logic not implemented yet.`);
         // TODO: Implement actual splitting logic
     }
@@ -302,41 +408,11 @@ io.on('connection', function(socket) {
 // Game update loop (e.g., 20 times per second -> 50ms interval)
 const TICK_RATE = 50; // ms per tick
 setInterval(function() {
-  // 1. Update Player Positions (SERVER-AUTHORITATIVE MOVEMENT)
-  for (const id in players) {
-      const player = players[id];
-      const targetX = player.targetX;
-      const targetY = player.targetY;
-      const currentX = player.x;
-      const currentY = player.y;
+  // 0. Build Spatial Grid (once per tick)
+  const spatialGrid = buildSpatialGrid();
 
-      const dx = targetX - currentX;
-      const dy = targetY - currentY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-
-      if (dist > 1) { // Only move if target is significantly away
-          // Calculate speed based on mass (larger = slower)
-          const speed = PLAYER_SPEED / Math.max(1, Math.sqrt(player.mass / START_MASS));
-
-          // Calculate movement step for this tick
-          // Ensure movement doesn't overshoot the target in one tick
-          const moveX = Math.min(speed, dist) * (dx / dist);
-          const moveY = Math.min(speed, dist) * (dy / dist);
-
-          player.x += moveX;
-          player.y += moveY;
-
-          // Keep player within bounds
-          player.x = Math.max(0, Math.min(WORLD_WIDTH, player.x));
-          player.y = Math.max(0, Math.min(WORLD_HEIGHT, player.y));
-      }
-
-      // Check collisions AFTER moving the player
-      checkFoodCollision(player);
-      checkMassFoodCollision(player);
-  }
-
-  // 2. Update Movable Entities (Mass Food)
+  // 1. Update Entities (Players, Mass Food)
+  // Update Mass Food first (so collisions use updated positions)
   for (let i = massFood.length - 1; i >= 0; i--) {
     const mf = massFood[i];
     mf.x += mf.speedX;
@@ -346,22 +422,57 @@ setInterval(function() {
     // Remove if out of bounds or too small
     if (mf.x < 0 || mf.x > WORLD_WIDTH || mf.y < 0 || mf.y > WORLD_HEIGHT || mf.mass < 1) {
       massFood.splice(i, 1);
+    } else {
+        // Re-insert into grid if it moved cell? - Simpler: grid rebuilds each tick anyway
     }
   }
 
-  // 3. Apply Player Mass Decay
-  for (const id in players) {
-    const player = players[id];
-    player.mass = Math.max(START_MASS, player.mass * (1 - MASS_DECAY_RATE));
+  // Update Players
+  const playerIds = Object.keys(players);
+  for (const id of playerIds) {
+      const player = players[id];
+      if (!player) continue; // Player might have disconnected during loop
+
+      // Get nearby entities using the pre-built grid
+      const { cellX, cellY } = getGridCell(player.x, player.y);
+      const nearbyEntities = getNearbyEntities(spatialGrid, cellX, cellY);
+
+      // --- Movement --- (Same logic as before)
+      const targetX = player.targetX;
+      const targetY = player.targetY;
+      const currentX = player.x;
+      const currentY = player.y;
+
+      const dx = targetX - currentX;
+      const dy = targetY - currentY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist > 1) {
+          const speed = PLAYER_SPEED / Math.max(1, Math.sqrt(player.mass / START_MASS));
+          const moveX = Math.min(speed, dist) * (dx / dist);
+          const moveY = Math.min(speed, dist) * (dy / dist);
+          player.x += moveX;
+          player.y += moveY;
+          player.x = Math.max(0, Math.min(WORLD_WIDTH, player.x));
+          player.y = Math.max(0, Math.min(WORLD_HEIGHT, player.y));
+      }
+      // --- End Movement ---
+
+      // --- Collisions (use nearby entities) ---
+      checkFoodCollision(player, nearbyEntities);
+      checkMassFoodCollision(player, nearbyEntities);
+      checkPlayerCollisions(player, nearbyEntities);
+      // --- End Collisions ---
+
+      // --- Mass Decay ---
+      player.mass = Math.max(START_MASS, player.mass * (1 - MASS_DECAY_RATE));
+      // --- End Mass Decay ---
   }
 
-  // 4. Check Player vs Player Collisions (uses updated positions)
-  checkPlayerCollisions();
-
-  // 5. Update Leaderboard
+  // 2. Update Leaderboard (after all updates/collisions)
   updateLeaderboard();
 
-  // 6. Broadcast Game State (with authoritative positions)
+  // 3. Broadcast Game State (Optimized)
   // Prepare state payload (send only necessary data)
   const playersState = Object.values(players).map(p => ({
       id: p.id,
@@ -381,7 +492,7 @@ setInterval(function() {
 
   io.emit('update', {
     players: playersState,
-    foods: foods, // Sending full food list might be inefficient for large numbers
+    // foods: foods, // REMOVED - Handled by foodSpawned/foodEaten
     massFood: massFoodState,
     leaderboard: leaderboard
   });
