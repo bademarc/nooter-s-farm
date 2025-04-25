@@ -1892,3 +1892,59 @@ function handleEntityCollisions() {
       if (!isGameRunning) break; // Exit outer loop if player was eaten
   }
 }
+
+// Add findNearbyTarget function for bot AI
+function findNearbyTarget(bot) {
+    // Don't hunt if bot is too small
+    if (bot.mass < START_MASS * 1.5) return null;
+    
+    // Look for food first (easiest to catch)
+    let closestFood = null;
+    let closestFoodDist = 500; // Max detection range for food
+    
+    foods.forEach(food => {
+        if (!food) return;
+        const dx = food.x - bot.x;
+        const dy = food.y - bot.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        if (dist < closestFoodDist) {
+            closestFoodDist = dist;
+            closestFood = food;
+        }
+    });
+    
+    // Look for smaller bots to eat (higher priority than food)
+    let closestBot = null;
+    let closestBotDist = 300; // Max detection range for bots
+    
+    bots.forEach(otherBot => {
+        if (!otherBot || otherBot.id === bot.id || otherBot.mass <= 0) return;
+        
+        // Only chase bots that are smaller and can be eaten
+        if (otherBot.mass >= bot.mass * 0.9) return;
+        
+        const dx = otherBot.x - bot.x;
+        const dy = otherBot.y - bot.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        if (dist < closestBotDist) {
+            closestBotDist = dist;
+            closestBot = otherBot;
+        }
+    });
+    
+    // Check if player is in range and smaller (highest priority)
+    if (player && player.mass > 0 && player.mass < bot.mass * 0.9) {
+        const dx = player.x - bot.x;
+        const dy = player.y - bot.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        if (dist < 400) { // Bots have greater player detection range
+            return player; // Chase player first
+        }
+    }
+    
+    // Return the closest valid target (prioritize bots over food)
+    return closestBot || closestFood;
+}
