@@ -2,7 +2,7 @@
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 
 app = 'noot-nootio'
-primary_region = 'arn' # Stockholm, Sweden
+primary_region = 'fra' # Frankfurt, Germany (Chosen for Kazakhstan proximity)
 
 # No explicit build section needed, Dockerfile will be used
 

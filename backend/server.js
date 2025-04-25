@@ -206,42 +206,54 @@ function checkFoodCollision(player, nearbyEntities) {
 function checkMassFoodCollision(player, nearbyEntities) {
   let eatenMassFoodIds = []; // Collect IDs of eaten items
   let massGained = 0;
+  // console.log(`[${player.name}] Checking mass food collisions in cell [${getGridCell(player.x, player.y).cellX}, ${getGridCell(player.x, player.y).cellY}] with ${nearbyEntities.length} nearby entities.`); // Debug log
 
   for (let i = nearbyEntities.length - 1; i >= 0; i--) {
     const entity = nearbyEntities[i];
     // Check if entity is mass food (duck typing)
     if (entity.speedX !== undefined && entity.ownerId !== undefined) {
         const mf = entity;
+        // console.log(`[${player.name}] Identified potential mass food: ${mf.id} at (${mf.x.toFixed(1)}, ${mf.y.toFixed(1)})`); // Debug log
+
         // Don't let players eat their own ejected mass immediately
         const age = Date.now() - mf.creationTime;
-        if (mf.ownerId === player.id && age < 1000) continue; // 1 second immunity
+        if (mf.ownerId === player.id && age < 1000) {
+             // console.log(`[${player.name}] Skipping own mass food ${mf.id} (age: ${age}ms)`); // Debug log
+            continue;
+        }
 
         const dx = player.x - mf.x;
         const dy = player.y - mf.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
         const playerRadius = Math.sqrt(player.mass / Math.PI);
-        // const mfRadius = Math.sqrt(mf.mass / Math.PI); // Mass food radius is tiny, ignore for collision check
+
+        // console.log(`[${player.name}] Checking mf ${mf.id}: dist=${distance.toFixed(2)}, playerRadius=${playerRadius.toFixed(2)}`); // Debug log
 
         // Simplified collision: Player radius overlaps mass food center
         if (distance < playerRadius) {
+            // console.log(`[${player.name}] !!!!! Collision DETECTED with mf ${mf.id}`); // Debug log
             // Check if this mf is still in the global list (important check)
             const mfIndex = massFood.findIndex(m => m.id === mf.id);
             if (mfIndex !== -1) {
+                // console.log(`[${player.name}] Found mf ${mf.id} in global list, adding to eaten list.`); // Debug log
                 massGained += massFood[mfIndex].mass;
                 eatenMassFoodIds.push(mf.id);
                 // Don't splice here! We'll filter later.
             } else {
                  // Already eaten by someone else this tick or removed?
+                 // console.warn(`[${player.name}] Mass Food ${mf.id} found in grid but not in global list during check?`);
             }
-        }
-    }
-  }
+        } // End collision check
+    } // End check if entity is mass food
+  } // End loop through nearby entities
 
   // After checking all nearby entities, update player mass and filter global list
   if (eatenMassFoodIds.length > 0) {
+    // console.log(`[${player.name}] Filtering ${eatenMassFoodIds.length} eaten mass foods: [${eatenMassFoodIds.join(', ')}]`); // Debug log
     player.mass += massGained;
     // Filter the global massFood array
     massFood = massFood.filter(mf => !eatenMassFoodIds.includes(mf.id));
+    // console.log(`[${player.name}] Mass updated to ${player.mass.toFixed(2)}`); // Debug log
     return true; // Indicate that *some* collision happened
   }
 
