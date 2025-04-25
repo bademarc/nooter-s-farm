@@ -221,7 +221,7 @@ function drawText(text, x, y, color, size) {
 
 function drawPlayer(p) {
   // console.log("[drawPlayer] Data:", p); // Uncomment for full player data log
-  drawCircle(p.x, p.y, p.mass, p.color || '#FFFFFF');
+  drawCircle(p.x, p.y, p.size, p.color || '#FFFFFF');
   if (p.name) {
     drawText(p.name, p.x, p.y, '#FFFFFF', 14);
   }
@@ -305,7 +305,8 @@ function gameLoop() {
   console.log(`[Noot.io Loop] Rendering - Player: (${player.x?.toFixed(1)}, ${player.y?.toFixed(1)}) Size: ${player.size} | Foods: ${foods.length} | Others: ${players.length}`);
 
   // --- Rendering ---
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#111827'; // Dark background
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   let cameraX = player.x;
   let cameraY = player.y;
@@ -333,7 +334,7 @@ function gameLoop() {
     drawPlayer({
       x: p.x - cameraX + canvas.width / 2,
       y: p.y - cameraY + canvas.height / 2,
-      mass: p.size,
+      size: p.size,
       name: p.name,
       color: p.color
     });
@@ -344,7 +345,7 @@ function gameLoop() {
   drawPlayer({
     x: canvas.width / 2,
     y: canvas.height / 2,
-    mass: player.size,
+    size: player.size,
     name: player.name,
     color: player.color
   });
