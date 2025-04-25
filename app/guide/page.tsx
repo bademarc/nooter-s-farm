@@ -514,7 +514,7 @@ export default function GuidePage() {
             </h3>
             <div className="bg-gray-900/50 p-4 rounded-lg mb-4 border border-gray-700 text-gray-300">
                <p className="mb-3">Take a break from farming and earn extra coins with minigames:</p>
-               <div className="grid md:grid-cols-2 gap-4">
+               <div className="grid md:grid-cols-2 gap-4 mb-4">
                  <div className="bg-gray-800/60 p-3 rounded-md border border-gray-700">
                     <h4 className="font-fantasy text-white mb-2 flex items-center"><Shield className="inline h-4 w-4 mr-1 text-white"/> Defend Farm</h4>
                     <p className="text-sm text-gray-300">A Phaser-based tower defense game. Protect your crops from waves of pests. Place defenses strategically. Earn coins based on your performance.</p>
@@ -524,6 +524,34 @@ export default function GuidePage() {
                     <p className="text-sm text-gray-300">A timing and risk-based game. Place a bet and try to cash out before the multiplier crashes. High risk, high reward!</p>
                  </div>
                </div>
+               
+               <div className="grid md:grid-cols-2 gap-4">
+                 <div className="bg-gray-800/60 p-3 rounded-md border border-gray-700">
+                    <h4 className="font-fantasy text-white mb-2 flex items-center"><Zap className="inline h-4 w-4 mr-1 text-white"/> Platformer</h4>
+                    <p className="text-sm text-gray-300">Jump and run through farm-themed levels. Collect coins and power-ups while avoiding obstacles. Complete levels to earn farm rewards.</p>
+                 </div>
+                 <div className="bg-gray-800/60 p-3 rounded-md border border-gray-700">
+                    <h4 className="font-fantasy text-white mb-2 flex items-center"><CircleDollarSign className="inline h-4 w-4 mr-1 text-white"/> Slot Machine</h4>
+                    <p className="text-sm text-gray-300">Try your luck with the farm-themed slot machine. Match crop and animal symbols to win coins. Special combinations offer bigger payouts.</p>
+                 </div>
+                 <div className="bg-gray-800/60 p-3 rounded-md border border-gray-700">
+                    <h4 className="font-fantasy text-white mb-2 flex items-center"><Trophy className="inline h-4 w-4 mr-1 text-white"/> Sport Betting</h4>
+                    <p className="text-sm text-gray-300">Bet on virtual farmyard sports events. Predict winners correctly to multiply your wager. Different events offer varying odds and potential payouts.</p>
+                 </div>
+                 <div className="bg-gray-800/60 p-3 rounded-md border border-gray-700">
+                    <h4 className="font-fantasy text-white mb-2 flex items-center"><Star className="inline h-4 w-4 mr-1 text-white"/> Noot Case</h4>
+                    <p className="text-sm text-gray-300">Open special cases containing random rewards. Each case has different tiers of possible items and coin amounts. Higher-tier cases cost more but offer better rewards.</p>
+                 </div>
+                 <div className="bg-gray-800/60 p-3 rounded-md border border-gray-700">
+                    <h4 className="font-fantasy text-white mb-2 flex items-center"><Users className="inline h-4 w-4 mr-1 text-white"/> Noot.io</h4>
+                    <p className="text-sm text-gray-300">A multiplayer arena where you control your farmer character. Grow by collecting resources and outsmarting other players. Earn rewards based on your final size and survival time.</p>
+                 </div>
+               </div>
+               
+               <div className="mt-4 bg-gray-800/60 p-3 rounded-md border border-gray-700">
+                <p className="handwritten text-sm text-gray-300"><span className="text-white">💡 Gambling Tip:</span> Set limits on how many coins you're willing to risk in games of chance. Remember that farming is always a reliable way to earn coins!</p>
+               </div>
+               
                <p className="mt-4 text-sm italic text-gray-500">Access these games via their respective tabs in the main interface.</p>
             </div>
           </section>
