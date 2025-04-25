@@ -6,9 +6,9 @@ primary_region = 'arn' # Stockholm, Sweden
 
 # No explicit build section needed, Dockerfile will be used
 
-# Remove the http_service section, as we only need TCP for WebSockets (or keep for basic health check)
-# [http_service]
-#   internal_port = 8080 # Changed from 3000
+# No http_service section needed if only using TCP services for WS
+# [[http_service]] # Keep commented unless specifically needed for non-WS traffic
+#   internal_port = 8080
 #   force_https = true
 #   auto_stop_machines = true
 #   auto_start_machines = true
@@ -28,26 +28,30 @@ primary_region = 'arn' # Stockholm, Sweden
   [[services.ports]]
     port = 80 # For HTTP -> WS upgrade
     handlers = ["http"]
-    force_https = true
+    force_https = true # Redirect HTTP to HTTPS
 
   [[services.ports]]
     port = 443 # For HTTPS -> WSS upgrade
-    handlers = ["tls", "http"]
+    handlers = ["tls", "http"] # TLS termination + HTTP handling
 
+  # TCP check ensures the port is open
   [[services.tcp_checks]]
     interval = "15s"
     timeout = "2s"
     grace_period = "1s"
     restart_limit = 0
 
-  # Optional: HTTP check if your server responds to basic HTTP GET
-  # [[services.http_checks]]
-  #   interval = "15s"
-  #   timeout = "2s"
-  #   grace_period = "5s"
-  #   method = "get"
-  #   path = "/" # Path your server responds to with 2xx status
-  #   protocol = "http"
+  # HTTP check verifies the app is responding to HTTP requests
+  [[services.http_checks]]
+    interval = "15s"
+    timeout = "2s"
+    grace_period = "5s"
+    method = "get"
+    path = "/" # Path for the health check endpoint in server.js
+    protocol = "http" # Check against internal HTTP port
+    # tls_skip_verify = false # Keep verification unless using self-signed certs internally
+    # [services.http_checks.headers]
+    #   Host = "your.backend.hostname" # Usually not needed unless app requires specific Host header
 
 # [build]
 #  builder = 'paketobuildpacks/builder:base' 

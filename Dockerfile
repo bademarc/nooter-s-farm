@@ -5,27 +5,26 @@
 ARG NODE_VERSION=20.19.0
 FROM node:${NODE_VERSION}-slim AS base
 
-LABEL fly_launch_runtime="Node.js (Noot.io Backend)"
+LABEL fly_launch_runtime="Node.js (Noot.io Server)"
 
-# Set working directory for backend
-WORKDIR /app/backend
+# Set working directory
+WORKDIR /app
 
-# Install pnpm globally (optional, but can be useful if needed by backend scripts)
-ARG PNPM_VERSION=10.9.0
-RUN npm install -g pnpm@$PNPM_VERSION
+# Install pnpm globally (optional, keeping for consistency)
+# ARG PNPM_VERSION=10.9.0
+# RUN npm install -g pnpm@$PNPM_VERSION
 
-# Copy backend package files
-COPY backend/package.json backend/pnpm-lock.yaml* ./ 
-# Allow pnpm-lock.yaml to be optional initially
+# Copy package files from the root
+COPY package.json package-lock.json* ./ 
+# Allow package-lock.json to be optional
 
-# Install backend dependencies using npm (simpler for basic backend)
-# If you want to use pnpm for backend: RUN pnpm install --prod
+# Install dependencies using npm
 RUN npm install --omit=dev
 
-# Copy the rest of the backend code
-COPY backend/ .
+# Copy the server code from the root
+COPY server.js .
 
-# Expose the port the app listens on (should match PORT in server.js)
+# Expose the port the app listens on (8080)
 EXPOSE 8080
 
 # Run the backend server
