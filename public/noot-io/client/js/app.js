@@ -148,6 +148,13 @@ function initOfflineMode() {
     if (onlineButton) onlineButton.classList.remove('active');
   }
   
+  // Set default player skin for offline mode
+  if (skinsLoaded) {
+    const defaultSkin = 'case items/bronze/noot-noot.jpg';
+    player.skinPath = defaultSkin;
+    player.skin = loadedSkins[defaultSkin];
+  }
+  
   console.log("[Noot.io App] OFFLINE mode initialized successfully.");
 }
 
@@ -1360,6 +1367,13 @@ function initOfflineMode() {
     if (onlineButton) onlineButton.classList.remove('active');
   }
   
+  // Set default player skin for offline mode
+  if (skinsLoaded) {
+    const defaultSkin = 'case items/bronze/noot-noot.jpg';
+    player.skinPath = defaultSkin;
+    player.skin = loadedSkins[defaultSkin];
+  }
+  
   console.log("[Noot.io App] OFFLINE mode initialized successfully.");
 }
 
@@ -1525,6 +1539,13 @@ function startGame() {
     player.y = WORLD_HEIGHT / 2;
     player.renderX = player.x;
     player.renderY = player.y;
+    
+    // Assign default skin to player when starting game
+    if (skinsLoaded) {
+        const defaultSkin = 'case items/bronze/noot-noot.jpg';
+        player.skinPath = defaultSkin;
+        player.skin = loadedSkins[defaultSkin];
+    }
     
     // Initialize game based on current mode
     if (isOfflineMode) {
@@ -1837,7 +1858,7 @@ function updateOfflineLeaderboard() {
   }
 }
 
-// Player vs Bots & Bot vs Bots collision detection
+// Handle player vs Bots & Bot vs Bots collision detection
 function handleEntityCollisions() {
   // Create a fresh array of valid entities
   let entities = [player, ...bots].filter(e => e && e.mass > 0);
@@ -1897,9 +1918,18 @@ function handleEntityCollisions() {
                   isGameRunning = false; // Stop game logic
                   isGameInitialized = false; // Allow re-init
                   player.mass = 0; // Mark player as dead
-                  // Show restart button
+                  
+                  // Show restart button with proper fixed positioning
                   const restartButton = document.getElementById('restart-button');
-                  if (restartButton) restartButton.style.display = 'block';
+                  if (restartButton) {
+                      restartButton.style.display = 'block';
+                      restartButton.style.position = 'absolute';
+                      restartButton.style.top = '50%';
+                      restartButton.style.left = '50%';
+                      restartButton.style.transform = 'translate(-50%, -50%)';
+                      restartButton.style.zIndex = '100';
+                      restartButton.textContent = 'PLAY AGAIN';
+                  }
                   break; // Exit inner loop
               } else if (p1.isPlayerSplit || p1.isBotSplit) {
                   // Just remove split cells when eaten
