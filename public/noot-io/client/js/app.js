@@ -5,7 +5,8 @@ let socket; // Define socket variable, will be assigned later
 let isOfflineMode = false;
 let isGameInitialized = false; // Flag to prevent multiple initializations
 let bots = []; // Array for offline bots
-const BOT_COUNT = 100; // Increased from 10 to 100 bots
+const BOT_COUNT = 50; // Changed from 100 to 50 bots
+const BIG_BOT_COUNT = 10; // Number of big bots to add
 const WORLD_WIDTH = 4000; // Define world size
 const WORLD_HEIGHT = 4000;
 const FOOD_COUNT = 200; // How much food in offline mode
@@ -624,11 +625,14 @@ function drawOfflineStats() {
     // Count player cells (main cell + split cells)
     const playerCellCount = 1 + bots.filter(b => b.isPlayerSplit).length;
     
+    ctx.fillStyle = '#FFFFFF'; // Ensure text color is white
+    
     // Display stats
-    drawText(`Mass: ${Math.floor(totalPlayerMass).toLocaleString()}`, 20, 30, '#FFFFFF', 16);
-    drawText(`Cells: ${playerCellCount}`, 20, 50, '#FFFFFF', 16);
-    drawText(`Bots: ${bots.filter(b => !b.isPlayerSplit).length}`, 20, 70, '#FFFFFF', 16);
-    drawText(`FPS: ${Math.round(fps)}`, 20, 90, '#FFFFFF', 16);
+    ctx.font = '16px Arial';
+    ctx.fillText(`Mass: ${Math.floor(totalPlayerMass).toLocaleString()}`, 20, 30);
+    ctx.fillText(`Cells: ${playerCellCount}`, 20, 50);
+    ctx.fillText(`Bots: ${bots.filter(b => !b.isPlayerSplit).length}`, 20, 70);
+    ctx.fillText(`FPS: ${Math.round(fps)}`, 20, 90);
     
     // Reset text alignment
     ctx.textAlign = 'center';
@@ -662,7 +666,7 @@ function spawnOfflineFood() {
 }
 
 // Helper function for offline bots
-function spawnOfflineBot(index) {
+function spawnOfflineBot(index, isBigBot = false) {
     // Random skin selection for bots
     let randomSkinPath = 'case items/bronze/noot-noot.jpg'; // Default fallback
     
@@ -673,27 +677,76 @@ function spawnOfflineBot(index) {
         }
     }
     
+    const startMass = isBigBot ? 
+        START_MASS * (50 + Math.random() * 150) : // Big bots are 50-200x starting mass
+        START_MASS + Math.random() * 50; // Regular bots
+    
     const bot = {
         id: `bot_${index}_${Date.now()}`,
-        name: `Bot_${index}`,
+        name: isBigBot ? `BigBot_${index}` : `Bot_${index}`,
         x: Math.random() * WORLD_WIDTH,
         y: Math.random() * WORLD_HEIGHT,
-        mass: START_MASS + Math.random() * 50, // Random start mass
+        mass: startMass,
         color: colors[Math.floor(Math.random() * colors.length)],
         renderX: 0, // Will be set relative to camera
         renderY: 0,
         // Bot movement state
         targetX: Math.random() * WORLD_WIDTH,
         targetY: Math.random() * WORLD_HEIGHT,
-        speed: 2 + Math.random() * 2, // Slower than player usually
+        speed: isBigBot ? 1 + Math.random() * 1 : 2 + Math.random() * 2, // Big bots are slower
+        // Split behavior
+        lastSplitTime: 0,
+        splitCooldown: 10000, // 10 seconds between splits
         // Add skin to bot
         skinPath: randomSkinPath,
-        skin: skinsLoaded ? loadedSkins[randomSkinPath] : null
+        skin: skinsLoaded ? loadedSkins[randomSkinPath] : null,
+        // Bot type flag
+        isBigBot: isBigBot
     };
     
     bot.renderX = bot.x; // Initialize render pos
     bot.renderY = bot.y;
     bots.push(bot);
+}
+
+// Add bot split functionality
+function botSplit(bot) {
+    if (bot.mass < START_MASS * 2 || Date.now() - bot.lastSplitTime < bot.splitCooldown) return false;
+    
+    // Calculate direction based on target
+    const dx = bot.targetX - bot.x;
+    const dy = bot.targetY - bot.y;
+    const angle = Math.atan2(dy, dx);
+    
+    // Create a new cell by ejecting half the mass
+    const splitMass = bot.mass / 2;
+    bot.mass = splitMass;
+    bot.lastSplitTime = Date.now();
+    
+    // Create a split cell
+    const splitCell = {
+        id: `bot_split_${Date.now()}_${Math.random()}`,
+        name: bot.name,
+        x: bot.x,
+        y: bot.y,
+        mass: splitMass,
+        color: bot.color,
+        renderX: bot.x,
+        renderY: bot.y,
+        skinPath: bot.skinPath,
+        skin: bot.skin,
+        isBotSplit: true, // Flag to identify this is a bot's split cell
+        parentBot: bot.id, // Track which bot this belongs to
+        targetX: bot.x + Math.cos(angle) * 500, // Launch in split direction
+        targetY: bot.y + Math.sin(angle) * 500,
+        speed: 25, // Initial high speed that will decay
+        moveDecay: 0.9, // Speed decay factor
+        mergeCooldown: Date.now() + 10000, // 10 second cooldown before merging
+        lastSplitTime: Date.now() // To prevent instant re-splitting
+    };
+    
+    bots.push(splitCell);
+    return true;
 }
 
 // Add mass food ejection functionality for offline mode
@@ -860,6 +913,7 @@ function gameLoop() {
       });
       
       // --- Check for split cells merging ---
+      // Handle both player and bot split cells merging
       const playerSplitCells = bots.filter(b => b.isPlayerSplit);
       if (playerSplitCells.length > 0) {
           // Find cells ready to merge
@@ -882,7 +936,36 @@ function gameLoop() {
           }
       }
       
-      // --- Offline Bot Movement with improved logic for split cells ---
+      // Bot split cells merging logic
+      const botSplitCells = bots.filter(b => b.isBotSplit);
+      botSplitCells.forEach(splitCell => {
+          if (splitCell.mergeCooldown <= currentTime) {
+              // Find parent bot
+              const parentBot = bots.find(b => b.id === splitCell.parentBot);
+              if (parentBot) {
+                  // Check if close enough to merge
+                  const distance = Math.sqrt((splitCell.x - parentBot.x)**2 + (splitCell.y - parentBot.y)**2);
+                  const mergeDistance = Math.sqrt(splitCell.mass / Math.PI) * 10 + Math.sqrt(parentBot.mass / Math.PI) * 10;
+                  
+                  if (distance < mergeDistance) {
+                      // Merge back to parent
+                      parentBot.mass += splitCell.mass;
+                      // Remove split cell
+                      const cellIndex = bots.findIndex(b => b.id === splitCell.id);
+                      if (cellIndex !== -1) {
+                          bots.splice(cellIndex, 1);
+                      }
+                  }
+              } else {
+                  // Parent bot is gone, convert to regular bot
+                  splitCell.isBotSplit = false;
+                  delete splitCell.parentBot;
+                  delete splitCell.mergeCooldown;
+              }
+          }
+      });
+      
+      // --- Offline Bot Movement with improved fighting logic ---
       bots.forEach(bot => {
           if (bot.mass <= 0) return; // Skip dead bots
           
@@ -899,56 +982,56 @@ function gameLoop() {
                   bot.targetX = player.x + (mouseX - canvas.width / 2);
                   bot.targetY = player.y + (mouseY - canvas.height / 2);
               }
-          } else {
-              // Intelligence based on size comparison with player
-              const botRadius = Math.sqrt(bot.mass / Math.PI) * 10;
-              const playerRadius = Math.sqrt(player.mass / Math.PI) * 10;
-              const distToPlayer = Math.sqrt((bot.x - player.x)**2 + (bot.y - player.y)**2);
-              const awarenessRadius = 300; // How far bots can "see" the player
+          } 
+          // Special handling for bot split cells
+          else if (bot.isBotSplit) {
+              // Adjust speed based on decay
+              bot.speed *= bot.moveDecay;
               
-              if (distToPlayer < awarenessRadius) {
-                  // Bot is aware of player
-                  if (bot.mass > player.mass * 1.2) {
-                      // Bot is bigger than player - HUNT PLAYER!
-                      console.log(`Bot ${bot.name} is hunting player!`);
-                      bot.targetX = player.x;
-                      bot.targetY = player.y;
-                      bot.speed = 3 + Math.random(); // Aggressive speed
-                  } else if (player.mass > bot.mass * 1.2) {
-                      // Player is bigger than bot - RUN AWAY!
-                      console.log(`Bot ${bot.name} is fleeing from player!`);
-                      // Calculate vector away from player
-                      const fleeX = bot.x - player.x;
-                      const fleeY = bot.y - player.y;
-                      const fleeDist = Math.sqrt(fleeX*fleeX + fleeY*fleeY);
-                      if (fleeDist > 0) {
-                          // Normalize and scale to position at edge of world
-                          const escapeMultiplier = 500 / fleeDist;
-                          bot.targetX = bot.x + fleeX * escapeMultiplier;
-                          bot.targetY = bot.y + fleeY * escapeMultiplier;
-                          
-                          // Ensure target is within world bounds
-                          bot.targetX = Math.max(100, Math.min(WORLD_WIDTH - 100, bot.targetX));
-                          bot.targetY = Math.max(100, Math.min(WORLD_HEIGHT - 100, bot.targetY));
-                          bot.speed = 4 + Math.random(); // Faster when fleeing
-                      }
-                  }
-              } else {
-                  // Normal wandering behavior when player is not nearby
-                  const botDx = bot.targetX - bot.x;
-                  const botDy = bot.targetY - bot.y;
-                  const botDist = Math.sqrt(botDx * botDx + botDy * botDy);
+              // Cap minimum speed
+              if (bot.speed < 3) bot.speed = 3;
+              
+              // After initial thrust, target nearby smaller entities
+              if (bot.speed < 10) {
+                  findNearbyTarget(bot);
+              }
+          }
+          else {
+              // Regular bot AI - improved to prioritize fighting with others
+              findNearbyTarget(bot);
+              
+              // Bot splitting logic
+              const shouldTrySplit = Math.random() < 0.01; // 1% chance each frame to consider splitting
+              if (shouldTrySplit) {
+                  // Find potential nearby victims that are smaller but not too small
+                  const nearbyEntities = [...bots.filter(b => b !== bot && !b.isPlayerSplit && !b.isBotSplit), player].filter(e => e.mass > 0);
+                  const potentialVictims = nearbyEntities.filter(entity => {
+                      if (entity.mass <= 0 || entity === player && player.mass <= 0) return false;
+                      const sizeDiff = bot.mass / entity.mass;
+                      const distance = Math.sqrt((bot.x - entity.x)**2 + (bot.y - entity.y)**2);
+                      // Target should be smaller, but not too small, and within split range
+                      return sizeDiff > 2 && sizeDiff < 4 && distance < 500;
+                  });
                   
-                  // If bot has reached target or doesn't have one, pick a new random target
-                  if (botDist < 20 || isNaN(bot.targetX) || isNaN(bot.targetY)) {
-                      bot.targetX = Math.random() * WORLD_WIDTH;
-                      bot.targetY = Math.random() * WORLD_HEIGHT;
-                      bot.speed = 2 + Math.random(); // Normal wandering speed
+                  if (potentialVictims.length > 0) {
+                      // Target the closest victim
+                      const victim = potentialVictims.reduce((closest, current) => {
+                          const closestDist = Math.sqrt((bot.x - closest.x)**2 + (bot.y - closest.y)**2);
+                          const currentDist = Math.sqrt((bot.x - current.x)**2 + (bot.y - current.y)**2);
+                          return currentDist < closestDist ? current : closest;
+                      });
+                      
+                      // Update target to victim position
+                      bot.targetX = victim.x;
+                      bot.targetY = victim.y;
+                      
+                      // Try to split
+                      botSplit(bot);
                   }
               }
           }
           
-          // Bot movement logic (unchanged)
+          // Bot movement logic 
           const botDx = bot.targetX - bot.x;
           const botDy = bot.targetY - bot.y;
           const botDist = Math.sqrt(botDx * botDx + botDy * botDy);
@@ -963,6 +1046,89 @@ function gameLoop() {
               bot.y = Math.max(0, Math.min(WORLD_HEIGHT, bot.y));
           }
       });
+      
+      // Function to find target for bot hunting
+      function findNearbyTarget(bot) {
+          // Find all entities (bots and player)
+          const entities = [...bots.filter(b => b !== bot && !b.isPlayerSplit && b.mass > 0), player].filter(e => e.mass > 0);
+          
+          // Calculate distances and size differences
+          const entityData = entities.map(entity => {
+              const distance = Math.sqrt((bot.x - entity.x)**2 + (bot.y - entity.y)**2);
+              const sizeDiff = bot.mass / entity.mass; // >1 means bot is bigger
+              return { entity, distance, sizeDiff };
+          });
+          
+          // Get nearby entities within awareness range
+          const awarenessRadius = 400 + bot.mass/5; // Bigger bots can see further
+          const nearbyEntities = entityData.filter(ed => ed.distance < awarenessRadius);
+          
+          if (nearbyEntities.length === 0) {
+              // No nearby entities, wander randomly
+              if (Math.random() < 0.01 || isNaN(bot.targetX) || 
+                  Math.sqrt((bot.x - bot.targetX)**2 + (bot.y - bot.targetY)**2) < 20) {
+                  bot.targetX = Math.random() * WORLD_WIDTH;
+                  bot.targetY = Math.random() * WORLD_HEIGHT;
+              }
+              return;
+          }
+          
+          // Categorize nearby entities
+          const smallerEntities = nearbyEntities.filter(ed => ed.sizeDiff > 1.2);
+          const similarSizedEntities = nearbyEntities.filter(ed => ed.sizeDiff >= 0.8 && ed.sizeDiff <= 1.2);
+          const largerEntities = nearbyEntities.filter(ed => ed.sizeDiff < 0.8);
+          
+          // Prioritize hunting:
+          // 1. Similar-sized bots (most interesting fights)
+          // 2. Smaller bots
+          // 3. Run from larger bots
+          
+          // Changed logic to prefer similar-sized entities
+          if (similarSizedEntities.length > 0) {
+              // Hunt similar-sized entity (most interesting for gameplay)
+              const target = similarSizedEntities.reduce((closest, current) => 
+                  current.distance < closest.distance ? current : closest
+              );
+              console.log(`Bot ${bot.name} is hunting similar-sized ${target.entity.name || 'player'}`);
+              bot.targetX = target.entity.x;
+              bot.targetY = target.entity.y;
+          } 
+          else if (smallerEntities.length > 0) {
+              // If no similar-sized entities, hunt smaller ones
+              // Find the largest of the smaller entities (more rewarding)
+              const target = smallerEntities.reduce((largest, current) => 
+                  current.entity.mass > largest.entity.mass ? current : largest
+              );
+              console.log(`Bot ${bot.name} is hunting smaller ${target.entity.name || 'player'}`);
+              bot.targetX = target.entity.x;
+              bot.targetY = target.entity.y;
+          } 
+          else if (largerEntities.length > 0) {
+              // Run away from larger entities
+              // Find the closest larger entity (most dangerous)
+              const threat = largerEntities.reduce((closest, current) => 
+                  current.distance < closest.distance ? current : closest
+              );
+              
+              console.log(`Bot ${bot.name} is fleeing from ${threat.entity.name || 'player'}`);
+              
+              // Calculate vector away from threat
+              const fleeX = bot.x - threat.entity.x;
+              const fleeY = bot.y - threat.entity.y;
+              const fleeDist = Math.sqrt(fleeX*fleeX + fleeY*fleeY);
+              
+              // Normalize and scale the flee vector
+              if (fleeDist > 0) {
+                  const escapeMultiplier = 500 / fleeDist;
+                  bot.targetX = bot.x + fleeX * escapeMultiplier;
+                  bot.targetY = bot.y + fleeY * escapeMultiplier;
+                  
+                  // Ensure target is within world bounds
+                  bot.targetX = Math.max(100, Math.min(WORLD_WIDTH - 100, bot.targetX));
+                  bot.targetY = Math.max(100, Math.min(WORLD_HEIGHT - 100, bot.targetY));
+              }
+          }
+      }
       
       // --- Offline Collision Detection ---
       const playerRadius = Math.sqrt(player.mass / Math.PI) * 10;
@@ -1029,77 +1195,107 @@ function gameLoop() {
               const overlapFactor = 0.7; // Center must be within 70% of radius (better detection)
 
               if (p1.mass > p2.mass * eatThreshold && distSq < (r1 * overlapFactor)**2) { // P1 eats P2
-                  console.log(`${p1.name} ate ${p2.name}`);
+                  console.log(`${p1.name || 'Player'} ate ${p2.name || 'Player'}`);
                   p1.mass += p2.mass * 0.8; // Only gain 80% of eaten mass (more balanced)
                   if (p1 === player) checkEarnedCoins(player.mass);
 
                   // Mark p2 as eaten (set mass to 0)
                   p2.mass = 0;
-                  const botIndex = bots.findIndex(b => b.id === p2.id);
-                  if (botIndex !== -1) {
-                      // Respawn bot after a delay? For now, just remove and add new one
-                      bots.splice(botIndex, 1);
-                      spawnOfflineBot(bots.length); // Keep count stable
+                  
+                  // Handle respawning if p2 is a bot (not a split cell)
+                  if (p2 !== player && !p2.isPlayerSplit && !p2.isBotSplit) {
+                      const botIndex = bots.findIndex(b => b.id === p2.id);
+                      if (botIndex !== -1) {
+                          // Remove the bot
+                          bots.splice(botIndex, 1);
+                          
+                          // Spawn a new bot (keeping same type)
+                          spawnOfflineBot(bots.length, p2.isBigBot); 
+                      }
+                  } else if (p2.isPlayerSplit || p2.isBotSplit) {
+                      // Just remove split cells when eaten
+                      const botIndex = bots.findIndex(b => b.id === p2.id);
+                      if (botIndex !== -1) {
+                          bots.splice(botIndex, 1);
+                      }
                   }
-                  // Update entities array for next checks? No, use mass check
+                  
                   continue; // P2 is gone, check next entity against P1
               } else if (p2.mass > p1.mass * eatThreshold && distSq < (r2 * overlapFactor)**2) { // P2 eats P1
-                  console.log(`${p2.name} ate ${p1.name}`);
+                  console.log(`${p2.name || 'Player'} ate ${p1.name || 'Player'}`);
                   p2.mass += p1.mass * 0.8; // Only gain 80% of eaten mass (more balanced)
 
                   if (p1 === player) { // Player was eaten
                       console.log("[Noot.io App] Player eaten in offline mode!");
                       isGameRunning = false; // Stop game logic
                       isGameInitialized = false; // Allow re-init
-                       player.mass = 0; // Mark player as dead
+                      player.mass = 0; // Mark player as dead
                       // Show restart button
                       const restartButton = document.getElementById('restart-button');
                       if (restartButton) restartButton.style.display = 'block';
                       break; // Exit inner loop
-                  } else {
-                      // Bot ate another bot
-                      p1.mass = 0; // Mark p1 as eaten
+                  } else if (p1.isPlayerSplit || p1.isBotSplit) {
+                      // Just remove split cells when eaten
                       const botIndex = bots.findIndex(b => b.id === p1.id);
                       if (botIndex !== -1) {
                           bots.splice(botIndex, 1);
-                          spawnOfflineBot(bots.length);
                       }
-                      // Restart inner loop for p2 vs remaining entities? No, just continue outer loop.
+                  } else {
+                      // Handle respawning if p1 is a bot (not a split cell)
+                      p1.mass = 0; // Mark p1 as eaten
+                      const botIndex = bots.findIndex(b => b.id === p1.id);
+                      if (botIndex !== -1) {
+                          // Remove the bot
+                          bots.splice(botIndex, 1);
+                          
+                          // Spawn a new bot (keeping same type)
+                          spawnOfflineBot(bots.length, p1.isBigBot);
+                      }
                   }
               }
           }
           if (!isGameRunning) break; // Exit outer loop if player was eaten
       }
-       // Clean up dead bots from main array
-       bots = bots.filter(b => b.mass > 0);
+      
+      // Clean up dead bots from main array
+      bots = bots.filter(b => b.mass > 0);
 
-      // Build offline leaderboard
+      // Build offline leaderboard with proper display
       leaderboard = [];
+      
       // Add player to leaderboard
       if (player.mass > 0) {
+          // Calculate total player mass including split cells
+          const totalPlayerMass = player.mass + bots
+              .filter(b => b.isPlayerSplit)
+              .reduce((total, cell) => total + cell.mass, 0);
+          
           leaderboard.push({
+              id: player.id,
               name: player.name,
-              mass: player.mass
+              mass: totalPlayerMass
           });
       }
       
-      // Add player's split cells to leaderboard as same player
-      const totalPlayerMass = player.mass + bots
-          .filter(b => b.isPlayerSplit)
-          .reduce((total, cell) => total + cell.mass, 0);
-      
-      // Replace player entry with combined mass
-      if (leaderboard.length > 0 && player.mass > 0) {
-          leaderboard[0].mass = totalPlayerMass;
-      }
-      
-      // Add bots to leaderboard
+      // Add bots to leaderboard (excluding player split cells)
       bots.filter(b => !b.isPlayerSplit)
           .forEach(bot => {
-              leaderboard.push({
-                  name: bot.name,
-                  mass: bot.mass
-              });
+              // Calculate total bot mass including split cells
+              let totalBotMass = bot.mass;
+              if (!bot.isBotSplit) {
+                  // Add mass from this bot's split cells
+                  const botSplits = bots.filter(b => b.isBotSplit && b.parentBot === bot.id);
+                  totalBotMass += botSplits.reduce((total, cell) => total + cell.mass, 0);
+              }
+              
+              // Only add non-split cells to leaderboard to avoid duplicates
+              if (!bot.isBotSplit) {
+                  leaderboard.push({
+                      id: bot.id,
+                      name: bot.name,
+                      mass: totalBotMass
+                  });
+              }
           });
       
       // Sort leaderboard by mass (descending)
@@ -1216,7 +1412,9 @@ function gameLoop() {
       if (!isOfflineMode) {
            drawLeaderboard();
       } else {
+           // Draw both stats and leaderboard in offline mode
            drawOfflineStats();
+           drawLeaderboard();
       }
 
 
@@ -1270,8 +1468,15 @@ function startGame() {
         // Reset and spawn bots
         bots = [];
         players = []; // Clear remote players array
-        for (let i = 0; i < BOT_COUNT; i++) {
+        
+        // Spawn regular bots
+        for (let i = 0; i < BOT_COUNT - BIG_BOT_COUNT; i++) {
             spawnOfflineBot(i);
+        }
+        
+        // Spawn big bots
+        for (let i = 0; i < BIG_BOT_COUNT; i++) {
+            spawnOfflineBot(BOT_COUNT - BIG_BOT_COUNT + i, true);
         }
 
         isGameRunning = true; // Start the game loop logic
