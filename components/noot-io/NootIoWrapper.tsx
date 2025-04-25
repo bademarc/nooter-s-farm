@@ -59,6 +59,20 @@ const NootIoWrapper: React.FC<NootIoWrapperProps> = ({ farmCoins, addFarmCoins }
       console.log('Sent initial farm coins to game:', farmCoins);
     }
   }, [farmCoins, iframeLoaded]);
+  
+  // Handle iframe load event
+  const handleIframeLoad = () => {
+    setIframeLoaded(true);
+    console.log('Noot.io iframe loaded');
+    
+    // Auto-start in offline mode after a short delay
+    setTimeout(() => {
+      if (!gameMode) {
+        console.log('Auto-starting game in offline mode');
+        sendCommandToGame('start-offline');
+      }
+    }, 1500);
+  };
 
   // Function to send commands to the iframe
   const sendCommandToGame = (command: string) => {
@@ -80,39 +94,9 @@ const NootIoWrapper: React.FC<NootIoWrapperProps> = ({ farmCoins, addFarmCoins }
       console.error("Cannot send command: Iframe not ready.");
     }
   };
-  
-  // Handle iframe load event
-  const handleIframeLoad = () => {
-    setIframeLoaded(true);
-    console.log('Noot.io iframe loaded');
-    
-    // Auto-start in offline mode after a short delay
-    setTimeout(() => {
-      if (!gameMode) {
-        console.log('Auto-starting game in offline mode');
-        sendCommandToGame('start-offline');
-      }
-    }, 1500);
-  };
 
   return (
     <div className="w-full h-full flex flex-col items-center" style={{ minHeight: '600px' }}>
-      {/* Game mode selection buttons */}
-      <div className="mb-2 flex space-x-4">
-         <button
-           onClick={() => sendCommandToGame('start-online')}
-           className={`px-4 py-2 ${gameMode === 'online' ? 'bg-blue-600' : 'bg-gray-600'} hover:bg-blue-700 text-white rounded transition duration-150`}
-         >
-           Play Online
-         </button>
-         <button
-           onClick={() => sendCommandToGame('start-offline')}
-           className={`px-4 py-2 ${gameMode === 'offline' ? 'bg-green-600' : 'bg-gray-600'} hover:bg-green-700 text-white rounded transition duration-150`}
-         >
-           Play Offline (vs Bots)
-         </button>
-      </div>
-      
       {/* Game status */}
       {gameMode && (
         <div className="mb-2 text-sm">

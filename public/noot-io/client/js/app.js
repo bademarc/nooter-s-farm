@@ -715,13 +715,20 @@ function drawLeaderboard() {
 
     // List entries
     leaderboard.slice(0, 10).forEach((player, i) => {
+        // Skip invalid entries
+        if (!player || typeof player !== 'object') return;
+        
+        // Ensure the player has a name property
+        const playerName = player.name || 'Anonymous';
+        const playerMass = Math.floor(player.mass || 0);
+        
         // Highlight player's position in the leaderboard
         const isPlayer = isOfflineMode ? 
-            (i === 0 && player.name === window.player.name) : 
+            (i === 0 && playerName === window.player.name) : 
             (player.id === window.player.id);
             
         const color = isPlayer ? '#FFFF00' : '#FFFFFF';
-        drawText(`${i+1}. ${player.name || 'Anonymous'}: ${Math.floor(player.mass)}`, 
+        drawText(`${i+1}. ${playerName}: ${playerMass}`, 
             canvas.width - 90, 45 + i * 20, color, 14);
     });
 }
@@ -1296,131 +1303,14 @@ function gameLoop() {
           });
       }
       
-      // Player vs Bots & Bot vs Bots (Simplified)
-      let entities = [player, ...bots];
-      for (let i = 0; i < entities.length; i++) {
-           if (!entities[i] || entities[i].mass <= 0) continue; // Skip null/dead entities
-          for (let j = i + 1; j < entities.length; j++) {
-               if (!entities[j] || entities[j].mass <= 0) continue; // Skip null/dead entities
-              let p1 = entities[i];
-              let p2 = entities[j];
-              const distSq = (p1.x - p2.x)**2 + (p1.y - p2.y)**2;
-              const r1 = Math.sqrt(p1.mass / Math.PI) * 10;
-              const r2 = Math.sqrt(p2.mass / Math.PI) * 10;
+      // Player vs Bots & Bot vs Bots collision detection
+      handleEntityCollisions();
 
-              // Check for overlap based on larger radius containing center of smaller one + mass check
-              const eatThreshold = 1.2; // Must be 20% bigger (more challenging)
-              const overlapFactor = 0.7; // Center must be within 70% of radius (better detection)
-
-              if (p1.mass > p2.mass * eatThreshold && distSq < (r1 * overlapFactor)**2) { // P1 eats P2
-                  console.log(`${p1.name || 'Player'} ate ${p2.name || 'Player'}`);
-                  p1.mass += p2.mass * 0.8; // Only gain 80% of eaten mass (more balanced)
-                  if (p1 === player) checkEarnedCoins(player.mass);
-
-                  // Mark p2 as eaten (set mass to 0)
-                  p2.mass = 0;
-                  
-                  // Handle respawning if p2 is a bot (not a split cell)
-                  if (p2 !== player && !p2.isPlayerSplit && !p2.isBotSplit) {
-                      const botIndex = bots.findIndex(b => b.id === p2.id);
-                      if (botIndex !== -1) {
-                          // Remove the bot
-                          bots.splice(botIndex, 1);
-                          
-                          // Spawn a new bot (keeping same type)
-                          spawnOfflineBot(bots.length, p2.isBigBot); 
-                      }
-                  } else if (p2.isPlayerSplit || p2.isBotSplit) {
-                      // Just remove split cells when eaten
-                      const botIndex = bots.findIndex(b => b.id === p2.id);
-                      if (botIndex !== -1) {
-                          bots.splice(botIndex, 1);
-                      }
-                  }
-                  
-                  continue; // P2 is gone, check next entity against P1
-              } else if (p2.mass > p1.mass * eatThreshold && distSq < (r2 * overlapFactor)**2) { // P2 eats P1
-                  console.log(`${p2.name || 'Player'} ate ${p1.name || 'Player'}`);
-                  p2.mass += p1.mass * 0.8; // Only gain 80% of eaten mass (more balanced)
-
-                  if (p1 === player) { // Player was eaten
-                      console.log("[Noot.io App] Player eaten in offline mode!");
-                      isGameRunning = false; // Stop game logic
-                      isGameInitialized = false; // Allow re-init
-                      player.mass = 0; // Mark player as dead
-                      // Show restart button
-                      const restartButton = document.getElementById('restart-button');
-                      if (restartButton) restartButton.style.display = 'block';
-                      break; // Exit inner loop
-                  } else if (p1.isPlayerSplit || p1.isBotSplit) {
-                      // Just remove split cells when eaten
-                      const botIndex = bots.findIndex(b => b.id === p1.id);
-                      if (botIndex !== -1) {
-                          bots.splice(botIndex, 1);
-                      }
-                  } else {
-                      // Handle respawning if p1 is a bot (not a split cell)
-                      p1.mass = 0; // Mark p1 as eaten
-                      const botIndex = bots.findIndex(b => b.id === p1.id);
-                      if (botIndex !== -1) {
-                          // Remove the bot
-                          bots.splice(botIndex, 1);
-                          
-                          // Spawn a new bot (keeping same type)
-                          spawnOfflineBot(bots.length, p1.isBigBot);
-                      }
-                  }
-              }
-          }
-          if (!isGameRunning) break; // Exit outer loop if player was eaten
-      }
-      
       // Clean up dead bots from main array
       bots = bots.filter(b => b.mass > 0);
 
       // Build offline leaderboard with proper display
-      leaderboard = [];
-      
-      // Add player to leaderboard
-      if (player.mass > 0) {
-          // Calculate total player mass including split cells
-          const totalPlayerMass = player.mass + bots
-              .filter(b => b.isPlayerSplit)
-              .reduce((total, cell) => total + cell.mass, 0);
-          
-          leaderboard.push({
-              id: player.id,
-              name: player.name,
-              mass: totalPlayerMass
-          });
-      }
-      
-      // Add bots to leaderboard (excluding player split cells)
-      bots.filter(b => !b.isPlayerSplit)
-          .forEach(bot => {
-              // Calculate total bot mass including split cells
-              let totalBotMass = bot.mass;
-              if (!bot.isBotSplit) {
-                  // Add mass from this bot's split cells
-                  const botSplits = bots.filter(b => b.isBotSplit && b.parentBot === bot.id);
-                  totalBotMass += botSplits.reduce((total, cell) => total + cell.mass, 0);
-              }
-              
-              // Only add non-split cells to leaderboard to avoid duplicates
-              if (!bot.isBotSplit) {
-                  leaderboard.push({
-                      id: bot.id,
-                      name: bot.name,
-                      mass: totalBotMass
-                  });
-              }
-          });
-      
-      // Sort leaderboard by mass (descending)
-      leaderboard.sort((a, b) => b.mass - a.mass);
-      
-      // Limit leaderboard to top 10
-      leaderboard = leaderboard.slice(0, 10);
+      updateOfflineLeaderboard();
 
       // Interpolate Player render position
       player.renderX = lerp(player.renderX, player.x, INTERPOLATION_FACTOR);
@@ -1472,7 +1362,6 @@ function gameLoop() {
          player.renderY = player.y;
       }
 
-
       // Draw food (shared)
       foods.forEach(food => {
           const drawX = food.x - cameraX + canvas.width / 2;
@@ -1519,12 +1408,10 @@ function gameLoop() {
           drawPlayer(selfDrawData);
       }
 
-
-      // Update Stats Display (shared) - Use different elements?
-      // const scoreElement = document.getElementById('score'); // Assuming this exists
-      // if (scoreElement) {
-      //   scoreElement.textContent = `Mass: ${player.mass ? Math.floor(player.mass).toLocaleString() : 0}`;
-      // }
+      // Make sure leaderboard is always up-to-date before rendering
+      if (isOfflineMode) {
+          updateOfflineLeaderboard();
+      }
 
       // Draw leaderboard (Online) or Offline Stats
       if (!isOfflineMode) {
@@ -1534,7 +1421,6 @@ function gameLoop() {
            drawOfflineStats();
            drawLeaderboard();
       }
-
 
   } catch (e) {
       console.error("[gameLoop] Error during rendering phase:", e);
@@ -2017,3 +1903,150 @@ document.addEventListener('DOMContentLoaded', initApp);
 // - Nickname Input: id="playerNameInput" (or whatever it is)
 // - Start Button: id="startButton"
 // - Restart Button: id="restart-button" (needs to be added to HTML)
+
+// Build offline leaderboard with proper display
+function updateOfflineLeaderboard() {
+  try {
+    // Create a fresh leaderboard array
+    leaderboard = [];
+    
+    // Add player to leaderboard if alive
+    if (player && player.mass > 0) {
+        // Calculate total player mass including split cells
+        const totalPlayerMass = player.mass + bots
+            .filter(b => b.isPlayerSplit)
+            .reduce((total, cell) => total + cell.mass, 0);
+        
+        leaderboard.push({
+            id: player.id,
+            name: player.name,
+            mass: totalPlayerMass
+        });
+    }
+    
+    // Add bots to leaderboard (excluding player split cells)
+    bots.filter(b => !b.isPlayerSplit && b.mass > 0)
+        .forEach(bot => {
+            // Skip invalid bots
+            if (!bot || !bot.name) return;
+            
+            // Calculate total bot mass including split cells
+            let totalBotMass = bot.mass;
+            if (!bot.isBotSplit) {
+                // Add mass from this bot's split cells
+                const botSplits = bots.filter(b => b.isBotSplit && b.parentBot === bot.id);
+                totalBotMass += botSplits.reduce((total, cell) => total + cell.mass, 0);
+            }
+            
+            // Only add non-split cells to leaderboard to avoid duplicates
+            if (!bot.isBotSplit) {
+                leaderboard.push({
+                    id: bot.id,
+                    name: bot.name,
+                    mass: totalBotMass
+                });
+            }
+        });
+    
+    // Sort leaderboard by mass (descending)
+    leaderboard.sort((a, b) => b.mass - a.mass);
+    
+    // Limit leaderboard to top 10
+    leaderboard = leaderboard.slice(0, 10);
+  } catch (e) {
+    console.error("[updateOfflineLeaderboard] Error:", e);
+    // If there's an error, ensure leaderboard is still valid
+    if (!Array.isArray(leaderboard)) leaderboard = [];
+  }
+}
+
+// Player vs Bots & Bot vs Bots collision detection
+function handleEntityCollisions() {
+  // Create a fresh array of valid entities
+  let entities = [player, ...bots].filter(e => e && e.mass > 0);
+  
+  for (let i = 0; i < entities.length; i++) {
+      let p1 = entities[i];
+      if (!p1 || p1.mass <= 0) continue; // Skip dead entities
+      
+      for (let j = i + 1; j < entities.length; j++) {
+          let p2 = entities[j];
+          if (!p2 || p2.mass <= 0) continue; // Skip dead entities
+          
+          const distSq = (p1.x - p2.x)**2 + (p1.y - p2.y)**2;
+          const r1 = Math.sqrt(p1.mass / Math.PI) * 10;
+          const r2 = Math.sqrt(p2.mass / Math.PI) * 10;
+
+          // Check for overlap based on larger radius containing center of smaller one + mass check
+          const eatThreshold = 1.2; // Must be 20% bigger (more challenging)
+          const overlapFactor = 0.7; // Center must be within 70% of radius (better detection)
+
+          if (p1.mass > p2.mass * eatThreshold && distSq < (r1 * overlapFactor)**2) { // P1 eats P2
+              console.log(`${p1.name || 'Player'} ate ${p2.name || 'Player'}`);
+              p1.mass += p2.mass * 0.8; // Only gain 80% of eaten mass (more balanced)
+              if (p1 === player) checkEarnedCoins(player.mass);
+
+              // Mark p2 as eaten (set mass to 0)
+              p2.mass = 0;
+              
+              // Handle respawning if p2 is a bot (not a split cell)
+              if (p2 !== player && !p2.isPlayerSplit && !p2.isBotSplit) {
+                  const botIndex = bots.findIndex(b => b.id === p2.id);
+                  if (botIndex !== -1) {
+                      // Remove the bot
+                      bots.splice(botIndex, 1);
+                      
+                      // Spawn a new bot (keeping same type)
+                      spawnOfflineBot(bots.length, p2.isBigBot); 
+                  }
+              } else if (p2.isPlayerSplit || p2.isBotSplit) {
+                  // Just remove split cells when eaten
+                  const botIndex = bots.findIndex(b => b.id === p2.id);
+                  if (botIndex !== -1) {
+                      bots.splice(botIndex, 1);
+                  }
+              }
+              
+              // After eating, immediately update leaderboard to avoid stale references
+              if (isOfflineMode) updateOfflineLeaderboard();
+              
+              continue; // P2 is gone, check next entity against P1
+          } else if (p2.mass > p1.mass * eatThreshold && distSq < (r2 * overlapFactor)**2) { // P2 eats P1
+              console.log(`${p2.name || 'Player'} ate ${p1.name || 'Player'}`);
+              p2.mass += p1.mass * 0.8; // Only gain 80% of eaten mass (more balanced)
+
+              if (p1 === player) { // Player was eaten
+                  console.log("[Noot.io App] Player eaten in offline mode!");
+                  isGameRunning = false; // Stop game logic
+                  isGameInitialized = false; // Allow re-init
+                  player.mass = 0; // Mark player as dead
+                  // Show restart button
+                  const restartButton = document.getElementById('restart-button');
+                  if (restartButton) restartButton.style.display = 'block';
+                  break; // Exit inner loop
+              } else if (p1.isPlayerSplit || p1.isBotSplit) {
+                  // Just remove split cells when eaten
+                  const botIndex = bots.findIndex(b => b.id === p1.id);
+                  if (botIndex !== -1) {
+                      bots.splice(botIndex, 1);
+                  }
+              } else {
+                  // Handle respawning if p1 is a bot (not a split cell)
+                  p1.mass = 0; // Mark p1 as eaten
+                  const botIndex = bots.findIndex(b => b.id === p1.id);
+                  if (botIndex !== -1) {
+                      // Remove the bot
+                      bots.splice(botIndex, 1);
+                      
+                      // Spawn a new bot (keeping same type)
+                      spawnOfflineBot(bots.length, p1.isBigBot);
+                  }
+              }
+              
+              // After eating, immediately update leaderboard to avoid stale references
+              if (isOfflineMode) updateOfflineLeaderboard();
+          }
+      }
+      if (!isGameRunning) break; // Exit outer loop if player was eaten
+  }
+}

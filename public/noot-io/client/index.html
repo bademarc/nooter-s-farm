@@ -42,6 +42,32 @@
             justify-content: center;
             align-items: center;
         }
+        .modeButton {
+            margin: 5px;
+            padding: 8px 15px;
+            cursor: pointer;
+            background-color: #555;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            transition: background-color 0.3s;
+        }
+        .modeButton.active {
+            background-color: #4CAF50;
+            font-weight: bold;
+        }
+        .modeButton:hover {
+            background-color: #777;
+        }
+        #server-status {
+            color: #FF5722;
+            display: none;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        #server-status.hidden {
+            display: none;
+        }
     </style>
     <!-- Audio -->
     <audio id="split_cell" src="audio/split.mp3"></audio>
@@ -69,8 +95,9 @@
             <b class="input-error">Nick must be alphanumeric characters only!</b>
             <br />
             <div id="gameMode">
-                <button id="onlineButton" class="modeButton active">Online Mode</button>
-                <button id="offlineButton" class="modeButton">Offline Mode (100 Bots)</button>
+                <button id="onlineButton" class="modeButton">Online Mode</button>
+                <button id="offlineButton" class="modeButton">Offline Mode (50 Bots)</button>
+                <div id="server-status">Server connection failed. Playing in offline mode.</div>
             </div>
             <div id="loading" style="display: none;">
                 <p>Loading game...</p>
@@ -100,8 +127,7 @@
                     <li>A player's mass is the number of food particles eaten.</li>
                     <li>Objective: Try to get fat and eat other players.</li>
                     <li>Earn Farm Coins for every 100 mass you gain!</li>
-                    <li>Press space to split your cell!</li>
-                    <li>Press W to eject mass!</li>
+                    <li>Press SPACE to split, W to eject mass.</li>
                 </ul>
             </div>
         </div>
