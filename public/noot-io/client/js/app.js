@@ -1,4 +1,4 @@
-// Noot.io - A simplified version of the Agar.io game
+// Noot.io - A simplified agar.io-like game
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 let socket; // Define socket variable, will be assigned later
@@ -657,7 +657,7 @@ function gameLoop() {
     }
 
     // Draw food
-    foods.forEach(food => {
+        foods.forEach(food => {
       const drawX = food.x - cameraX + canvas.width / 2;
       const drawY = food.y - cameraY + canvas.height / 2;
       const radius = food.mass ? Math.max(2, Math.sqrt(food.mass)) : 5;

@@ -86,7 +86,7 @@ const NootIoWrapper: React.FC<NootIoWrapperProps> = ({ farmCoins, addFarmCoins }
          </button> */}
          <button
            onClick={() => sendCommandToGame('start-offline')}
-           className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded transition duration-150"
+           className="px-4 py-2 bg-white text-black hover:bg-white/90 border-0 rounded-none text-sm font-medium noot-text transition-colors duration-200"
          >
            Play Offline (vs Bots)
          </button>
