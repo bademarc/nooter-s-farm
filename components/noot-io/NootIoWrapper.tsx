@@ -97,6 +97,7 @@ const NootIoWrapper: React.FC<NootIoWrapperProps> = ({ farmCoins, addFarmCoins }
         className="w-full h-full border-none"
         title="Noot.io Game"
         allowFullScreen
+        sandbox="allow-scripts allow-same-origin"
       />
       <div className="mt-4 text-white text-center text-sm">
         <p>Tip: Eat smaller cells and food to grow bigger! Avoid larger cells.</p>
