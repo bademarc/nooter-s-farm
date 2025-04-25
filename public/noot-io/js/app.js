@@ -16,6 +16,7 @@ let player = {};
 let players = [];
 let foods = [];
 let leaderboard = [];
+let massFood = []; // Add array for mass food
 let mouseX = 0;
 let mouseY = 0;
 const colors = ['#F44336', '#E91E63', '#9C27B0', '#673AB7', '#3F51B5', '#2196F3', '#03A9F4', '#00BCD4', '#009688', '#4CAF50', '#8BC34A', '#CDDC39', '#FFEB3B', '#FFC107', '#FF9800', '#FF5722'];
@@ -117,80 +118,62 @@ function setupSocketListeners() {
     // Consider showing the start menu again
   });
 
-  // Listen for initial game state from server
-  socket.on('init_game', (data) => {
-    console.log("[Noot.io App] Received init_game");
-    player = data.players[data.playerId] || {}; // Store our player data
-    // Filter out our own player object from the main list for rendering
-    players = Object.values(data.players).filter(p => p.id !== data.playerId);
-    foods = data.food;
-    lastKnownMass = player.size || 0; // Initialize mass tracking
-    console.log("[Noot.io App] My Player:", player);
-    console.log("[Noot.io App] Other Players:", players);
-  });
-
-  // Listen for new players joining
-  socket.on('player_joined', (newPlayer) => {
-    console.log("[Noot.io App] Received player_joined:", newPlayer.id);
-    if (newPlayer.id !== player.id) {
-      players.push(newPlayer); // Add to list of other players
-    }
-  });
-
-  // Listen for players leaving
-  socket.on('player_left', (playerId) => {
-    console.log("[Noot.io App] Received player_left:", playerId);
-    players = players.filter(p => p.id !== playerId); // Remove from list
-  });
-
-  // Listen for player movement updates
-  socket.on('player_moved', (data) => {
-    // Update position of the specific player in our list
-    const movedPlayer = players.find(p => p.id === data.id);
-    if (movedPlayer) {
-      movedPlayer.x = data.x;
-      movedPlayer.y = data.y;
-      // movedPlayer.size = data.size; // If size is sent
-    }
-  });
-
-  // Listen for food being eaten
-  socket.on('food_eaten', (data) => {
-    // Remove food from local list
-    foods = foods.filter(f => f.id !== data.foodId);
-    // Update the size of the player who ate (could be us or someone else)
-    if (player.id === data.playerId) {
-      player.size = data.newSize;
-      checkEarnedCoins(player.size); // Check for earned coins
-    } else {
-      const eater = players.find(p => p.id === data.playerId);
-      if (eater) {
-        eater.size = data.newSize;
+  // Listen for the main game state update
+  socket.on('update', (data) => {
+    // Find our player data in the update
+    const updatedSelf = data.players.find(p => p.id === player.id);
+    if (updatedSelf) {
+      // Only update position/mass if server differs significantly?
+      // For simplicity, just update based on server state
+      player.x = updatedSelf.x;
+      player.y = updatedSelf.y;
+      if (player.mass !== updatedSelf.mass) {
+          player.mass = updatedSelf.mass;
+          checkEarnedCoins(player.mass); // Check coins on mass change
       }
+      player.color = updatedSelf.color; // Keep color updated
     }
+
+    // Update other players (filter out self)
+    players = data.players.filter(p => p.id !== player.id);
+    foods = data.foods; // Update food list
+    massFood = data.massFood; // Update mass food list
+    leaderboard = data.leaderboard; // Update leaderboard
   });
 
-  // Listen for new food spawning
-  socket.on('food_spawned', (newFood) => {
-    foods.push(newFood);
-  });
-
-  // Listen for name changes
-  socket.on('player_name_changed', (data) => {
-    if (player.id === data.id) {
-      player.name = data.name;
-    } else {
-      const namedPlayer = players.find(p => p.id === data.id);
-      if (namedPlayer) {
-        namedPlayer.name = data.name;
-      }
-    }
+  // Listen for being eaten
+  socket.on('eaten', (data) => {
+    console.log(`[Noot.io App] Eaten by ${data.by}!`);
+    // Show restart prompt or handle respawn
+    const restartButton = document.getElementById('restart-button');
+    if (restartButton) restartButton.style.display = 'block';
+    // Reset local player state? Server might handle respawn position.
+    player = {}; // Clear local player data
   });
 
   // --- Remove or Adapt Old Listeners ---
   // Remove the old 'update' listener if it exists
   // socket.off('update'); // Or check if it's still needed
-
+  // Remove old granular listeners if 'update' handles everything
+  socket.off('init_game');
+  socket.off('player_joined');
+  socket.off('player_left');
+  socket.off('player_moved');
+  socket.off('food_eaten');
+  socket.off('food_spawned');
+  socket.off('player_name_changed');
+  // TODO: Re-add 'init_game' or equivalent for initial setup?
+  // Need a way to get the initial player ID and state.
+  // Let's keep 'initGame' on the server and add a listener here for now.
+  socket.on('initGame', (data) => {
+    console.log("[Noot.io App] Received initGame");
+    player = data.player || {}; // Store our player data
+    players = data.players.filter(p => p.id !== player.id); // Store other players
+    foods = data.foods; // Store initial food
+    massFood = []; // Initial mass food is empty
+    lastKnownMass = player.mass || 0; // Initialize mass tracking
+    console.log("[Noot.io App] My Player:", player);
+  });
 }
 
 // Game rendering functions
@@ -245,7 +228,7 @@ function drawLeaderboard() {
   drawText('Leaderboard', canvas.width - 90, 25, '#FFFFFF', 16);
   
   leaderboard.forEach((player, i) => {
-    drawText(`${i+1}. ${player.name || 'Anonymous'}: ${player.mass}`, canvas.width - 90, 45 + i * 20, '#FFFFFF', 14);
+    drawText(`${i+1}. ${player.name || 'Anonymous'}: ${Math.floor(player.mass)}`, canvas.width - 90, 45 + i * 20, '#FFFFFF', 14);
   });
 }
 
@@ -265,51 +248,28 @@ function gameLoop() {
     return;
   }
 
+  // --- Send mouse position to server (used for movement AND feed direction) ---
+  if (socket) {
+     // Map mouse coords relative to player's world position for the server
+    const worldMouseX = player.x + (mouseX - canvas.width / 2);
+    const worldMouseY = player.y + (mouseY - canvas.height / 2);
+    socket.emit('mouseMove', { mouseX: worldMouseX, mouseY: worldMouseY });
+  }
+
+  // Remove local optimistic updates and collision checks
+  // Server state from 'update' event is now the source of truth
+  /*
   // --- Calculate player's intended position based on mouse ---
   // Simple linear interpolation towards mouse
-  const speed = 5; // Adjust speed as needed
-  let targetX = mouseX - canvas.width / 2;
-  let targetY = mouseY - canvas.height / 2;
-  const angle = Math.atan2(targetY, targetX);
-  const deltaX = Math.cos(angle) * speed;
-  const deltaY = Math.sin(angle) * speed;
-
-  // Update local player position optimistically for smoothness
-  // Server will eventually send the authoritative position
-  player.x += deltaX;
-  player.y += deltaY;
-
-  // TODO: Clamp player position to map bounds (using MAP_WIDTH, MAP_HEIGHT)
-
-  // Emit the intended position to the server
-  if (socket) {
-    socket.emit('player_update', { x: player.x, y: player.y });
-  }
+  // ... removed ...
 
   // --- Check for food collisions ---
   // Iterate backwards for safe removal
-  for (let i = foods.length - 1; i >= 0; i--) {
-    const foodItem = foods[i];
-    if (checkCollision(player, foodItem)) {
-      // Optimistically remove food locally & increase size for responsiveness
-      player.size += 1; // Keep consistent with server-side increase
-      checkEarnedCoins(player.size);
-      const eatenFoodId = foodItem.id;
-      foods.splice(i, 1);
-
-      // Tell the server we ate this food
-      if (socket) {
-        socket.emit('eat_food', eatenFoodId);
-      }
-      // Break after eating one piece per frame (optional)
-      // break;
-    }
-  }
-
-  // TODO: Add player-player collision detection and emit events
+  // ... removed ...
+  */
 
   // --- Log State Before Drawing ---
-  console.log(`[Noot.io Loop] State - Player: (${player.x?.toFixed(1)}, ${player.y?.toFixed(1)}) Size: ${player.size} | Foods: ${foods.length} | Others: ${players.length}`);
+  // console.log(`[Noot.io Loop] State - Player: (${player.x?.toFixed(1)}, ${player.y?.toFixed(1)}) Size: ${player.mass} | Foods: ${foods.length} | Others: ${players.length}`);
 
   // --- Rendering ---
   try {
@@ -330,7 +290,16 @@ function gameLoop() {
       const drawX = food.x - cameraX + canvas.width / 2;
       const drawY = food.y - cameraY + canvas.height / 2;
       // console.log(`[Noot.io Loop] Calc Food Draw Coords: (${drawX.toFixed(1)}, ${drawY.toFixed(1)})`); // Verbose
-      drawFood({ x: drawX, y: drawY, color: food.color });
+      drawFood({ x: drawX, y: drawY, color: food.color, mass: food.mass }); // Pass mass for drawing
+    });
+
+    // Draw mass food
+    massFood.forEach(mf => {
+      const drawX = mf.x - cameraX + canvas.width / 2;
+      const drawY = mf.y - cameraY + canvas.height / 2;
+      // Draw mass food similar to regular food, but maybe smaller or different shape?
+      // Using drawCircle for now, size based on sqrt(mass)
+      drawCircle(drawX, drawY, Math.max(2, Math.sqrt(mf.mass)), mf.color);
     });
 
     // Draw other players
@@ -345,13 +314,16 @@ function gameLoop() {
     const selfDrawX = canvas.width / 2;
     const selfDrawY = canvas.height / 2;
     // console.log(`[Noot.io Loop] Calc Self Draw Coords: (${selfDrawX.toFixed(1)}, ${selfDrawY.toFixed(1)})`); // Verbose
-    drawPlayer({ x: selfDrawX, y: selfDrawY, size: player.size, name: player.name, color: player.color });
+    drawPlayer({ x: selfDrawX, y: selfDrawY, mass: player.mass, name: player.name, color: player.color }); // Use mass for drawing
 
     // Update Stats Display
     const scoreElement = document.getElementById('score');
     if (scoreElement) {
-      scoreElement.textContent = `Mass: ${player.size ? player.size.toLocaleString() : 0}`;
+      scoreElement.textContent = `Mass: ${player.mass ? Math.floor(player.mass).toLocaleString() : 0}`;
     }
+
+    // Draw leaderboard
+    drawLeaderboard();
   } catch (e) {
       console.error("[gameLoop] Error during rendering phase:", e);
   }
@@ -361,6 +333,10 @@ function gameLoop() {
 
 // Start game function (called by button click)
 function startGame() {
+  // Reset restart button
+  const restartButton = document.getElementById('restart-button');
+  if (restartButton) restartButton.style.display = 'none';
+
   if (!socket || !socket.connected) {
     console.error("Socket not connected!");
     // Show error or server status message
@@ -371,13 +347,15 @@ function startGame() {
   const nicknameInput = document.getElementById('nickname');
   const nickname = nicknameInput ? nicknameInput.value.trim().substring(0, 16) || `Nooter_${Math.floor(Math.random()*1000)}` : `Nooter_${Math.floor(Math.random()*1000)}`;
 
-  console.log("[Noot.io App] Setting name:", nickname);
-  socket.emit('set_name', nickname);
+  console.log("[Noot.io App] Joining game with name:", nickname);
+  // Emit joinGame event instead of set_name
+  socket.emit('joinGame', { nickname: nickname });
 
-  // Reset local state before starting
+  // Reset local state before starting (server will send initial state via initGame)
   player = {};
   players = [];
   foods = [];
+  massFood = [];
   lastKnownMass = 0;
 
   // Hide menu, show canvas
@@ -387,7 +365,7 @@ function startGame() {
   if (gameCanvas) gameCanvas.style.display = 'block';
 
   resizeCanvas(); // Ensure canvas is sized correctly
-  // The game loop will start rendering once player data is received via 'init_game'
+  // The game loop will start rendering once player data is received via 'initGame'
 }
 
 // --- Initialization ---
@@ -395,6 +373,20 @@ async function initApp() {
   console.log("[Noot.io App] Initializing...");
   resizeCanvas();
   setupMouseTracking();
+
+  // Add key listeners for split/feed
+  window.addEventListener('keydown', (e) => {
+    if (!player || !player.id) return; // Only send if playing
+
+    if (e.code === 'Space') { // Split
+      e.preventDefault();
+      socket.emit('split');
+    }
+    if (e.key === 'w' || e.key === 'W') { // Feed
+      e.preventDefault();
+      socket.emit('feed');
+    }
+  });
 
   // Initialize Socket.IO connection
   const websocketURL = getWebSocketURL();
@@ -409,6 +401,14 @@ async function initApp() {
   const startButton = document.getElementById('start-button');
   if (startButton) {
     startButton.addEventListener('click', startGame);
+  }
+
+  // Add listener for restart button
+  const restartButton = document.getElementById('restart-button');
+  if (restartButton) {
+      restartButton.addEventListener('click', () => {
+          startGame(); // Re-join the game
+      });
   }
 
   // Initial call to game loop (it will wait for player.id)

@@ -16,12 +16,19 @@ const FOOD_MASS = 1;
 const START_MASS = 10;
 const PLAYER_SPEED = 5;
 const MASS_DECAY_RATE = 0.001;
+const MIN_MASS_TO_SPLIT = 35; // Minimum mass to split
+const MIN_MASS_TO_FEED = 20; // Minimum mass to feed
+const FEED_MASS_COST = 10; // Mass lost when feeding
+const FEED_MASS_SPAWNED = 8; // Mass of the ejected food
+const MASS_FOOD_SPEED = 15; // Speed of ejected food
+const MASS_FOOD_DECAY_RATE = 0.005; // Decay rate for ejected food
 
 // Game state
 let players = {};
 let foods = [];
 let sockets = {};
 let leaderboard = [];
+let massFood = []; // Array to store ejected mass
 
 // Serve static files
 app.use(express.static(path.join(__dirname)));
@@ -137,6 +144,48 @@ function respawnPlayer(player) {
   player.mass = START_MASS;
 }
 
+// Add a function to spawn mass food (ejected by players)
+function spawnMassFood(player) {
+  const angle = Math.atan2(player.mouseY - player.y, player.mouseX - player.x); // Use stored mouse direction
+  const spawnedMass = {
+    id: Date.now() + Math.random().toString(36).substr(2, 5),
+    x: player.x + Math.cos(angle) * (player.mass + 5), // Spawn ahead of player
+    y: player.y + Math.sin(angle) * (player.mass + 5),
+    mass: FEED_MASS_SPAWNED,
+    color: player.color,
+    speedX: Math.cos(angle) * MASS_FOOD_SPEED,
+    speedY: Math.sin(angle) * MASS_FOOD_SPEED,
+    ownerId: player.id, // Keep track of owner initially to avoid self-consumption
+    creationTime: Date.now() // To prevent immediate re-consumption
+  };
+  massFood.push(spawnedMass);
+  return spawnedMass;
+}
+
+// Check for collisions between player and mass food
+function checkMassFoodCollision(player) {
+  for (let i = massFood.length - 1; i >= 0; i--) {
+    const mf = massFood[i];
+    // Don't let players eat their own ejected mass immediately
+    if (mf.ownerId === player.id && (Date.now() - mf.creationTime < 1000)) continue;
+
+    const dx = player.x - mf.x;
+    const dy = player.y - mf.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    // If distance is less than player radius + mass food radius (approx sqrt(mass))
+    if (distance < player.mass + Math.sqrt(mf.mass)) {
+      // Increase player mass
+      player.mass += mf.mass;
+      // Remove the mass food
+      massFood.splice(i, 1);
+      // Return true to indicate collision
+      return true;
+    }
+  }
+  return false;
+}
+
 // Socket.IO connection handling
 io.on('connection', function(socket) {
   console.log('A player connected!');
@@ -182,6 +231,10 @@ io.on('connection', function(socket) {
       // Normalize
       const length = Math.sqrt(dx * dx + dy * dy);
       
+      // Store mouse position for feeding direction
+      player.mouseX = data.mouseX;
+      player.mouseY = data.mouseY;
+      
       if (length > 0) {
         // Calculate speed based on mass (larger = slower)
         const speed = PLAYER_SPEED / Math.sqrt(player.mass);
@@ -196,6 +249,8 @@ io.on('connection', function(socket) {
         
         // Check for food collision
         checkFoodCollision(player);
+        // Check for mass food collision
+        checkMassFoodCollision(player);
       }
     }
   });
@@ -211,10 +266,50 @@ io.on('connection', function(socket) {
     // Update leaderboard
     updateLeaderboard();
   });
+
+  // Handle Feed command (e.g., 'W' key)
+  socket.on('feed', function() {
+    const player = players[socket.id];
+    if (player && player.mass >= MIN_MASS_TO_FEED) {
+        player.mass -= FEED_MASS_COST;
+        spawnMassFood(player);
+         // Maybe emit an update just for this player? Or rely on main loop
+    }
+  });
+
+  // Handle Split command (e.g., 'Space' key)
+  // TODO: Implement actual splitting logic - complex!
+  // This requires managing multiple cells per player.
+  // For now, just log it.
+  socket.on('split', function() {
+    const player = players[socket.id];
+    if (player && player.mass >= MIN_MASS_TO_SPLIT) {
+        console.log(`Player ${player.name} requested split (mass: ${player.mass}). Split logic not implemented yet.`);
+        // Actual split logic would involve:
+        // - Creating a new cell object associated with the player
+        // - Dividing mass between the cells
+        // - Ejecting the new cell in the direction of the mouse
+        // - Managing merging timers
+        // - Updating collision and movement logic for multiple cells
+    }
+  });
 });
 
 // Game update loop (20 times per second)
 setInterval(function() {
+  // Update and decay mass food
+  for (let i = massFood.length - 1; i >= 0; i--) {
+    const mf = massFood[i];
+    mf.x += mf.speedX;
+    mf.y += mf.speedY;
+    mf.mass *= (1 - MASS_FOOD_DECAY_RATE); // Decay mass
+
+    // Remove if out of bounds or too small
+    if (mf.x < 0 || mf.x > WORLD_WIDTH || mf.y < 0 || mf.y > WORLD_HEIGHT || mf.mass < 1) {
+      massFood.splice(i, 1);
+    }
+  }
+  
   // Apply mass decay to all players
   for (const id in players) {
     const player = players[id];
@@ -231,6 +326,7 @@ setInterval(function() {
   io.emit('update', {
     players: Object.values(players),
     foods: foods,
+    massFood: massFood, // Include massFood in the update
     leaderboard: leaderboard
   });
 }, 50);
