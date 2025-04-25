@@ -240,7 +240,7 @@ function checkCollision(circle1, circle2) {
 // Game loop
 function gameLoop() {
   if (!canvas || !ctx || !player || !player.id) {
-    // Don't run loop if canvas isn't ready or player hasn't joined
+    // console.log("[Noot.io Loop] Waiting for player ID..."); // Optional: uncomment for detailed timing check
     requestAnimationFrame(gameLoop);
     return;
   }
@@ -288,15 +288,25 @@ function gameLoop() {
 
   // TODO: Add player-player collision detection and emit events
 
-  // --- Rendering --- (Mostly unchanged, uses local player/players/foods state)
+  // --- Log State Before Drawing ---
+  console.log(`[Noot.io Loop] Rendering - Player: (${player.x?.toFixed(1)}, ${player.y?.toFixed(1)}) Size: ${player.size} | Foods: ${foods.length} | Others: ${players.length}`);
+
+  // --- Rendering ---
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Center camera on the local player
   let cameraX = player.x;
   let cameraY = player.y;
 
+  // Defensive check for NaN camera position
+  if (isNaN(cameraX) || isNaN(cameraY)) {
+      console.error("[Noot.io Loop] Invalid camera position!", { cameraX, cameraY, player });
+      cameraX = canvas.width / 2; // Fallback
+      cameraY = canvas.height / 2; // Fallback
+  }
+
   // Draw food
   foods.forEach(food => {
+    // console.log("[Noot.io Loop] Drawing food:", food); // Uncomment for verbose food logging
     drawFood({
       x: food.x - cameraX + canvas.width / 2,
       y: food.y - cameraY + canvas.height / 2,
@@ -304,22 +314,24 @@ function gameLoop() {
     });
   });
 
-  // Draw other players (from the `players` array, not including self)
+  // Draw other players
   players.forEach(p => {
+    // console.log("[Noot.io Loop] Drawing other player:", p); // Uncomment for verbose player logging
     drawPlayer({
       x: p.x - cameraX + canvas.width / 2,
       y: p.y - cameraY + canvas.height / 2,
-      mass: p.size, // Use 'size' from server state
+      mass: p.size,
       name: p.name,
       color: p.color
     });
   });
 
-  // Draw current player (always in center)
+  // Draw current player
+  // console.log("[Noot.io Loop] Drawing self:", player); // Uncomment for verbose self logging
   drawPlayer({
     x: canvas.width / 2,
     y: canvas.height / 2,
-    mass: player.size, // Use 'size' from local player state
+    mass: player.size,
     name: player.name,
     color: player.color
   });
