@@ -10,47 +10,58 @@ const Loader = () => {
   return (
     <StyledWrapper>
       <div className="loader-container">
-        <div className="farm-scene">
-          <div className="sun"></div>
-          <div className="clouds">
-            <div className="cloud cloud1"></div>
-            <div className="cloud cloud2"></div>
-            <div className="cloud cloud3"></div>
-          </div>
-          <div className="tractor">
-            <div className="tractor-body"></div>
-            <div className="tractor-wheel wheel1"></div>
-            <div className="tractor-wheel wheel2"></div>
-          </div>
-          <div className="crop crop1"></div>
-          <div className="crop crop2"></div>
-          <div className="crop crop3"></div>
-          <div className="crop crop4"></div>
-          <div className="crop crop5"></div>
+        <div className="logo-container">
+          <div className="logo">N</div>
+          <div className="glow-effect"></div>
         </div>
-        <div className="coins-container">
-          {[...Array(12)].map((_, i) => (
-            <div key={i} className={`coin coin${i+1}`}></div>
+        
+        <div className="sparkles-container">
+          {[...Array(20)].map((_, i) => (
+            <div key={i} className={`sparkle sparkle-${i+1}`}></div>
           ))}
         </div>
-        <div className="loading-text">
-          <span>L</span>
-          <span>O</span>
-          <span>A</span>
-          <span>D</span>
-          <span>I</span>
-          <span>N</span>
-          <span>G</span>
-          <span className="dots">
-            <span className="dot">.</span>
-            <span className="dot">.</span>
-            <span className="dot">.</span>
-          </span>
+        
+        <div className="progress-container">
+          <div className="loading-text">
+            <span>L</span>
+            <span>O</span>
+            <span>A</span>
+            <span>D</span>
+            <span>I</span>
+            <span>N</span>
+            <span>G</span>
+            <span className="dots">
+              <span className="dot">.</span>
+              <span className="dot">.</span>
+              <span className="dot">.</span>
+            </span>
+          </div>
+          
+          <div className="progress-bar">
+            <div className="progress-track"></div>
+            <div className="progress-fill"></div>
+            <div className="progress-glow"></div>
+          </div>
+          
+          <div className="status-text">NOOTER'S FARM</div>
         </div>
-        <div className="progress-bar">
-          <div className="progress-fill"></div>
+        
+        <div className="grid-background">
+          <div className="grid-line horizontal"></div>
+          <div className="grid-line horizontal"></div>
+          <div className="grid-line horizontal"></div>
+          <div className="grid-line horizontal"></div>
+          <div className="grid-line vertical"></div>
+          <div className="grid-line vertical"></div>
+          <div className="grid-line vertical"></div>
+          <div className="grid-line vertical"></div>
         </div>
-        <div className="noot-text">NOOTER'S FARM</div>
+        
+        <div className="farm-icons">
+          <div className="farm-icon icon-shovel">⛏️</div>
+          <div className="farm-icon icon-plant">🌱</div>
+          <div className="farm-icon icon-coin">🪙</div>
+        </div>
       </div>
     </StyledWrapper>
   );
@@ -62,7 +73,7 @@ const StyledWrapper = styled.div`
   display: flex;
   justify-content: center;
   align-items: center;
-  background: radial-gradient(circle, #150521 0%, #080110 100%);
+  background: #000;
   overflow: hidden;
   position: relative;
   
@@ -76,214 +87,147 @@ const StyledWrapper = styled.div`
     justify-content: center;
   }
   
-  .farm-scene {
-    width: 100%;
-    height: 200px;
-    position: relative;
-    perspective: 500px;
-  }
-  
-  .sun {
+  /* Grid background */
+  .grid-background {
     position: absolute;
-    top: 20px;
-    right: 30px;
-    width: 60px;
-    height: 60px;
-    border-radius: 50%;
-    background: linear-gradient(to bottom right, #ff9500, #ff5500);
-    box-shadow: 0 0 30px #ff5500, 0 0 60px #ff3700;
-    animation: pulse 3s infinite alternate;
-  }
-  
-  @keyframes pulse {
-    from { transform: scale(1); opacity: 0.8; }
-    to { transform: scale(1.1); opacity: 1; }
-  }
-  
-  .clouds {
-    position: absolute;
-    width: 100%;
-    height: 100%;
-    top: 0;
-  }
-  
-  .cloud {
-    position: absolute;
-    background: rgba(128, 100, 169, 0.3);
-    border-radius: 50%;
-    filter: blur(5px);
-  }
-  
-  .cloud1 {
-    width: 80px;
-    height: 30px;
-    top: 40px;
-    left: 20px;
-    animation: floatCloud 20s linear infinite;
-  }
-  
-  .cloud2 {
-    width: 60px;
-    height: 25px;
-    top: 70px;
-    left: -60px;
-    animation: floatCloud 15s linear infinite;
-  }
-  
-  .cloud3 {
-    width: 70px;
-    height: 25px;
-    top: 30px;
-    left: -30px;
-    animation: floatCloud 18s linear infinite 2s;
-  }
-  
-  @keyframes floatCloud {
-    from { transform: translateX(0); }
-    to { transform: translateX(400px); }
-  }
-  
-  .tractor {
-    position: absolute;
-    bottom: 20px;
-    left: 50px;
-    animation: tractorMove 5s infinite alternate ease-in-out;
-  }
-  
-  @keyframes tractorMove {
-    from { transform: translateX(0); }
-    to { transform: translateX(150px); }
-  }
-  
-  .tractor-body {
-    width: 60px;
-    height: 30px;
-    background: #cf2c7c;
-    border-radius: 8px 15px 5px 5px;
-    position: relative;
-    z-index: 2;
-    box-shadow: 0 0 15px #cf2c7c;
-  }
-  
-  .tractor-body:before {
-    content: '';
-    position: absolute;
-    width: 20px;
-    height: 20px;
-    background: #cf2c7c;
-    top: -15px;
-    left: 15px;
-    border-radius: 5px;
-  }
-  
-  .tractor-wheel {
-    position: absolute;
-    background: #570861;
-    border-radius: 50%;
-    border: 3px solid #8a2be2;
-    animation: wheelSpin 1s linear infinite;
-    box-shadow: 0 0 10px #8a2be2;
-  }
-  
-  .wheel1 {
-    width: 20px;
-    height: 20px;
-    bottom: -10px;
-    left: 5px;
-  }
-  
-  .wheel2 {
-    width: 25px;
-    height: 25px;
-    bottom: -12px;
-    right: 5px;
-  }
-  
-  @keyframes wheelSpin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-  }
-  
-  .crop {
-    position: absolute;
-    bottom: 10px;
-    width: 15px;
-    height: 30px;
-    background: linear-gradient(to top, transparent, #4CAF50);
-    animation: growCrop 3s infinite alternate;
-  }
-  
-  .crop:before {
-    content: '';
-    position: absolute;
-    top: -5px;
-    left: 2px;
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: #FFEB3B;
-  }
-  
-  .crop1 { left: 20px; animation-delay: 0.2s; }
-  .crop2 { left: 50px; animation-delay: 0.5s; }
-  .crop3 { left: 80px; animation-delay: 0.8s; }
-  .crop4 { left: 110px; animation-delay: 1.1s; }
-  .crop5 { left: 140px; animation-delay: 1.4s; }
-  
-  @keyframes growCrop {
-    from { height: 0; opacity: 0.5; }
-    to { height: 30px; opacity: 1; }
-  }
-  
-  .coins-container {
-    position: absolute;
-    width: 100%;
-    height: 100%;
+    inset: -100px;
+    opacity: 0.15;
     z-index: 0;
   }
   
-  .coin {
+  .grid-line {
     position: absolute;
-    width: 15px;
-    height: 15px;
-    background: #ffd700;
-    border-radius: 50%;
-    box-shadow: 0 0 10px #ffd700, 0 0 20px rgba(255, 215, 0, 0.5);
-    animation: coinFloat 5s infinite;
-    opacity: 0;
+    background: rgba(255, 255, 255, 0.3);
   }
   
-  ${[...Array(12)].map((_, i) => `
-    .coin${i+1} {
+  .grid-line.horizontal {
+    width: 100%;
+    height: 1px;
+    transform-origin: center;
+  }
+  
+  .grid-line.horizontal:nth-child(1) { top: 20%; animation: gridPulse 4s infinite alternate; }
+  .grid-line.horizontal:nth-child(2) { top: 40%; animation: gridPulse 4s infinite alternate 0.5s; }
+  .grid-line.horizontal:nth-child(3) { top: 60%; animation: gridPulse 4s infinite alternate 1s; }
+  .grid-line.horizontal:nth-child(4) { top: 80%; animation: gridPulse 4s infinite alternate 1.5s; }
+  
+  .grid-line.vertical {
+    height: 100%;
+    width: 1px;
+    transform-origin: center;
+  }
+  
+  .grid-line.vertical:nth-child(5) { left: 20%; animation: gridPulse 4s infinite alternate 0.2s; }
+  .grid-line.vertical:nth-child(6) { left: 40%; animation: gridPulse 4s infinite alternate 0.7s; }
+  .grid-line.vertical:nth-child(7) { left: 60%; animation: gridPulse 4s infinite alternate 1.2s; }
+  .grid-line.vertical:nth-child(8) { left: 80%; animation: gridPulse 4s infinite alternate 1.7s; }
+  
+  @keyframes gridPulse {
+    0% { opacity: 0.1; }
+    100% { opacity: 0.3; }
+  }
+  
+  /* Logo */
+  .logo-container {
+    position: relative;
+    width: 100px;
+    height: 100px;
+    margin-bottom: 40px;
+    z-index: 2;
+  }
+  
+  .logo {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Arial', sans-serif;
+    font-weight: 900;
+    font-size: 64px;
+    color: white;
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.7);
+    animation: logoFloat 3s ease-in-out infinite;
+  }
+  
+  @keyframes logoFloat {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+  }
+  
+  .glow-effect {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0) 70%);
+    animation: glowPulse 2s ease-in-out infinite;
+  }
+  
+  @keyframes glowPulse {
+    0%, 100% { transform: scale(1); opacity: 0.3; }
+    50% { transform: scale(1.2); opacity: 0.5; }
+  }
+  
+  /* Sparkles */
+  .sparkles-container {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+  }
+  
+  .sparkle {
+    position: absolute;
+    width: 2px;
+    height: 2px;
+    background: white;
+    border-radius: 50%;
+    opacity: 0;
+    animation: sparkleFade 3s infinite;
+  }
+  
+  ${[...Array(20)].map((_, i) => `
+    .sparkle-${i+1} {
       left: ${Math.random() * 100}%;
       top: ${Math.random() * 100}%;
-      animation-delay: ${(i * 0.5) % 5}s;
-      animation-duration: ${4 + Math.random() * 3}s;
+      width: ${Math.random() * 3 + 1}px;
+      height: ${Math.random() * 3 + 1}px;
+      animation-delay: ${Math.random() * 3}s;
+      animation-duration: ${2 + Math.random() * 3}s;
     }
   `).join('')}
   
-  @keyframes coinFloat {
-    0% { transform: translateY(50px) rotate(0deg); opacity: 0; }
-    20% { opacity: 1; }
-    80% { opacity: 1; }
-    100% { transform: translateY(-50px) rotate(360deg); opacity: 0; }
+  @keyframes sparkleFade {
+    0% { transform: scale(0); opacity: 0; }
+    20% { transform: scale(1); opacity: 1; }
+    80% { transform: scale(1); opacity: 1; }
+    100% { transform: scale(0); opacity: 0; }
   }
   
+  /* Progress Container */
+  .progress-container {
+    position: relative;
+    width: 100%;
+    z-index: 2;
+  }
+  
+  /* Loading Text */
   .loading-text {
-    margin-top: 30px;
     display: flex;
     align-items: center;
-    font-family: 'Poppins', sans-serif;
+    justify-content: center;
+    font-family: 'Arial', sans-serif;
     font-weight: 700;
-    font-size: 24px;
-    color: #8a2be2;
-    letter-spacing: 4px;
-    text-shadow: 0 0 10px #8a2be2;
+    font-size: 18px;
+    color: white;
+    letter-spacing: 2px;
+    margin-bottom: 10px;
   }
   
   .loading-text span {
     display: inline-block;
-    animation: bounce 1s infinite alternate;
+    animation: textBounce 1.5s infinite alternate;
   }
   
   .loading-text span:nth-child(2) { animation-delay: 0.1s; }
@@ -293,9 +237,9 @@ const StyledWrapper = styled.div`
   .loading-text span:nth-child(6) { animation-delay: 0.5s; }
   .loading-text span:nth-child(7) { animation-delay: 0.6s; }
   
-  @keyframes bounce {
-    from { transform: translateY(0px); }
-    to { transform: translateY(-10px); }
+  @keyframes textBounce {
+    from { transform: translateY(0); opacity: 0.5; }
+    to { transform: translateY(-5px); opacity: 1; }
   }
   
   .dots {
@@ -304,57 +248,131 @@ const StyledWrapper = styled.div`
   }
   
   .dot {
-    animation: blink 1s infinite;
+    animation: dotBlink 1s infinite;
   }
   
   .dot:nth-child(2) { animation-delay: 0.3s; }
   .dot:nth-child(3) { animation-delay: 0.6s; }
   
-  @keyframes blink {
+  @keyframes dotBlink {
     0%, 100% { opacity: 0; }
     50% { opacity: 1; }
   }
   
+  /* Progress Bar */
   .progress-bar {
-    width: 250px;
-    height: 8px;
-    background: #2b153a;
-    border-radius: 10px;
-    margin-top: 15px;
-    overflow: hidden;
     position: relative;
+    width: 100%;
+    height: 4px;
+    background: #222;
+    border-radius: 2px;
+    overflow: hidden;
+    margin: 10px 0 15px;
+  }
+  
+  .progress-track {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, 
+      rgba(255,255,255,0) 0%, 
+      rgba(255,255,255,0.1) 50%, 
+      rgba(255,255,255,0) 100%);
+    animation: trackShine 2s linear infinite;
+  }
+  
+  @keyframes trackShine {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(100%); }
   }
   
   .progress-fill {
     position: absolute;
     height: 100%;
     width: 0%;
-    background: linear-gradient(90deg, #8a2be2, #cf2c7c);
-    border-radius: 10px;
-    box-shadow: 0 0 10px #cf2c7c;
-    animation: progressFill 3s forwards infinite;
+    background: white;
+    border-radius: 2px;
+    animation: progressFill 3s forwards infinite ease-in-out;
   }
   
   @keyframes progressFill {
     0% { width: 0%; }
+    50% { width: 70%; }
+    80% { width: 85%; }
     100% { width: 100%; }
   }
   
-  .noot-text {
-    margin-top: 15px;
-    font-family: 'Poppins', sans-serif;
+  .progress-glow {
+    position: absolute;
+    top: -2px;
+    right: -5px;
+    width: 10px;
+    height: 8px;
+    background: radial-gradient(circle, rgba(255,255,255,1) 0%, rgba(255,255,255,0) 70%);
+    filter: blur(1px);
+    opacity: 0.8;
+    animation: progressFill 3s forwards infinite ease-in-out;
+  }
+  
+  /* Status Text */
+  .status-text {
+    font-family: 'Arial', sans-serif;
     font-weight: 800;
-    font-size: 28px;
-    background: linear-gradient(to right, #8a2be2, #cf2c7c, #ffd700);
+    font-size: 22px;
+    text-align: center;
+    background: linear-gradient(to right, #fff, #888, #fff);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     animation: shimmer 3s infinite linear;
-    text-shadow: 0 0 5px rgba(138, 43, 226, 0.5);
   }
   
   @keyframes shimmer {
     0% { background-position: -200px 0; }
     100% { background-position: 200px 0; }
+  }
+  
+  /* Farm Icons */
+  .farm-icons {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    opacity: 0.2;
+    z-index: 1;
+    filter: grayscale(100%) brightness(1.5);
+  }
+  
+  .farm-icon {
+    position: absolute;
+    font-size: 24px;
+    opacity: 0;
+    animation: iconFloat 5s infinite;
+  }
+  
+  .icon-shovel {
+    left: 10%;
+    top: 70%;
+    animation-delay: 0.5s;
+  }
+  
+  .icon-plant {
+    right: 15%;
+    top: 30%;
+    animation-delay: 1.5s;
+  }
+  
+  .icon-coin {
+    left: 40%;
+    bottom: 10%;
+    animation-delay: 1s;
+  }
+  
+  @keyframes iconFloat {
+    0% { transform: translateY(20px) rotate(0deg); opacity: 0; }
+    10% { opacity: 1; }
+    90% { opacity: 1; }
+    100% { transform: translateY(-20px) rotate(10deg); opacity: 0; }
   }
 `;
 
