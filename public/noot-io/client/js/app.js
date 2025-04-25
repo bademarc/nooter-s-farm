@@ -27,7 +27,8 @@ function startGame(type) {
     document.getElementById('startMenuWrapper').style.maxHeight = '0px';
     document.getElementById('gameAreaWrapper').style.opacity = 1;
     if (!socket) {
-        socket = io({ query: "type=" + type });
+        const backendUrl = 'wss://noot-nootio.fly.dev';
+        socket = io(backendUrl, { query: "type=" + type });
         setupSocket(socket);
     }
     if (!global.animLoopHandle)
