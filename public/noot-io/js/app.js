@@ -129,97 +129,149 @@ function setupSocketListeners() {
     if (restartButton) restartButton.style.display = 'none';
   });
 
-  // Listen for the main game state update
-  socket.on('update', (data) => {
-    // Find our player data in the update
-    const updatedSelf = data.players.find(p => p.id === player.id);
-    if (updatedSelf) {
-        // --- DEBUGGING --- Log the self-update data received from server
-        console.log('[Noot.io Debug] Received updatedSelf from server:', JSON.stringify(updatedSelf));
-        // --- END DEBUGGING ---
+  // NEW: Handle player's own state updates
+  socket.on('updatedSelf', (data) => {
+      if (!player || player.id !== data.id) return; // Ignore if not our player
 
-        // Store the authoritative server position
-        player.serverX = updatedSelf.x;
-        player.serverY = updatedSelf.y;
-        // Update mass, color, name directly
-        if (player.mass !== updatedSelf.mass) {
-            player.mass = updatedSelf.mass;
-            checkEarnedCoins(player.mass); // Check coins on mass change
-        }
-        player.color = updatedSelf.color;
-        player.name = updatedSelf.name;
-    } else {
-        // It's possible to receive an update before initGame establishes the player ID
-        // or after being eaten. Handle gracefully.
-        // console.log("Update received but player ID not found or doesn't match");
-    }
+      // --- DEBUGGING ---
+      // console.log('[Noot.io Debug] Received updatedSelf:', JSON.stringify(data));
+      // --- END DEBUGGING ---
 
-    // Update other players
-    const otherPlayersFromServer = data.players.filter(p => p.id !== player.id);
-    // --- DEBUGGING --- Log received other player data in update loop
-    otherPlayersFromServer.forEach(pData => {
-      console.log(`[Noot.io Debug] Processing other pData in update for ID ${pData.id}:`, JSON.stringify(pData));
-    });
-    // --- END DEBUGGING ---
-
-    // Update existing other players or add new ones
-    otherPlayersFromServer.forEach(serverPlayer => {
-        let localOtherPlayer = players.find(p => p.id === serverPlayer.id);
-        if (localOtherPlayer) {
-            // Update server position and other stats for interpolation
-            localOtherPlayer.serverX = serverPlayer.x;
-            localOtherPlayer.serverY = serverPlayer.y;
-            localOtherPlayer.mass = serverPlayer.mass;
-            localOtherPlayer.color = serverPlayer.color;
-            localOtherPlayer.name = serverPlayer.name;
-        } else {
-            // New player found in update, add them with render/server pos initialized
-            serverPlayer.renderX = serverPlayer.x;
-            serverPlayer.renderY = serverPlayer.y;
-            serverPlayer.serverX = serverPlayer.x;
-            serverPlayer.serverY = serverPlayer.y;
-            players.push(serverPlayer);
-        }
-    });
-    // Remove local players that are no longer in the server update
-    players = players.filter(localPlayer => 
-        otherPlayersFromServer.some(serverPlayer => serverPlayer.id === localPlayer.id)
-    );
-
-    // Update mass food
-    massFood = data.massFood || [];
-    leaderboard = data.leaderboard; // Update leaderboard
+      // Store the authoritative server position
+      player.serverX = data.x;
+      player.serverY = data.y;
+      // Update mass and check coins
+      if (player.mass !== data.mass) {
+          player.mass = data.mass;
+          checkEarnedCoins(player.mass);
+      }
+      // Update other properties if they exist in the payload (e.g., color, name - though these rarely change)
+      if (data.color) player.color = data.color;
+      if (data.name) player.name = data.name;
   });
+
+  // NEW: Handle updates for entities nearby the player
+  socket.on('nearbyEntitiesUpdate', (data) => {
+      if (!player || !player.id) return; // Only process if we are playing
+
+      // --- Update Nearby Players ---
+      const serverNearbyPlayers = data.players || [];
+      const localPlayerIds = new Set(players.map(p => p.id));
+      const serverPlayerIds = new Set(serverNearbyPlayers.map(p => p.id));
+
+      // Update or add players from server data
+      serverNearbyPlayers.forEach(serverP => {
+          let localP = players.find(p => p.id === serverP.id);
+          if (localP) {
+              // Update existing player's server state
+              localP.serverX = serverP.x;
+              localP.serverY = serverP.y;
+              localP.mass = serverP.mass;
+              localP.color = serverP.color;
+              localP.name = serverP.name;
+          } else {
+              // Add new player seen nearby
+              serverP.renderX = serverP.x; // Initialize render pos
+              serverP.renderY = serverP.y;
+              serverP.serverX = serverP.x; // Initialize server pos
+              serverP.serverY = serverP.y;
+              players.push(serverP);
+              // console.log(`[Noot.io App] Added nearby player ${serverP.name} (${serverP.id})`);
+          }
+      });
+
+      // Remove players who are no longer nearby
+      players = players.filter(localP => serverPlayerIds.has(localP.id));
+
+
+      // --- Update Nearby Food ---
+      const serverNearbyFood = data.foods || [];
+      const localFoodIds = new Set(foods.map(f => f.id));
+      const serverFoodIds = new Set(serverNearbyFood.map(f => f.id));
+
+      // Add new food items seen nearby
+      serverNearbyFood.forEach(serverF => {
+          if (!localFoodIds.has(serverF.id)) {
+              foods.push(serverF);
+          }
+          // No need to update food positions usually, they don't move
+      });
+
+       // Remove food items that are no longer nearby (more efficient than full replace)
+      foods = foods.filter(localF => serverFoodIds.has(localF.id));
+
+
+      // --- Update Nearby Mass Food ---
+      const serverNearbyMassFood = data.massFood || [];
+      const localMassFoodIds = new Set(massFood.map(mf => mf.id));
+      const serverMassFoodIds = new Set(serverNearbyMassFood.map(mf => mf.id));
+
+       // Update or add mass food items
+      serverNearbyMassFood.forEach(serverMF => {
+          let localMF = massFood.find(mf => mf.id === serverMF.id);
+          if (localMF) {
+               // Update existing mass food's position (server state)
+               // Mass food doesn't use interpolation currently, so update directly?
+               // Or store server pos for potential future interpolation
+              localMF.x = serverMF.x;
+              localMF.y = serverMF.y;
+              localMF.mass = serverMF.mass; // Mass decays
+              localMF.color = serverMF.color;
+          } else {
+              // Add new mass food seen nearby
+              massFood.push(serverMF);
+          }
+      });
+
+       // Remove mass food items that are no longer nearby
+      massFood = massFood.filter(localMF => serverMassFoodIds.has(localMF.id));
+
+  });
+
 
   // Listen for being eaten
   socket.on('eaten', (data) => {
       console.log(`[Noot.io App] Eaten by ${data.by}!`);
+      isGameRunning = false; // Stop local processing
       // Show restart prompt
       const restartButton = document.getElementById('restart-button');
       if (restartButton) restartButton.style.display = 'block';
       // Clear local player state, server handles respawn data
       player = {};
+      players = []; // Clear other players too
+      foods = [];
+      massFood = [];
   });
 
-    // Listen for explicit respawn data from server
-    socket.on('respawned', (data) => {
-        console.log("[Noot.io App] Received respawn data");
-        // Update player object with new server state and reset render position
-        player.x = data.x;
-        player.y = data.y;
-        player.serverX = data.x;
-        player.serverY = data.y;
-        player.renderX = data.x;
-        player.renderY = data.y;
-        player.mass = data.mass;
-        // Keep existing ID, color, name
-        console.log("[Noot.io App] Respawned at:", player);
-    });
+  // Listen for explicit respawn data from server
+  socket.on('respawned', (data) => {
+      console.log("[Noot.io App] Received respawn data");
+      // Update player object with new server state and reset render position
+      // Re-initialize the player object fully from respawn data
+      player = {
+          id: data.id || socket.id, // Use id from data or fallback
+          name: data.name, // Use name from data
+          x: data.x,
+          y: data.y,
+          serverX: data.x,
+          serverY: data.y,
+          renderX: data.x,
+          renderY: data.y,
+          mass: data.mass,
+          color: data.color
+      };
+      lastKnownMass = player.mass; // Reset mass tracker
+      isGameRunning = true; // Re-enable game loop
+      // Hide restart button
+      const restartButton = document.getElementById('restart-button');
+      if (restartButton) restartButton.style.display = 'none';
+      console.log("[Noot.io App] Respawned as:", player);
+  });
 
   // Listen for initial game state
   socket.on('initGame', (data) => {
     // --- DEBUGGING --- Log received initial player data
-    console.log('[Noot.io Debug] Received data.player in initGame:', JSON.stringify(data.player));
+    // console.log('[Noot.io Debug] Received data.player in initGame:', JSON.stringify(data.player));
     // --- END DEBUGGING ---
 
     console.log("[Noot.io App] Received initGame");
@@ -230,18 +282,18 @@ function setupSocketListeners() {
     player.renderX = player.x;
     player.renderY = player.y;
 
-    // Initialize other players received in initGame
-    players = data.players.filter(p => p.id !== player.id).map(p => ({
+    // Initialize other players received in initGame (now simplified)
+    players = (data.players || []).filter(p => p.id !== player.id).map(p => ({
         ...p,
-        renderX: p.x,
+        renderX: p.x, // Initial render = server position
         renderY: p.y,
-        serverX: p.x,
-        serverY: p.y // Corrected typo here from previous step
+        serverX: p.x, // Initial server position
+        serverY: p.y
     }));
 
-    foods = data.foods || []; // Initialize local food list from initGame
-    massFood = data.massFood || [];
-    leaderboard = []; // Leaderboard comes via 'update'
+    foods = data.foods || []; // Initialize local food list (simplified data)
+    massFood = data.massFood || []; // Initialize mass food list (simplified data)
+    leaderboard = []; // Leaderboard comes via 'leaderboardUpdate'
     lastKnownMass = player.mass || 0;
     isGameRunning = true; // Allow game loop to run
 
@@ -256,14 +308,17 @@ function setupSocketListeners() {
     resizeCanvas(); // Ensure canvas is sized correctly
 
     // --- DEBUGGING --- Log the created player object
-    console.log('[Noot.io Debug] Client player object created:', JSON.stringify(player));
+    // console.log('[Noot.io Debug] Client player object created:', JSON.stringify(player));
     // --- END DEBUGGING ---
   });
 
    // Handle new players joining (add to local list for interpolation)
   socket.on('playerJoined', (newPlayer) => {
+    // No longer strictly needed if nearbyEntitiesUpdate handles adds,
+    // but can keep for immediate visibility or logging.
     if (player.id && newPlayer.id !== player.id && !players.some(p => p.id === newPlayer.id)) {
       console.log("[Noot.io App] Player Joined:", newPlayer.name);
+      // Add with initial positions (nearbyEntitiesUpdate will refine)
       newPlayer.renderX = newPlayer.x;
       newPlayer.renderY = newPlayer.y;
       newPlayer.serverX = newPlayer.x;
@@ -280,6 +335,7 @@ function setupSocketListeners() {
 
   // Handle food spawning
   socket.on('foodSpawned', function(food) {
+    // Only add if we don't have it (nearbyEntitiesUpdate might also add it)
     if (!foods.find(f => f.id === food.id)) {
       foods.push(food);
     }
@@ -290,22 +346,28 @@ function setupSocketListeners() {
     foods = foods.filter(f => f.id !== foodId);
   });
 
-  // Handle respawn confirmation
-  socket.on('respawned', function(data) {
-    console.log('[Noot.io App] Respawned');
-    if (player) {
-        player.x = data.x;
-        player.y = data.y;
-        player.mass = data.mass;
-        player.serverX = data.x;
-        player.serverY = data.y;
-        player.renderX = data.x;
-        player.renderY = data.y;
-    }
-    isGameRunning = true; // Restart game loop
-    // Hide restart button if shown
-    const restartButton = document.getElementById('restart-button');
-    if (restartButton) restartButton.style.display = 'none';
+  // NEW: Handle mass food spawning
+  socket.on('massFoodSpawned', function(mf) {
+      // Only add if we don't have it
+      if (!massFood.find(m => m.id === mf.id)) {
+          massFood.push(mf);
+      }
+  });
+
+  // NEW: Handle single mass food removal (decay/out of bounds)
+  socket.on('massFoodRemoved', function(mfId) {
+      massFood = massFood.filter(mf => mf.id !== mfId);
+  });
+
+   // NEW: Handle batch mass food removal (eaten by players)
+  socket.on('massFoodRemovedBatch', function(mfIds) {
+      const idSet = new Set(mfIds);
+      massFood = massFood.filter(mf => !idSet.has(mf.id));
+  });
+
+  // NEW: Handle leaderboard updates
+  socket.on('leaderboardUpdate', function(newLeaderboard) {
+      leaderboard = newLeaderboard || [];
   });
 }
 
