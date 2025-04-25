@@ -63,7 +63,7 @@ export default function FriendSuggestions() {
     toast({
       title: "Friend Request Sent!",
       description: `You sent a friend request to ${friendSuggestions.find((f) => f.id === id)?.name}!`,
-      variant: "success",
+      variant: "default",
     })
   }
 
@@ -99,7 +99,7 @@ export default function FriendSuggestions() {
                   <div className="flex items-center gap-3">
                     <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
                       <Avatar>
-                        <AvatarImage src={friend.avatar || "/placeholder.svg"} alt={friend.name} />
+                        <AvatarImage src={friend.avatar || "/images/nooter.png"} alt={friend.name} />
                         <AvatarFallback>{friend.name.substring(0, 2)}</AvatarFallback>
                       </Avatar>
                     </motion.div>

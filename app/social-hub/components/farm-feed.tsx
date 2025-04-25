@@ -188,7 +188,7 @@ export default function FarmFeed() {
               <div className="flex items-center gap-3">
                 <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
                   <Avatar className="border-2 border-primary/20">
-                    <AvatarImage src={item.user.avatar || "/placeholder.svg"} alt={item.user.name} />
+                    <AvatarImage src={item.user.avatar || "/images/nooter.png"} alt={item.user.name} />
                     <AvatarFallback>{item.user.name.substring(0, 2)}</AvatarFallback>
                   </Avatar>
                 </motion.div>
