@@ -331,59 +331,87 @@ function spawnMassFood(player, angle) {
 io.on('connection', function(socket) {
   console.log('A player connected!', socket.id);
 
-  // When a player joins the game
+  // *** NEW: Handle initial connection immediately ***
+  const startX = Math.random() * WORLD_WIDTH;
+  const startY = Math.random() * WORLD_HEIGHT;
+  const player = {
+    id: socket.id,
+    // name: data.nickname || 'Anonymous', // Get name later if needed, or default
+    name: 'Player ' + socket.id.substring(0, 4), // Temporary name
+    x: startX,
+    y: startY,
+    mass: START_MASS,
+    color: getRandomColor(),
+    targetX: startX,
+    targetY: startY
+  };
+
+  players[socket.id] = player;
+  sockets[socket.id] = socket;
+
+  // Emit 'welcome' event to the new client with their settings and game dimensions
+  socket.emit('welcome', {
+      id: player.id,
+      name: player.name,
+      x: player.x,
+      y: player.y,
+      massTotal: player.mass, // Match client expected structure
+      hue: player.color, // Match client (assuming color is hue)
+      cells: [{ x: player.x, y: player.y, mass: player.mass, radius: Math.sqrt(player.mass / Math.PI)}], // Client expects cells array
+      // Client doesn't expect screenWidth/Height here, but expects game dimensions
+  }, { width: WORLD_WIDTH, height: WORLD_HEIGHT }); // Send game dimensions
+
+  // Emit initial full game state (maybe optimize later)
+  // Client expects: 'serverTellPlayerMove', (playerData, userData, foodsList, massList, virusList)
+  // We can reuse the 'welcome' player data for playerData
+  const simplifiedPlayers = Object.values(players).map(p => ({
+      id: p.id, name: p.name, color: p.color, // hue? massTotal? cells?
+      hue: p.color, // Assuming color maps to hue
+      massTotal: p.mass,
+      cells: [{ x: p.x, y: p.y, mass: p.mass, radius: Math.sqrt(p.mass / Math.PI)}], // Simplify? Client expects cells array
+      x: p.x,
+      y: p.y
+  }));
+  const simplifiedFoods = foods.map(f => ({ id: f.id, x: f.x, y: f.y, color: f.color, mass: f.mass })); // Client needs mass?
+  const simplifiedMassFood = massFood.map(mf => ({ id: mf.id, x: mf.x, y: mf.y, color: mf.color, mass: mf.mass }));
+  // TODO: Add viruses if implemented
+  socket.emit('serverTellPlayerMove', player, simplifiedPlayers, simplifiedFoods, simplifiedMassFood, []);
+
+  // Notify existing players about the new player (simplify?)
+  socket.broadcast.emit('playerJoined', {
+      id: player.id,
+      name: player.name,
+      // Add other fields if needed by client's playerJoin handler
+  });
+  console.log(`Player ${player.name} initialized. Total players: ${Object.keys(players).length}`);
+  updateLeaderboard();
+  // *** END NEW Connection Handling ***
+
+  // TODO: Re-evaluate if 'joinGame' listener is needed at all now.
+  // It might be useful if you want players to explicitly provide a nickname *after* connecting.
+  /*
+  // When a player joins the game (Original - might remove/adapt)
   socket.on('joinGame', function(data) {
     console.log('Player joined:', data.nickname, socket.id);
-
-    // Calculate starting position first
-    const startX = Math.random() * WORLD_WIDTH;
-    const startY = Math.random() * WORLD_HEIGHT;
-
-    // Create a new player using the calculated start position
-    const player = {
-      id: socket.id,
-      name: data.nickname || 'Anonymous',
-      x: startX,
-      y: startY,
-      mass: START_MASS,
-      color: getRandomColor(),
-      // Use the calculated start positions for the initial target
-      targetX: startX,
-      targetY: startY
-    };
-
-    // Store the player and socket
-    players[socket.id] = player;
-    sockets[socket.id] = socket;
-
-    // Send initial game state ONLY to the new player
-    // Include *all* players initially so the new client can draw them
-    // Include food and mass food initially
-    socket.emit('initGame', {
-      player: player,                 // Send their specific player object
-      players: Object.values(players).map(p => ({ // Send simplified initial state of others
-        id: p.id, x: p.x, y: p.y, mass: p.mass, color: p.color, name: p.name
-      })), // Send the current list of all players (including self for initial draw)
-      foods: foods.map(f => ({ id: f.id, x: f.x, y: f.y, color: f.color })), // Send only needed food data                    // Send the current food state
-      massFood: massFood.map(mf => ({ id: mf.id, x: mf.x, y: mf.y, color: mf.color, mass: mf.mass })) // Send only needed mass food data              // Send the current mass food state
-    });
-
-    // Notify existing players about the new player (send full new player data)
-     socket.broadcast.emit('playerJoined', player); // Inform others a new player connected
-
-    updateLeaderboard(); // Update leaderboard after join
-    console.log('Total players:', Object.keys(players).length);
+    // ... (Original joinGame code - adapt if needed for nickname changes etc)
   });
+  */
 
   // When a player sends mouse coordinates (NOW JUST UPDATES TARGET)
-  socket.on('mouseMove', function(data) {
+  socket.on('0', function(target) { // Client emits '0' for target update
     const player = players[socket.id];
-    if (player) {
+    if (player && target) {
         // Store the target world coordinates sent by the client
-        player.targetX = data.mouseX;
-        player.targetY = data.mouseY;
+        player.targetX = target.x;
+        player.targetY = target.y;
+        // console.log(`Player ${player.name} target: (${target.x}, ${target.y})`); // Debug
     }
-    // DO NOT calculate movement or check collisions here anymore
+  });
+
+  // Listener for window resize (from client app.js)
+  socket.on('windowResized', function(data) {
+      // Currently not used on server, but good to have the listener
+      // console.log(`Player ${socket.id} resized window: W=${data.screenWidth} H=${data.screenHeight}`);
   });
 
   // When a player disconnects
@@ -403,8 +431,8 @@ io.on('connection', function(socket) {
     }
   });
 
-  // Handle Feed command
-  socket.on('feed', function() {
+  // Handle Feed command ('1')
+  socket.on('1', function() { // Client emits '1' for feed
     const player = players[socket.id];
     if (!player) return;
 
@@ -422,8 +450,8 @@ io.on('connection', function(socket) {
     }
   });
 
-  // Handle Split command
-  socket.on('split', function() {
+  // Handle Split command ('2')
+  socket.on('2', function() { // Client emits '2' for split
     const player = players[socket.id];
     if (!player) return;
     if (player.mass >= MIN_MASS_TO_SPLIT) {
