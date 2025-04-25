@@ -165,8 +165,7 @@ function respawnPlayer(player) {
 
 
 // Add a function to spawn mass food (ejected by players)
-function spawnMassFood(player) {
-  const angle = Math.atan2(player.mouseY - player.y, player.mouseX - player.x); // Use stored mouse direction
+function spawnMassFood(player, angle) {
   const spawnedMass = {
     id: Date.now() + Math.random().toString(36).substr(2, 5),
     x: player.x + Math.cos(angle) * (player.mass + 5), // Spawn ahead of player
@@ -223,8 +222,8 @@ io.on('connection', function(socket) {
       y: Math.random() * WORLD_HEIGHT,
       mass: START_MASS,
       color: getRandomColor(),
-      mouseX: 0, // Initialize mouse position storage
-      mouseY: 0
+      targetX: player.x,
+      targetY: player.y
     };
 
     // Store the player and socket
@@ -246,41 +245,15 @@ io.on('connection', function(socket) {
     console.log('Total players:', Object.keys(players).length);
   });
 
-  // When a player sends mouse coordinates
+  // When a player sends mouse coordinates (NOW JUST UPDATES TARGET)
   socket.on('mouseMove', function(data) {
     const player = players[socket.id];
     if (player) {
-        // Store mouse position relative to player's world position
-        player.mouseX = data.mouseX;
-        player.mouseY = data.mouseY;
-
-        // --- Server-side Movement Logic ---
-        const dx = player.mouseX - player.x;
-        const dy = player.mouseY - player.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-
-        if (dist > 1) { // Only move if mouse is significantly away
-            // Calculate speed based on mass (larger = slower)
-            const speed = PLAYER_SPEED / Math.max(1, Math.sqrt(player.mass / START_MASS)); // Scale speed relative to start mass
-
-            // Move player towards the target point (dx, dy is direction vector)
-            const moveX = (dx / dist) * speed;
-            const moveY = (dy / dist) * speed;
-
-            player.x += moveX;
-            player.y += moveY;
-
-            // Keep player within bounds
-            player.x = Math.max(0, Math.min(WORLD_WIDTH, player.x));
-            player.y = Math.max(0, Math.min(WORLD_HEIGHT, player.y));
-        }
-        // --- End Server-side Movement ---
-
-        // Check collisions after movement
-        checkFoodCollision(player);
-        checkMassFoodCollision(player);
-        // Note: Player vs Player collision checked in main loop
+        // Store the target world coordinates sent by the client
+        player.targetX = data.mouseX;
+        player.targetY = data.mouseY;
     }
+    // DO NOT calculate movement or check collisions here anymore
   });
 
   // When a player disconnects
@@ -300,17 +273,18 @@ io.on('connection', function(socket) {
     }
   });
 
-  // Handle Feed command (e.g., 'W' key)
+  // Handle Feed command
   socket.on('feed', function() {
     const player = players[socket.id];
+    // Use targetX/Y for feed direction instead of mouseX/Y
+    const angle = Math.atan2(player.targetY - player.y, player.targetX - player.x);
     if (player && player.mass >= MIN_MASS_TO_FEED) {
         player.mass -= FEED_MASS_COST;
-        spawnMassFood(player);
-        // No need to emit separately, main loop will send update
+        spawnMassFood(player, angle); // Pass angle to spawn function
     }
   });
 
-  // Handle Split command (e.g., 'Space' key)
+  // Handle Split command
   socket.on('split', function() {
     const player = players[socket.id];
     if (player && player.mass >= MIN_MASS_TO_SPLIT) {
@@ -321,8 +295,43 @@ io.on('connection', function(socket) {
 });
 
 // Game update loop (e.g., 20 times per second -> 50ms interval)
+const TICK_RATE = 50; // ms per tick
 setInterval(function() {
-  // 1. Update Movable Entities (Mass Food)
+  // 1. Update Player Positions (SERVER-AUTHORITATIVE MOVEMENT)
+  for (const id in players) {
+      const player = players[id];
+      const targetX = player.targetX;
+      const targetY = player.targetY;
+      const currentX = player.x;
+      const currentY = player.y;
+
+      const dx = targetX - currentX;
+      const dy = targetY - currentY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist > 1) { // Only move if target is significantly away
+          // Calculate speed based on mass (larger = slower)
+          const speed = PLAYER_SPEED / Math.max(1, Math.sqrt(player.mass / START_MASS));
+
+          // Calculate movement step for this tick
+          // Ensure movement doesn't overshoot the target in one tick
+          const moveX = Math.min(speed, dist) * (dx / dist);
+          const moveY = Math.min(speed, dist) * (dy / dist);
+
+          player.x += moveX;
+          player.y += moveY;
+
+          // Keep player within bounds
+          player.x = Math.max(0, Math.min(WORLD_WIDTH, player.x));
+          player.y = Math.max(0, Math.min(WORLD_HEIGHT, player.y));
+      }
+
+      // Check collisions AFTER moving the player
+      checkFoodCollision(player);
+      checkMassFoodCollision(player);
+  }
+
+  // 2. Update Movable Entities (Mass Food)
   for (let i = massFood.length - 1; i >= 0; i--) {
     const mf = massFood[i];
     mf.x += mf.speedX;
@@ -335,19 +344,19 @@ setInterval(function() {
     }
   }
 
-  // 2. Apply Player Mass Decay
+  // 3. Apply Player Mass Decay
   for (const id in players) {
     const player = players[id];
     player.mass = Math.max(START_MASS, player.mass * (1 - MASS_DECAY_RATE));
   }
 
-  // 3. Check Player vs Player Collisions
-  checkPlayerCollisions(); // This handles eating and respawning
+  // 4. Check Player vs Player Collisions (uses updated positions)
+  checkPlayerCollisions();
 
-  // 4. Update Leaderboard
+  // 5. Update Leaderboard
   updateLeaderboard();
 
-  // 5. Broadcast Game State
+  // 6. Broadcast Game State (with authoritative positions)
   // Prepare state payload (send only necessary data)
   const playersState = Object.values(players).map(p => ({
       id: p.id,
@@ -371,7 +380,7 @@ setInterval(function() {
     massFood: massFoodState,
     leaderboard: leaderboard
   });
-}, 50);
+}, TICK_RATE);
 
 // Initialize food when server starts
 initializeFood();

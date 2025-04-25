@@ -89,6 +89,9 @@ function setupMouseTracking() {
   });
 }
 
+// Interpolation factor (adjust for smoother/more responsive)
+const INTERPOLATION_FACTOR = 0.15;
+
 // Wrap socket event listeners setup
 function setupSocketListeners() {
   if (!socket) return;
@@ -123,19 +126,48 @@ function setupSocketListeners() {
     // Find our player data in the update
     const updatedSelf = data.players.find(p => p.id === player.id);
     if (updatedSelf) {
-      // Only update position/mass if server differs significantly?
-      // For simplicity, just update based on server state
-      player.x = updatedSelf.x;
-      player.y = updatedSelf.y;
-      if (player.mass !== updatedSelf.mass) {
-          player.mass = updatedSelf.mass;
-          checkEarnedCoins(player.mass); // Check coins on mass change
-      }
-      player.color = updatedSelf.color; // Keep color updated
+        // Store the authoritative server position
+        player.serverX = updatedSelf.x;
+        player.serverY = updatedSelf.y;
+        // Update mass, color, name directly
+        if (player.mass !== updatedSelf.mass) {
+            player.mass = updatedSelf.mass;
+            checkEarnedCoins(player.mass); // Check coins on mass change
+        }
+        player.color = updatedSelf.color;
+        player.name = updatedSelf.name;
+    } else {
+        // It's possible to receive an update before initGame establishes the player ID
+        // or after being eaten. Handle gracefully.
+        // console.log("Update received but player ID not found or doesn't match");
     }
 
-    // Update other players (filter out self)
-    players = data.players.filter(p => p.id !== player.id);
+    // Update other players
+    const otherPlayersFromServer = data.players.filter(p => p.id !== player.id);
+    // Update existing other players or add new ones
+    otherPlayersFromServer.forEach(serverPlayer => {
+        let localOtherPlayer = players.find(p => p.id === serverPlayer.id);
+        if (localOtherPlayer) {
+            // Update server position and other stats for interpolation
+            localOtherPlayer.serverX = serverPlayer.x;
+            localOtherPlayer.serverY = serverPlayer.y;
+            localOtherPlayer.mass = serverPlayer.mass;
+            localOtherPlayer.color = serverPlayer.color;
+            localOtherPlayer.name = serverPlayer.name;
+        } else {
+            // New player found in update, add them with render/server pos initialized
+            serverPlayer.renderX = serverPlayer.x;
+            serverPlayer.renderY = serverPlayer.y;
+            serverPlayer.serverX = serverPlayer.x;
+            serverPlayer.serverY = serverPlayer.y;
+            players.push(serverPlayer);
+        }
+    });
+    // Remove local players that are no longer in the server update
+    players = players.filter(localPlayer => 
+        otherPlayersFromServer.some(serverPlayer => serverPlayer.id === localPlayer.id)
+    );
+
     foods = data.foods; // Update food list
     massFood = data.massFood; // Update mass food list
     leaderboard = data.leaderboard; // Update leaderboard
@@ -143,47 +175,95 @@ function setupSocketListeners() {
 
   // Listen for being eaten
   socket.on('eaten', (data) => {
-    console.log(`[Noot.io App] Eaten by ${data.by}!`);
-    // Show restart prompt or handle respawn
-    const restartButton = document.getElementById('restart-button');
-    if (restartButton) restartButton.style.display = 'block';
-    // Reset local player state? Server might handle respawn position.
-    player = {}; // Clear local player data
+      console.log(`[Noot.io App] Eaten by ${data.by}!`);
+      // Show restart prompt
+      const restartButton = document.getElementById('restart-button');
+      if (restartButton) restartButton.style.display = 'block';
+      // Clear local player state, server handles respawn data
+      player = {};
   });
 
-  // --- Remove or Adapt Old Listeners ---
-  // Remove the old 'update' listener if it exists
-  // socket.off('update'); // Or check if it's still needed
-  // Remove old granular listeners if 'update' handles everything
-  socket.off('init_game');
-  socket.off('player_joined');
-  socket.off('player_left');
-  socket.off('player_moved');
-  socket.off('food_eaten');
-  socket.off('food_spawned');
-  socket.off('player_name_changed');
-  // TODO: Re-add 'init_game' or equivalent for initial setup?
-  // Need a way to get the initial player ID and state.
-  // Let's keep 'initGame' on the server and add a listener here for now.
+    // Listen for explicit respawn data from server
+    socket.on('respawned', (data) => {
+        console.log("[Noot.io App] Received respawn data");
+        // Update player object with new server state and reset render position
+        player.x = data.x;
+        player.y = data.y;
+        player.serverX = data.x;
+        player.serverY = data.y;
+        player.renderX = data.x;
+        player.renderY = data.y;
+        player.mass = data.mass;
+        // Keep existing ID, color, name
+        console.log("[Noot.io App] Respawned at:", player);
+    });
+
+  // Listen for initial game state
   socket.on('initGame', (data) => {
     console.log("[Noot.io App] Received initGame");
-    player = data.player || {}; // Store our player data
-    players = data.players.filter(p => p.id !== player.id); // Store other players
-    foods = data.foods; // Store initial food
-    massFood = []; // Initial mass food is empty
-    lastKnownMass = player.mass || 0; // Initialize mass tracking
-    console.log("[Noot.io App] My Player:", player);
+    player = data.player || {};
+    // Initialize server and render positions
+    player.serverX = player.x;
+    player.serverY = player.y;
+    player.renderX = player.x;
+    player.renderY = player.y;
+
+    // Initialize other players received in initGame
+    players = data.players.filter(p => p.id !== player.id).map(p => ({
+        ...p,
+        renderX: p.x,
+        renderY: p.y,
+        serverX: p.x,
+        serverY: p.y
+    }));
+
+    foods = data.foods || [];
+    massFood = data.massFood || [];
+    leaderboard = []; // Leaderboard comes via 'update'
+    lastKnownMass = player.mass || 0;
+    console.log("[Noot.io App] My Player Initialized:", player);
+    console.log("[Noot.io App] Initial Other Players:", players);
+
+     // Hide menu, show canvas AFTER initGame
+    const startMenu = document.getElementById('start-menu');
+    const gameCanvas = document.getElementById('game-canvas');
+    if (startMenu) startMenu.style.display = 'none';
+    if (gameCanvas) gameCanvas.style.display = 'block';
+    resizeCanvas(); // Ensure canvas is sized correctly
   });
+
+   // Handle new players joining (add to local list for interpolation)
+  socket.on('playerJoined', (newPlayer) => {
+    if (player.id && newPlayer.id !== player.id && !players.some(p => p.id === newPlayer.id)) {
+      console.log("[Noot.io App] Player Joined:", newPlayer.name);
+      newPlayer.renderX = newPlayer.x;
+      newPlayer.renderY = newPlayer.y;
+      newPlayer.serverX = newPlayer.x;
+      newPlayer.serverY = newPlayer.y;
+      players.push(newPlayer);
+    }
+  });
+
+  // Handle players leaving (remove from local list)
+  socket.on('playerLeft', (playerId) => {
+    console.log("[Noot.io App] Player Left:", playerId);
+    players = players.filter(p => p.id !== playerId);
+  });
+
+}
+
+// Simple Linear Interpolation function
+function lerp(start, end, factor) {
+  return start + (end - start) * factor;
 }
 
 // Game rendering functions
 function drawCircle(x, y, radius, color) {
-  // Defensive checks
   if (isNaN(x) || isNaN(y) || isNaN(radius) || radius <= 0) {
     console.error(`[drawCircle] Invalid parameters: x=${x}, y=${y}, radius=${radius}`);
     return;
   }
-  console.log(`[drawCircle] Attempting: x=${x.toFixed(1)}, y=${y.toFixed(1)}, radius=${radius.toFixed(1)}, color=${color}`); // Log attempt
+  // console.log(`[drawCircle] Attempting: x=${x.toFixed(1)}, y=${y.toFixed(1)}, radius=${radius.toFixed(1)}, color=${color}`); // Commented out - Performance intensive!
   try {
     ctx.beginPath();
     ctx.arc(x, y, radius, 0, 2 * Math.PI);
@@ -232,56 +312,56 @@ function drawLeaderboard() {
   });
 }
 
-// --- Collision Detection Helper ---
-function checkCollision(circle1, circle2) {
-  const dx = circle2.x - circle1.x;
-  const dy = circle2.y - circle1.y;
-  const distance = Math.sqrt(dx * dx + dy * dy);
-  return distance < (circle1.size || circle1.mass) + (circle2.size || 5); // Assume food size is 5 if not specified
-}
-
 // Game loop
 function gameLoop() {
-  if (!canvas || !ctx || !player || !player.id) {
-    // console.log("[Noot.io Loop] Waiting for player ID..."); // Optional: uncomment for detailed timing check
+  if (!canvas || !ctx) {
     requestAnimationFrame(gameLoop);
     return;
   }
 
-  // --- Send mouse position to server (used for movement AND feed direction) ---
-  if (socket) {
-     // Map mouse coords relative to player's world position for the server
-    const worldMouseX = player.x + (mouseX - canvas.width / 2);
-    const worldMouseY = player.y + (mouseY - canvas.height / 2);
+  // Only run game logic if player object is initialized (post-initGame)
+  if (!player || !player.id) {
+     // Still draw background if needed, or just wait
+     ctx.fillStyle = '#111827';
+     ctx.fillRect(0, 0, canvas.width, canvas.height);
+     requestAnimationFrame(gameLoop);
+     return;
+  }
+
+  // --- Send mouse position to server ---
+  if (socket && socket.connected) {
+    // Map mouse coords relative to the player's *current render position* for target calculation
+    const worldMouseX = player.renderX + (mouseX - canvas.width / 2);
+    const worldMouseY = player.renderY + (mouseY - canvas.height / 2);
     socket.emit('mouseMove', { mouseX: worldMouseX, mouseY: worldMouseY });
   }
 
-  // Remove local optimistic updates and collision checks
-  // Server state from 'update' event is now the source of truth
-  /*
-  // --- Calculate player's intended position based on mouse ---
-  // Simple linear interpolation towards mouse
-  // ... removed ...
+  // --- Interpolate Positions ---
+  // Interpolate self
+  if (player.serverX !== undefined) {
+      player.renderX = lerp(player.renderX, player.serverX, INTERPOLATION_FACTOR);
+      player.renderY = lerp(player.renderY, player.serverY, INTERPOLATION_FACTOR);
+  }
+  // Interpolate others
+  players.forEach(p => {
+      if (p.serverX !== undefined) {
+          p.renderX = lerp(p.renderX, p.serverX, INTERPOLATION_FACTOR);
+          p.renderY = lerp(p.renderY, p.serverY, INTERPOLATION_FACTOR);
+      }
+  });
 
-  // --- Check for food collisions ---
-  // Iterate backwards for safe removal
-  // ... removed ...
-  */
-
-  // --- Log State Before Drawing ---
-  // console.log(`[Noot.io Loop] State - Player: (${player.x?.toFixed(1)}, ${player.y?.toFixed(1)}) Size: ${player.mass} | Foods: ${foods.length} | Others: ${players.length}`);
-
-  // --- Rendering ---
+  // --- Rendering (uses interpolated renderX/renderY) ---
   try {
     ctx.fillStyle = '#111827';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    let cameraX = player.x;
-    let cameraY = player.y;
+    // Use interpolated render position for camera center
+    let cameraX = player.renderX;
+    let cameraY = player.renderY;
 
     if (isNaN(cameraX) || isNaN(cameraY)) {
       console.error("[Noot.io Loop] Invalid camera position!", { cameraX, cameraY, player });
-      cameraX = canvas.width / 2; 
+      cameraX = canvas.width / 2;
       cameraY = canvas.height / 2;
     }
 
@@ -289,32 +369,36 @@ function gameLoop() {
     foods.forEach(food => {
       const drawX = food.x - cameraX + canvas.width / 2;
       const drawY = food.y - cameraY + canvas.height / 2;
-      // console.log(`[Noot.io Loop] Calc Food Draw Coords: (${drawX.toFixed(1)}, ${drawY.toFixed(1)})`); // Verbose
-      drawFood({ x: drawX, y: drawY, color: food.color, mass: food.mass }); // Pass mass for drawing
+      const radius = food.mass ? Math.max(2, Math.sqrt(food.mass)) : 5;
+      if (drawX + radius > 0 && drawX - radius < canvas.width && drawY + radius > 0 && drawY - radius < canvas.height) {
+          drawFood({ x: drawX, y: drawY, color: food.color, mass: food.mass });
+      }
     });
 
     // Draw mass food
     massFood.forEach(mf => {
       const drawX = mf.x - cameraX + canvas.width / 2;
       const drawY = mf.y - cameraY + canvas.height / 2;
-      // Draw mass food similar to regular food, but maybe smaller or different shape?
-      // Using drawCircle for now, size based on sqrt(mass)
-      drawCircle(drawX, drawY, Math.max(2, Math.sqrt(mf.mass)), mf.color);
+      const radius = Math.max(2, Math.sqrt(mf.mass));
+      if (drawX + radius > 0 && drawX - radius < canvas.width && drawY + radius > 0 && drawY - radius < canvas.height) {
+          drawCircle(drawX, drawY, radius, mf.color);
+      }
     });
 
-    // Draw other players
+    // Draw other players (using their renderX/renderY)
     players.forEach(p => {
-      const drawX = p.x - cameraX + canvas.width / 2;
-      const drawY = p.y - cameraY + canvas.height / 2;
-       // console.log(`[Noot.io Loop] Calc Other Player Draw Coords: (${drawX.toFixed(1)}, ${drawY.toFixed(1)})`); // Verbose
-      drawPlayer({ x: drawX, y: drawY, size: p.size, name: p.name, color: p.color });
+      const drawX = p.renderX - cameraX + canvas.width / 2;
+      const drawY = p.renderY - cameraY + canvas.height / 2;
+      const radius = p.mass || 10;
+       if (drawX + radius > 0 && drawX - radius < canvas.width && drawY + radius > 0 && drawY - radius < canvas.height) {
+          drawPlayer({ x: drawX, y: drawY, mass: p.mass, name: p.name, color: p.color });
+      }
     });
 
-    // Draw current player
+    // Draw current player (always draw self, centered, using interpolated position for data but drawing at center)
     const selfDrawX = canvas.width / 2;
     const selfDrawY = canvas.height / 2;
-    // console.log(`[Noot.io Loop] Calc Self Draw Coords: (${selfDrawX.toFixed(1)}, ${selfDrawY.toFixed(1)})`); // Verbose
-    drawPlayer({ x: selfDrawX, y: selfDrawY, mass: player.mass, name: player.name, color: player.color }); // Use mass for drawing
+    drawPlayer({ x: selfDrawX, y: selfDrawY, mass: player.mass, name: player.name, color: player.color });
 
     // Update Stats Display
     const scoreElement = document.getElementById('score');
@@ -348,24 +432,16 @@ function startGame() {
   const nickname = nicknameInput ? nicknameInput.value.trim().substring(0, 16) || `Nooter_${Math.floor(Math.random()*1000)}` : `Nooter_${Math.floor(Math.random()*1000)}`;
 
   console.log("[Noot.io App] Joining game with name:", nickname);
-  // Emit joinGame event instead of set_name
   socket.emit('joinGame', { nickname: nickname });
 
-  // Reset local state before starting (server will send initial state via initGame)
-  player = {};
-  players = [];
-  foods = [];
-  massFood = [];
-  lastKnownMass = 0;
-
-  // Hide menu, show canvas
+  // DO NOT hide menu/show canvas here anymore. Wait for initGame.
+  /*
   const startMenu = document.getElementById('start-menu');
   const gameCanvas = document.getElementById('game-canvas');
   if (startMenu) startMenu.style.display = 'none';
   if (gameCanvas) gameCanvas.style.display = 'block';
-
-  resizeCanvas(); // Ensure canvas is sized correctly
-  // The game loop will start rendering once player data is received via 'initGame'
+  resizeCanvas(); 
+  */
 }
 
 // --- Initialization ---
@@ -411,7 +487,7 @@ async function initApp() {
       });
   }
 
-  // Initial call to game loop (it will wait for player.id)
+  // Initial call to game loop (it will now wait for player.id)
   gameLoop();
 }
 
