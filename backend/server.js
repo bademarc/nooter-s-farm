@@ -214,16 +214,21 @@ io.on('connection', function(socket) {
   socket.on('joinGame', function(data) {
     console.log('Player joined:', data.nickname, socket.id);
 
-    // Create a new player
+    // Calculate starting position first
+    const startX = Math.random() * WORLD_WIDTH;
+    const startY = Math.random() * WORLD_HEIGHT;
+
+    // Create a new player using the calculated start position
     const player = {
       id: socket.id,
       name: data.nickname || 'Anonymous',
-      x: Math.random() * WORLD_WIDTH,
-      y: Math.random() * WORLD_HEIGHT,
+      x: startX,
+      y: startY,
       mass: START_MASS,
       color: getRandomColor(),
-      targetX: player.x,
-      targetY: player.y
+      // Use the calculated start positions for the initial target
+      targetX: startX,
+      targetY: startY
     };
 
     // Store the player and socket
