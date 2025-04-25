@@ -8,7 +8,7 @@ const drawRoundObject = (position, radius, graph) => {
     graph.stroke();
 }
 
-const drawFood = (position, food, graph) => {
+const renderFood = (position, food, graph) => {
     graph.fillStyle = 'hsl(' + food.hue + ', 100%, 50%)';
     graph.strokeStyle = 'hsl(' + food.hue + ', 100%, 45%)';
     graph.lineWidth = 0;
@@ -153,7 +153,7 @@ const drawErrorMessage = (message, graph, screen) => {
 }
 
 window.render = {
-    drawFood,
+    renderFood,
     drawVirus,
     drawFireFood,
     drawCells,
