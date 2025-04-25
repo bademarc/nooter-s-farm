@@ -200,11 +200,18 @@ function drawCircle(x, y, radius, color) {
     console.error(`[drawCircle] Invalid parameters: x=${x}, y=${y}, radius=${radius}`);
     return;
   }
-  // console.log(`[drawCircle] Drawing at (${x.toFixed(1)}, ${y.toFixed(1)}), radius ${radius.toFixed(1)}, color ${color}`);
-  ctx.beginPath();
-  ctx.arc(x, y, radius, 0, 2 * Math.PI);
-  ctx.fillStyle = color;
-  ctx.fill();
+  console.log(`[drawCircle] Attempting: x=${x.toFixed(1)}, y=${y.toFixed(1)}, radius=${radius.toFixed(1)}, color=${color}`); // Log attempt
+  try {
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, 2 * Math.PI);
+    ctx.fillStyle = color || '#FF00FF'; // Default to bright magenta if color is invalid
+    ctx.fill();
+    ctx.strokeStyle = '#FFFFFF'; // White outline
+    ctx.lineWidth = 1;
+    ctx.stroke(); // Draw outline
+  } catch (e) {
+    console.error("[drawCircle] Error during drawing:", e);
+  }
 }
 
 function drawText(text, x, y, color, size) {
@@ -302,62 +309,51 @@ function gameLoop() {
   // TODO: Add player-player collision detection and emit events
 
   // --- Log State Before Drawing ---
-  console.log(`[Noot.io Loop] Rendering - Player: (${player.x?.toFixed(1)}, ${player.y?.toFixed(1)}) Size: ${player.size} | Foods: ${foods.length} | Others: ${players.length}`);
+  console.log(`[Noot.io Loop] State - Player: (${player.x?.toFixed(1)}, ${player.y?.toFixed(1)}) Size: ${player.size} | Foods: ${foods.length} | Others: ${players.length}`);
 
   // --- Rendering ---
-  ctx.fillStyle = '#111827'; // Dark background
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  try {
+    ctx.fillStyle = '#111827';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  let cameraX = player.x;
-  let cameraY = player.y;
+    let cameraX = player.x;
+    let cameraY = player.y;
 
-  // Defensive check for NaN camera position
-  if (isNaN(cameraX) || isNaN(cameraY)) {
+    if (isNaN(cameraX) || isNaN(cameraY)) {
       console.error("[Noot.io Loop] Invalid camera position!", { cameraX, cameraY, player });
-      cameraX = canvas.width / 2; // Fallback
-      cameraY = canvas.height / 2; // Fallback
-  }
+      cameraX = canvas.width / 2; 
+      cameraY = canvas.height / 2;
+    }
 
-  // Draw food
-  foods.forEach(food => {
-    // console.log("[Noot.io Loop] Drawing food:", food); // Uncomment for verbose food logging
-    drawFood({
-      x: food.x - cameraX + canvas.width / 2,
-      y: food.y - cameraY + canvas.height / 2,
-      color: food.color
+    // Draw food
+    foods.forEach(food => {
+      const drawX = food.x - cameraX + canvas.width / 2;
+      const drawY = food.y - cameraY + canvas.height / 2;
+      // console.log(`[Noot.io Loop] Calc Food Draw Coords: (${drawX.toFixed(1)}, ${drawY.toFixed(1)})`); // Verbose
+      drawFood({ x: drawX, y: drawY, color: food.color });
     });
-  });
 
-  // Draw other players
-  players.forEach(p => {
-    // console.log("[Noot.io Loop] Drawing other player:", p); // Uncomment for verbose player logging
-    drawPlayer({
-      x: p.x - cameraX + canvas.width / 2,
-      y: p.y - cameraY + canvas.height / 2,
-      size: p.size,
-      name: p.name,
-      color: p.color
+    // Draw other players
+    players.forEach(p => {
+      const drawX = p.x - cameraX + canvas.width / 2;
+      const drawY = p.y - cameraY + canvas.height / 2;
+       // console.log(`[Noot.io Loop] Calc Other Player Draw Coords: (${drawX.toFixed(1)}, ${drawY.toFixed(1)})`); // Verbose
+      drawPlayer({ x: drawX, y: drawY, size: p.size, name: p.name, color: p.color });
     });
-  });
 
-  // Draw current player
-  // console.log("[Noot.io Loop] Drawing self:", player); // Uncomment for verbose self logging
-  drawPlayer({
-    x: canvas.width / 2,
-    y: canvas.height / 2,
-    size: player.size,
-    name: player.name,
-    color: player.color
-  });
+    // Draw current player
+    const selfDrawX = canvas.width / 2;
+    const selfDrawY = canvas.height / 2;
+    // console.log(`[Noot.io Loop] Calc Self Draw Coords: (${selfDrawX.toFixed(1)}, ${selfDrawY.toFixed(1)})`); // Verbose
+    drawPlayer({ x: selfDrawX, y: selfDrawY, size: player.size, name: player.name, color: player.color });
 
-  // Draw leaderboard
-  // TODO: Get leaderboard data from server if needed, current version uses demo data
-  // if (leaderboard.length > 0) { drawLeaderboard(); }
-
-  // Update Stats Display
-  const scoreElement = document.getElementById('score');
-  if (scoreElement) {
-    scoreElement.textContent = `Mass: ${player.size ? player.size.toLocaleString() : 0}`;
+    // Update Stats Display
+    const scoreElement = document.getElementById('score');
+    if (scoreElement) {
+      scoreElement.textContent = `Mass: ${player.size ? player.size.toLocaleString() : 0}`;
+    }
+  } catch (e) {
+      console.error("[gameLoop] Error during rendering phase:", e);
   }
 
   requestAnimationFrame(gameLoop);
