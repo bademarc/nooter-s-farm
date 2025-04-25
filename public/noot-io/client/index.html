@@ -41,6 +41,7 @@
             display: flex;
             justify-content: center;
             align-items: center;
+            z-index: 10; /* Make sure the start menu is above the canvas */
         }
         .modeButton {
             margin: 5px;
@@ -68,6 +69,19 @@
         #server-status.hidden {
             display: none;
         }
+        #gameMessage {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #AAAAAA;
+            font-size: 20px;
+            font-family: Arial, sans-serif;
+            text-align: center;
+            display: block;
+            z-index: 5;
+            pointer-events: none; /* Allow clicks to go through */
+        }
     </style>
     <!-- Audio -->
     <audio id="split_cell" src="audio/split.mp3"></audio>
@@ -85,6 +99,8 @@
            <input type="image" id="feed" class="feed" src="img/feed.png" alt="feedBtn">
         </div>
         <canvas tabindex="1" id="cvs"></canvas>
+        <!-- Game status message -->
+        <div id="gameMessage">Select mode above.</div>
         <!-- Add restart button (hidden by default) -->
         <button id="restart-button" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10; padding: 10px 20px; background-color: #4CAF50; color: white; border: none; cursor: pointer; font-size: 16px;">Play Again</button>
     </div>
