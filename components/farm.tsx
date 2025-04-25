@@ -165,8 +165,27 @@ declare global {
 // Define the possible active tab values, including the new Noot Gamble types
 type ActiveTab = "farm" | "quests" | "market" | "swap" | "social" | "profile" | "animals" | "crafting" | "boosters" | "defend" | "crashout" | "platformer" | "slot-machine" | "noot-case" | "sport-betting" | "noot-io";
 
+import { useGuideContext } from '../context/guide-context';
+import GuideModal from './GuideModal';
 
 export function Farm() {
+  // --- Guide State ---
+  const { shouldShowGuide, markGuideAsViewed, isNootPro } = useGuideContext();
+  const [showFarmGuide, setShowFarmGuide] = useState(false);
+
+  useEffect(() => {
+    // Check if the guide should be shown on component mount
+    if (shouldShowGuide('farm')) {
+      setShowFarmGuide(true);
+    }
+  }, [shouldShowGuide]);
+
+  const handleCloseGuide = () => {
+    setShowFarmGuide(false);
+    markGuideAsViewed('farm');
+  };
+  // --- End Guide State ---
+
   // --- Restore Local Profile State & Loading ---
   const [nickname, setNickname] = useState<string>("Nooter");
   const [bio, setBio] = useState<string>("I love farming!");
@@ -3837,6 +3856,28 @@ export function Farm() {
           </div>
         </div>
       </footer>
+      
+      {/* Farm Guide Modal */}
+      {showFarmGuide && (
+        <GuideModal
+          imagePath="/images/guid/farm.jpg"
+          title="Welcome to Nooter's Farm!"
+          content={
+            <div>
+              <p className="mb-4">Farming is the core of Nooter's Farm. Here's the cycle:</p>
+              <ol className="list-decimal pl-6 space-y-2">
+                <li><strong>Buy Seeds:</strong> Purchase seeds from the Market tab.</li>
+                <li><strong>Select & Plant:</strong> Choose a seed from the 'Seed Selector' panel and click an empty plot on your farm. Coins are deducted upon planting.</li>
+                <li><strong>Wait for Growth:</strong> Each crop has a specific growth time, influenced by the current Season and Weather. You can click a growing plot to see remaining time and apply Boosters.</li>
+                <li><strong>Harvest:</strong> Once a crop is ready (indicated by a checkmark ✓), click the plot to harvest. The crop goes into your inventory (visible in the Market tab).</li>
+                <li><strong>Sell Crops:</strong> Sell your harvested crops in the Market tab for Farm Coins 🪙.</li>
+              </ol>
+            </div>
+          }
+          onClose={handleCloseGuide}
+          isNootPro={isNootPro}
+        />
+      )}
     </div>
   );
 }

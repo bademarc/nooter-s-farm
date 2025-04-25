@@ -2,6 +2,7 @@
 
 import { ReactNode, useEffect } from "react"
 import { GameProvider } from "@/context/game-context"
+import { GuideProvider } from "@/context/guide-context"
 import { AbstractWalletProvider } from '@abstract-foundation/agw-react'
 import { abstractTestnet } from 'viem/chains'
 
@@ -14,7 +15,9 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <AbstractWalletProvider chain={abstractTestnet}>
       <GameProvider>
-        {children}
+        <GuideProvider>
+          {children}
+        </GuideProvider>
       </GameProvider>
     </AbstractWalletProvider>
   )

@@ -14,6 +14,7 @@ import {
   Menu, X, User, Trophy, Sparkles, Music, CloudRain, Settings, Volume,
   Check, Sprout, Coins, Lock
 } from "lucide-react";
+import DevTools from './DevTools';
 
 // Profile component
 function ProfileContent() {
@@ -335,6 +336,9 @@ export default function HomePage() {
             copy
           </button>
         </div>
+        
+        {/* Dev Tools - Only shown in development */}
+        {process.env.NODE_ENV === 'development' && <DevTools />}
       </div>
     </GameProvider>
   );
