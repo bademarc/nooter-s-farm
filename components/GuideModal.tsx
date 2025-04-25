@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { X, Sparkles, ChevronLeft, ChevronRight, Check, Star } from 'lucide-react';
+import { X, Sparkles, ChevronLeft, ChevronRight, Check, Star, Image } from 'lucide-react';
 import GuideVisualEffects from './GuideVisualEffects';
 
 interface GuideModalProps {
@@ -21,6 +21,8 @@ const GuideModal: React.FC<GuideModalProps> = ({
   const [step, setStep] = useState(0);
   const [animateSparkle, setAnimateSparkle] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [imageHover, setImageHover] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
   
@@ -67,6 +69,10 @@ const GuideModal: React.FC<GuideModalProps> = ({
     return () => clearInterval(sparkleInterval);
   }, []);
   
+  const handleImageLoad = () => {
+    setImageLoaded(true);
+  };
+  
   const handleImageHover = (e: MouseEvent) => {
     if (!imageRef.current) return;
     
@@ -84,6 +90,11 @@ const GuideModal: React.FC<GuideModalProps> = ({
     if (imageRef.current) {
       imageRef.current.style.transform = 'perspective(1000px) rotateY(0deg) rotateX(0deg) scale(1)';
     }
+    setImageHover(false);
+  };
+  
+  const handleImageEnter = () => {
+    setImageHover(true);
   };
   
   const handleCloseModal = () => {
@@ -123,21 +134,49 @@ const GuideModal: React.FC<GuideModalProps> = ({
       return (
         <>
           <div className="relative mb-6 flex justify-center overflow-hidden rounded-lg border border-[#222] bg-black group">
-            <img 
-              ref={imageRef}
-              src={imagePath} 
-              alt={`${title} Guide`} 
-              className="max-w-full h-auto object-cover transition-transform duration-300"
-              style={{ transformStyle: 'preserve-3d' }}
-              onMouseLeave={handleImageLeave}
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black to-transparent opacity-60"></div>
-            <div className="absolute bottom-4 left-4 right-4 text-white z-10">
-              <h3 className="text-lg font-bold flex items-center">
-                {title}
-                <Star className="h-4 w-4 ml-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-              </h3>
-              <p className="text-sm text-white/60">Swipe to learn how it works</p>
+            <div className={`w-full h-auto aspect-video relative ${!imageLoaded ? 'animate-pulse bg-[#222]' : ''}`}>
+              <img 
+                ref={imageRef}
+                src={imagePath} 
+                alt={`${title} Guide`} 
+                className={`max-w-full h-auto object-cover transition-all duration-500 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+                style={{ transformStyle: 'preserve-3d' }}
+                onMouseLeave={handleImageLeave}
+                onMouseEnter={handleImageEnter}
+                onLoad={handleImageLoad}
+              />
+              {!imageLoaded && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <Image className="w-8 h-8 text-white/40 animate-pulse" />
+                </div>
+              )}
+              
+              {/* Image overlay effects */}
+              <div className="absolute inset-0 bg-gradient-to-t from-black to-transparent opacity-60"></div>
+              
+              {/* Hover sparkle effects */}
+              {imageHover && imageLoaded && (
+                <>
+                  <div className="absolute top-1/4 left-1/4 w-1 h-1 bg-white rounded-full animate-sparkle" style={{ animationDelay: '0.2s' }}></div>
+                  <div className="absolute top-3/4 left-2/3 w-2 h-2 bg-white rounded-full animate-sparkle" style={{ animationDelay: '0.5s' }}></div>
+                  <div className="absolute top-1/3 left-3/4 w-1.5 h-1.5 bg-white rounded-full animate-sparkle" style={{ animationDelay: '0.8s' }}></div>
+                </>
+              )}
+              
+              {/* Image border glow effect on hover */}
+              <div className={`absolute inset-0 border-2 border-transparent transition-all duration-300 rounded-lg ${imageHover && imageLoaded ? 'border-white/20 pulse-glow' : ''}`}></div>
+              
+              {/* Image caption */}
+              <div className="absolute bottom-4 left-4 right-4 text-white z-10">
+                <h3 className="text-lg font-bold flex items-center">
+                  {title}
+                  <Star className={`h-4 w-4 ml-2 transition-all duration-300 ${imageHover && imageLoaded ? 'opacity-100 text-white animate-pulse' : 'opacity-0'}`} />
+                </h3>
+                <p className="text-sm text-white/60 flex items-center">
+                  <span>Scroll through guide</span>
+                  <ChevronRight className="h-3 w-3 ml-1 animate-pulse" />
+                </p>
+              </div>
             </div>
           </div>
           {contentElement?.props?.children?.find((child: any) => child?.type === 'p')}

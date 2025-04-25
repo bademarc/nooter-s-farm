@@ -2093,7 +2093,7 @@ export function Farm() {
     <GuideModal
       imagePath="/images/guide/profile.jpg"
       title="Your Nooter Profile"
-      content={<EnhancedGuideContent guideType="profile" />}
+      content={<EnhancedGuideContent guideType="profile" imagePath="/images/guide/profile.jpg" />}
       onClose={handleCloseProfileGuide}
       isNootPro={isNootPro}
     />
@@ -2104,7 +2104,7 @@ export function Farm() {
     <GuideModal
       imagePath="/images/guide/social.jpg"
       title="Social Hub"
-      content={<EnhancedGuideContent guideType="social" />}
+      content={<EnhancedGuideContent guideType="social" imagePath="/images/guide/social.jpg" />}
       onClose={handleCloseSocialGuide}
       isNootPro={isNootPro}
     />
@@ -2115,7 +2115,7 @@ export function Farm() {
     <GuideModal
       imagePath="/images/guide/swap.jpg"
       title="Token Swap"
-      content={<EnhancedGuideContent guideType="swap" />}
+      content={<EnhancedGuideContent guideType="swap" imagePath="/images/guide/token swap.jpg" />}
       onClose={handleCloseSwapGuide}
       isNootPro={isNootPro}
     />
@@ -2126,7 +2126,7 @@ export function Farm() {
     <GuideModal
       imagePath="/images/guide/platformer.jpg"
       title="Platformer Game"
-      content={<EnhancedGuideContent guideType="platformer" />}
+      content={<EnhancedGuideContent guideType="platformer" imagePath="/images/guide/platformer.jpg" />}
       onClose={handleClosePlatformerGuide}
       isNootPro={isNootPro}
     />
@@ -2137,7 +2137,7 @@ export function Farm() {
     <GuideModal
       imagePath="/images/guide/defend your farm.jpg"
       title="Defend Your Farm"
-      content={<EnhancedGuideContent guideType="defend" />}
+      content={<EnhancedGuideContent guideType="defend" imagePath="/images/guide/defend your farm.jpg" />}
       onClose={handleCloseDefendGuide}
       isNootPro={isNootPro}
     />
@@ -3992,7 +3992,7 @@ export function Farm() {
         <GuideModal
           imagePath="/images/guide/farm.jpg"
           title="Welcome to Nooter's Farm!"
-          content={<EnhancedGuideContent guideType="farm" />}
+          content={<EnhancedGuideContent guideType="farm" imagePath="/images/guide/farm.jpg" />}
           onClose={handleCloseGuide}
           isNootPro={isNootPro}
         />
@@ -4003,7 +4003,7 @@ export function Farm() {
         <GuideModal
           imagePath="/images/guide/quest.jpg"
           title="Complete Quests for Rewards!"
-          content={<EnhancedGuideContent guideType="quests" />}
+          content={<EnhancedGuideContent guideType="quests" imagePath="/images/guide/quest.jpg" />}
           onClose={handleCloseQuestsGuide}
           isNootPro={isNootPro}
         />
@@ -4015,7 +4015,7 @@ export function Farm() {
         <GuideModal
           imagePath="/images/guide/profile.jpg"
           title="Your Nooter Profile"
-          content={<EnhancedGuideContent guideType="profile" />}
+          content={<EnhancedGuideContent guideType="profile" imagePath="/images/guide/profile.jpg" />}
           onClose={handleCloseProfileGuide}
           isNootPro={isNootPro}
         />
@@ -4026,7 +4026,7 @@ export function Farm() {
         <GuideModal
           imagePath="/images/guide/social.jpg"
           title="Social Hub"
-          content={<EnhancedGuideContent guideType="social" />}
+          content={<EnhancedGuideContent guideType="social" imagePath="/images/guide/social.jpg" />}
           onClose={handleCloseSocialGuide}
           isNootPro={isNootPro}
         />
@@ -4037,7 +4037,7 @@ export function Farm() {
         <GuideModal
           imagePath="/images/guide/swap.jpg"
           title="Token Swap"
-          content={<EnhancedGuideContent guideType="swap" />}
+          content={<EnhancedGuideContent guideType="swap" imagePath="/images/guide/token swap.jpg" />}
           onClose={handleCloseSwapGuide}
           isNootPro={isNootPro}
         />
@@ -4048,7 +4048,7 @@ export function Farm() {
         <GuideModal
           imagePath="/images/guide/platformer.jpg"
           title="Platformer Game"
-          content={<EnhancedGuideContent guideType="platformer" />}
+          content={<EnhancedGuideContent guideType="platformer" imagePath="/images/guide/platformer.jpg" />}
           onClose={handleClosePlatformerGuide}
           isNootPro={isNootPro}
         />
@@ -4059,7 +4059,7 @@ export function Farm() {
         <GuideModal
           imagePath="/images/guide/defend your farm.jpg"
           title="Defend Your Farm"
-          content={<EnhancedGuideContent guideType="defend" />}
+          content={<EnhancedGuideContent guideType="defend" imagePath="/images/guide/defend your farm.jpg" />}
           onClose={handleCloseDefendGuide}
           isNootPro={isNootPro}
         />

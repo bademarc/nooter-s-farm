@@ -1,15 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import GuideStep from './GuideStep';
 import GuideVisualEffects from './GuideVisualEffects';
-import { Sparkles, Sprout, Coins, Clock, CheckCircle, ShoppingBag, Award, ChevronRight, ArrowRight } from 'lucide-react';
+import StepImage from './StepImage';
+import { Sparkles, Sprout, Coins, Clock, CheckCircle, ShoppingBag, Award, ChevronRight, ArrowRight, Image } from 'lucide-react';
 
 interface EnhancedGuideContentProps {
   guideType: 'farm' | 'quests' | 'swap' | 'social' | 'profile' | 'defend' | 'platformer';
+  imagePath: string;
 }
 
-const EnhancedGuideContent: React.FC<EnhancedGuideContentProps> = ({ guideType }) => {
+const EnhancedGuideContent: React.FC<EnhancedGuideContentProps> = ({ guideType, imagePath }) => {
   const [activeStep, setActiveStep] = useState(0);
   const [showReward, setShowReward] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [showStepImages, setShowStepImages] = useState(false);
   
   useEffect(() => {
     // Show reward animation when viewing the last step
@@ -23,6 +27,17 @@ const EnhancedGuideContent: React.FC<EnhancedGuideContentProps> = ({ guideType }
       setShowReward(false);
     }
   }, [activeStep, guideType]);
+  
+  // Switch to showing step images after main image loads
+  useEffect(() => {
+    if (imageLoaded) {
+      const timer = setTimeout(() => {
+        setShowStepImages(true);
+      }, 1000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [imageLoaded]);
   
   const guideContent = {
     farm: {
@@ -243,55 +258,94 @@ const EnhancedGuideContent: React.FC<EnhancedGuideContentProps> = ({ guideType }
     setActiveStep(index);
   };
   
+  const handleImageLoad = () => {
+    setImageLoaded(true);
+  };
+  
   return (
     <div className="relative">
       <GuideVisualEffects guideType={guideType} />
       
-      <div className="mb-6">
-        <div className="flex items-center mb-2">
-          <div className="w-2 h-2 bg-white rounded-full animate-pulse mr-2"></div>
-          <p className="text-white text-sm">{content.intro}</p>
-        </div>
-        
-        {/* Next step hint */}
-        {activeStep < content.steps.length - 1 && (
-          <div className="text-white/40 text-xs flex items-center mt-2 animate-pulse">
-            <span>Click on steps to learn more</span>
-            <ArrowRight className="h-3 w-3 ml-1" />
+      <div className="grid grid-cols-1 gap-6">
+        <div>
+          {/* Main Featured Image - shown initially */}
+          <div className={`relative mb-6 overflow-hidden rounded-lg transition-all duration-500 ${showStepImages ? 'opacity-0 h-0' : 'opacity-100'}`}>
+            <div className={`w-full h-auto aspect-video relative ${!imageLoaded ? 'animate-pulse bg-[#222]' : ''}`}>
+              <img 
+                src={imagePath} 
+                alt={`${guideType} Guide`} 
+                className={`w-full h-auto object-cover rounded-lg border border-[#333] transition-all duration-500 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+                onLoad={handleImageLoad}
+              />
+              {!imageLoaded && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <Image className="w-8 h-8 text-white/40 animate-pulse" />
+                </div>
+              )}
+            </div>
           </div>
-        )}
-      </div>
-      
-      <div className="relative">
-        {/* Progress indicator */}
-        <div className="absolute left-5 top-5 bottom-5 w-0.5 bg-[#222]"></div>
-        <div 
-          className="absolute left-5 top-5 w-0.5 bg-white" 
-          style={{ 
-            height: `${(activeStep + 1) * 100 / content.steps.length}%`,
-            transition: 'height 0.5s ease-out'
-          }}
-        ></div>
-        
-        {/* Steps */}
-        <div className="space-y-4 ml-0.5">
-          {content.steps.map((step, index) => (
-            <div 
-              key={index}
-              className={`cursor-pointer transition-all duration-300 ${
-                index > activeStep ? 'opacity-60 hover:opacity-80' : ''
-              } ${index === activeStep ? 'guide-step-enter' : ''}`}
-              onClick={() => handleStepClick(index)}
-            >
-              <GuideStep
-                index={index + 1}
-                title={step.title}
-                description={step.description}
-                icon={step.icon as any}
-                isActive={activeStep === index}
+          
+          {/* Step-specific images - fade in after main image loads */}
+          {showStepImages && (
+            <div className="mb-6 grid gap-4">
+              <StepImage 
+                imagePath={imagePath}
+                stepIndex={activeStep}
+                guideType={guideType}
+                active={true}
               />
             </div>
-          ))}
+          )}
+          
+          <div className="mb-6">
+            <div className="flex items-center mb-2">
+              <div className="w-2 h-2 bg-white rounded-full animate-pulse mr-2"></div>
+              <p className="text-white text-sm">{content.intro}</p>
+            </div>
+            
+            {/* Next step hint */}
+            {activeStep < content.steps.length - 1 && (
+              <div className="text-white/40 text-xs flex items-center mt-2 animate-pulse">
+                <span>Click on steps to learn more</span>
+                <ArrowRight className="h-3 w-3 ml-1" />
+              </div>
+            )}
+          </div>
+        </div>
+        
+        <div>
+          <div className="relative">
+            {/* Progress indicator */}
+            <div className="absolute left-5 top-5 bottom-5 w-0.5 bg-[#222]"></div>
+            <div 
+              className="absolute left-5 top-5 w-0.5 bg-white" 
+              style={{ 
+                height: `${(activeStep + 1) * 100 / content.steps.length}%`,
+                transition: 'height 0.5s ease-out'
+              }}
+            ></div>
+            
+            {/* Steps */}
+            <div className="space-y-4 ml-0.5">
+              {content.steps.map((step, index) => (
+                <div 
+                  key={index}
+                  className={`cursor-pointer transition-all duration-300 ${
+                    index > activeStep ? 'opacity-60 hover:opacity-80' : ''
+                  } ${index === activeStep ? 'guide-step-enter' : ''}`}
+                  onClick={() => handleStepClick(index)}
+                >
+                  <GuideStep
+                    index={index + 1}
+                    title={step.title}
+                    description={step.description}
+                    icon={step.icon as any}
+                    isActive={activeStep === index}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
       
