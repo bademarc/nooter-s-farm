@@ -939,6 +939,7 @@ function botSplit(bot) {
         lastSplitTime: Date.now() // To prevent instant re-splitting
     };
     
+    // Use push to add the new bot (safer than splice)
     bots.push(splitCell);
     return true;
 }
@@ -1048,136 +1049,149 @@ function gameLoop() {
               spawnOfflineFood();
           }
           
-          // Move bots with simple AI
-          bots.forEach(bot => {
-              if (!bot || bot.mass <= 0) return;
-              
-              // If it's a player split cell, handle differently
-              if (bot.isPlayerSplit) {
-                  // Handle split cell movement and merge cooldown
-                  const now = Date.now();
+          // Update bots
+          if (bots && bots.length > 0) {
+              // Process each living bot
+              bots.forEach(bot => {
+                  if (!bot || bot.mass <= 0) return;
                   
-                  // Move toward target at decreasing speed (emulate split physics)
-                  if (bot.speed > 1) {
-                      bot.speed *= 0.98; // Decay speed
-                      bot.x += Math.cos(bot.angle) * bot.speed;
-                      bot.y += Math.sin(bot.angle) * bot.speed;
-                  } else {
-                      // After speed decay, follow player
-                      const dx = player.x - bot.x;
-                      const dy = player.y - bot.y;
-                      const dist = Math.sqrt(dx * dx + dy * dy);
+                  // If it's a player split cell, handle differently
+                  if (bot.isPlayerSplit) {
+                      // Handle split cell movement and merge cooldown
+                      const now = Date.now();
                       
-                      // Only move if beyond merge distance
-                      if (dist > 50) {
+                      // Move toward target at decreasing speed (emulate split physics)
+                      if (bot.speed > 1) {
+                          bot.speed *= 0.98; // Decay speed
+                          bot.x += Math.cos(bot.angle) * bot.speed;
+                          bot.y += Math.sin(bot.angle) * bot.speed;
+                      } else {
+                          // After speed decay, follow player
+                          const dx = player.x - bot.x;
+                          const dy = player.y - bot.y;
+                          const dist = Math.sqrt(dx * dx + dy * dy);
+                          
+                          // Only move if beyond merge distance
+                          if (dist > 50) {
+                              const angle = Math.atan2(dy, dx);
+                              bot.x += Math.cos(angle) * Math.min(1, dist / 50);
+                              bot.y += Math.sin(angle) * Math.min(1, dist / 50);
+                          }
+                          
+                          // Check if it's time to merge back
+                          if (now - bot.splitTime > 10000 && dist < 50) {
+                              player.mass += bot.mass;
+                              bot.mass = 0; // Mark for removal
+                          }
+                      }
+                  } else if (bot.isBotSplit) {
+                      // Handle bot split cell movement
+                      if (bot.speed > 1) {
+                          bot.speed *= bot.moveDecay || 0.98; // Decay speed
+                          const dx = bot.targetX - bot.x;
+                          const dy = bot.targetY - bot.y;
+                          const dist = Math.sqrt(dx * dx + dy * dy);
                           const angle = Math.atan2(dy, dx);
-                          bot.x += Math.cos(angle) * Math.min(1, dist / 50);
-                          bot.y += Math.sin(angle) * Math.min(1, dist / 50);
+                          
+                          bot.x += Math.cos(angle) * bot.speed;
+                          bot.y += Math.sin(angle) * bot.speed;
+                      } else {
+                          // Find a parent bot to merge back with
+                          const parentBot = bots.find(b => !b.isBotSplit && b.id === bot.parentBot);
+                          if (parentBot && Date.now() > bot.mergeCooldown) {
+                              const dx = parentBot.x - bot.x;
+                              const dy = parentBot.y - bot.y;
+                              const dist = Math.sqrt(dx * dx + dy * dy);
+                              
+                              if (dist < 50) {
+                                  // Merge back
+                                  parentBot.mass += bot.mass;
+                                  bot.mass = 0; // Mark for removal
+                              } else {
+                                  // Move toward parent for merging
+                                  const angle = Math.atan2(dy, dx);
+                                  bot.x += Math.cos(angle) * Math.min(2, dist / 50);
+                                  bot.y += Math.sin(angle) * Math.min(2, dist / 50);
+                              }
+                          }
+                      }
+                  } else {
+                      // Regular bot AI
+                      // Find a new random target occasionally
+                      if (Math.random() < 0.01 || 
+                          (Math.abs(bot.x - bot.targetX) < 10 && Math.abs(bot.y - bot.targetY) < 10)) {
+                          bot.targetX = Math.max(100, Math.min(WORLD_WIDTH - 100, bot.x + (Math.random() - 0.5) * 1000));
+                          bot.targetY = Math.max(100, Math.min(WORLD_HEIGHT - 100, bot.y + (Math.random() - 0.5) * 1000));
                       }
                       
-                      // Check if it's time to merge back
-                      if (now - bot.splitTime > 10000 && dist < 50) {
-                          player.mass += bot.mass;
-                          bot.mass = 0; // Mark for removal
+                      // Find nearby food or smaller bots to chase
+                      const target = findNearbyTarget(bot);
+                      if (target) {
+                          bot.targetX = target.x;
+                          bot.targetY = target.y;
                       }
-                  }
-              } else if (bot.isBotSplit) {
-                  // Handle bot split cell movement
-                  if (bot.speed > 1) {
-                      bot.speed *= bot.moveDecay || 0.98; // Decay speed
+                      
+                      // Move toward target
                       const dx = bot.targetX - bot.x;
                       const dy = bot.targetY - bot.y;
                       const dist = Math.sqrt(dx * dx + dy * dy);
                       const angle = Math.atan2(dy, dx);
                       
-                      bot.x += Math.cos(angle) * bot.speed;
-                      bot.y += Math.sin(angle) * bot.speed;
-                  } else {
-                      // Find a parent bot to merge back with
-                      const parentBot = bots.find(b => !b.isBotSplit && b.id === bot.parentBot);
-                      if (parentBot && Date.now() > bot.mergeCooldown) {
-                          const dx = parentBot.x - bot.x;
-                          const dy = parentBot.y - bot.y;
-                          const dist = Math.sqrt(dx * dx + dy * dy);
-                          
-                          if (dist < 50) {
-                              // Merge back
-                              parentBot.mass += bot.mass;
-                              bot.mass = 0; // Mark for removal
-                          } else {
-                              // Move toward parent for merging
-                              const angle = Math.atan2(dy, dx);
-                              bot.x += Math.cos(angle) * Math.min(2, dist / 50);
-                              bot.y += Math.sin(angle) * Math.min(2, dist / 50);
-                          }
+                      // Speed based on mass (bigger = slower)
+                      const speed = bot.speed / (1 + bot.mass / 1000);
+                      
+                      bot.x += Math.cos(angle) * Math.min(speed, dist);
+                      bot.y += Math.sin(angle) * Math.min(speed, dist);
+                      
+                      // Split logic for bots
+                      if (bot.mass > START_MASS * 2 && Math.random() < 0.001) {
+                          botSplit(bot);
                       }
                   }
-              } else {
-                  // Regular bot AI
-                  // Find a new random target occasionally
-                  if (Math.random() < 0.01 || 
-                      (Math.abs(bot.x - bot.targetX) < 10 && Math.abs(bot.y - bot.targetY) < 10)) {
-                      bot.targetX = Math.max(100, Math.min(WORLD_WIDTH - 100, bot.x + (Math.random() - 0.5) * 1000));
-                      bot.targetY = Math.max(100, Math.min(WORLD_HEIGHT - 100, bot.y + (Math.random() - 0.5) * 1000));
+                  
+                  // Smooth position updates with linear interpolation
+                  if (bot.renderX && bot.renderY) {
+                      bot.renderX = lerp(bot.renderX, bot.x, 0.1);
+                      bot.renderY = lerp(bot.renderY, bot.y, 0.1);
                   }
-                  
-                  // Find nearby food or smaller bots to chase
-                  const target = findNearbyTarget(bot);
-                  if (target) {
-                      bot.targetX = target.x;
-                      bot.targetY = target.y;
-                  }
-                  
-                  // Move toward target
-                  const dx = bot.targetX - bot.x;
-                  const dy = bot.targetY - bot.y;
-                  const dist = Math.sqrt(dx * dx + dy * dy);
-                  const angle = Math.atan2(dy, dx);
-                  
-                  // Speed based on mass (bigger = slower)
-                  const speed = bot.speed / (1 + bot.mass / 1000);
-                  
-                  bot.x += Math.cos(angle) * Math.min(speed, dist);
-                  bot.y += Math.sin(angle) * Math.min(speed, dist);
-                  
-                  // Split logic for bots
-                  if (bot.mass > START_MASS * 2 && Math.random() < 0.001) {
-                      botSplit(bot);
-                  }
-              }
+              });
               
-              // Smooth position updates with linear interpolation
-              bot.renderX = lerp(bot.renderX, bot.x, 0.1);
-              bot.renderY = lerp(bot.renderY, bot.y, 0.1);
-          });
-          
-          // Remove dead entities
-          bots = bots.filter(bot => bot && bot.mass > 0);
+              // Filter out dead entities instead of splicing
+              bots = bots.filter(bot => bot && bot.mass > 0);
+          }
           
           // Update offline leaderboard
           updateOfflineLeaderboard();
       }
       
-      // Update mass food movement for both offline & online
-      massFood.forEach(mf => {
-          if (!mf) return;
-          
-          // Apply velocity
-          mf.x += mf.dx;
-          mf.y += mf.dy;
-          
-          // Apply drag
-          mf.dx *= 0.98;
-          mf.dy *= 0.98;
-          
-          // Remove old mass food
-          if (Date.now() - mf.createdAt > 5000) {
-              mf.mass = 0; // Mark for removal
-          }
-      });
+      // Make sure restart button is hidden during gameplay
+      if (player && player.mass > 0) {
+          const restartButton = document.getElementById('restart-button');
+          if (restartButton) restartButton.style.display = 'none';
+      }
       
-      // Remove expired mass food
-      massFood = massFood.filter(mf => mf && mf.mass > 0);
+      // Update mass food movement for both offline & online
+      if (massFood && massFood.length > 0) {
+          massFood.forEach(mf => {
+              if (!mf) return;
+              
+              // Apply velocity
+              mf.x += mf.dx;
+              mf.y += mf.dy;
+              
+              // Apply drag
+              mf.dx *= 0.98;
+              mf.dy *= 0.98;
+              
+              // Remove old mass food by marking it
+              if (Date.now() - mf.createdAt > 5000) {
+                  mf.mass = 0; // Mark for removal
+              }
+          });
+          
+          // Filter expired mass food instead of splicing
+          massFood = massFood.filter(mf => mf && mf.mass > 0);
+      }
       
       // Apply mouse controls to player movement
       if (player.mass > 0) { // Only if player is alive
@@ -1523,9 +1537,9 @@ function startGame() {
         gameWrapper.style.zIndex = '1';
     }
     
-    // Show restart button
+    // Explicitly hide restart button when game starts
     const restartButton = document.getElementById('restart-button');
-    if (restartButton) restartButton.style.display = 'block';
+    if (restartButton) restartButton.style.display = 'none';
     
     // Clear game message when actively playing
     setGameMessage('');
@@ -1717,7 +1731,7 @@ async function initApp() {
     }
 
     // --- Wrapper Command/Init Listener ---
-    window.addEventListener('message', async (event) => {
+    window.addEventListener('message', (event) => {
         // Save origin for future communication
         parentOrigin = event.origin === 'null' ? '*' : event.origin;
         
@@ -1726,16 +1740,17 @@ async function initApp() {
                 console.log("[Noot.io App] Game already running, ignoring command.");
                 return;
             }
-             if (isGameInitialized && !isGameRunning) { // Allow selecting mode again if game ended (e.g., eaten)
-                  isGameInitialized = false; // Reset flag to allow mode selection
-                  // Ensure start menu is visible if game ended
-                  const startMenu = document.getElementById('startMenu');
-                   if (startMenu) startMenu.style.display = 'block';
-                   const gameWrapper = document.getElementById('gameAreaWrapper');
-                   if (gameWrapper) gameWrapper.style.display = 'none';
-             }
-
-             // Now proceed if !isGameInitialized
+            if (isGameInitialized && !isGameRunning) { // Allow selecting mode again if game ended (e.g., eaten)
+                isGameInitialized = false; // Reset flag to allow mode selection
+                // Ensure start menu is visible if game ended
+                const startMenu = document.getElementById('startMenu');
+                if (startMenu) startMenu.style.display = 'block';
+                const gameWrapper = document.getElementById('gameAreaWrapper');
+                if (gameWrapper) gameWrapper.style.display = 'none';
+                // Make sure restart button is hidden
+                const restartButton = document.getElementById('restart-button');
+                if (restartButton) restartButton.style.display = 'none';
+            }
 
             const command = event.data.command;
             console.log(`[Noot.io App] Received command: ${command}`);
@@ -1889,24 +1904,19 @@ function handleEntityCollisions() {
               
               // Handle respawning if p2 is a bot (not a split cell)
               if (p2 !== player && !p2.isPlayerSplit && !p2.isBotSplit) {
-                  const botIndex = bots.findIndex(b => b.id === p2.id);
-                  if (botIndex !== -1) {
-                      // Remove the bot
-                      bots.splice(botIndex, 1);
-                      
-                      // Spawn a new bot (keeping same type)
-                      spawnOfflineBot(bots.length, p2.isBigBot); 
-                  }
+                  // Mark bot for removal by setting mass to 0
+                  p2.mass = 0;
+                  
+                  // Spawn a new bot (keeping same type)
+                  spawnOfflineBot(bots.length, p2.isBigBot); 
               } else if (p2.isPlayerSplit || p2.isBotSplit) {
-                  // Just remove split cells when eaten
-                  const botIndex = bots.findIndex(b => b.id === p2.id);
-                  if (botIndex !== -1) {
-                      bots.splice(botIndex, 1);
-                  }
+                  // Just mark split cells as eaten
+                  p2.mass = 0;
               }
               
               // After eating, immediately update leaderboard to avoid stale references
               if (isOfflineMode) updateOfflineLeaderboard();
+              
               
               continue; // P2 is gone, check next entity against P1
           } else if (p2.mass > p1.mass * eatThreshold && distSq < (r2 * overlapFactor)**2) { // P2 eats P1
@@ -1923,11 +1933,11 @@ function handleEntityCollisions() {
                   const restartButton = document.getElementById('restart-button');
                   if (restartButton) {
                       restartButton.style.display = 'block';
-                      restartButton.style.position = 'absolute';
+                      restartButton.style.position = 'fixed'; // Use fixed instead of absolute
                       restartButton.style.top = '50%';
                       restartButton.style.left = '50%';
                       restartButton.style.transform = 'translate(-50%, -50%)';
-                      restartButton.style.zIndex = '100';
+                      restartButton.style.zIndex = '1000'; // Very high z-index to ensure it's on top
                       restartButton.textContent = 'PLAY AGAIN';
                   }
                   break; // Exit inner loop
