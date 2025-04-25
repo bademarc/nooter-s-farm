@@ -24,13 +24,13 @@ const feedItems = [
     id: 1,
     user: {
       name: "CropMaster99",
-      avatar: "/placeholder.svg?height=40&width=40",
+      avatar: "/images/nooter.png",
       level: 78,
       isPremium: true,
     },
     time: "2 hours ago",
-    content: "Just harvested my 1000th golden pumpkin! Who wants to trade for some rare seeds?",
-    image: "/placeholder.svg?height=300&width=500",
+    content: "Just completed the Ancient Ruins quest! Found some rare artifacts and earned 500 XP. Who wants to join me for the Forest Expedition next?",
+    image: "/images/guide/Ancient Ruins quest.jpg",
     likes: 42,
     comments: 8,
     shares: 3,
@@ -40,13 +40,13 @@ const feedItems = [
     id: 2,
     user: {
       name: "FarmQueen",
-      avatar: "/placeholder.svg?height=40&width=40",
+      avatar: "/images/nooter.png",
       level: 65,
       isPremium: false,
     },
     time: "5 hours ago",
-    content: "Check out my new barn design! Took me 3 weeks to gather all the materials. Worth it!",
-    image: "/placeholder.svg?height=300&width=500",
+    content: "Trading rare items at the marketplace tomorrow. Looking for enchanted boots and magical scrolls. I have plenty of healing potions to offer!",
+    image: "",
     likes: 87,
     comments: 23,
     shares: 12,
@@ -56,13 +56,13 @@ const feedItems = [
     id: 3,
     user: {
       name: "NooterLover",
-      avatar: "/placeholder.svg?height=40&width=40",
+      avatar: "/images/nooter.png",
       level: 31,
       isPremium: false,
     },
     time: "Yesterday",
-    content: "My Nooters just had babies! So cute! Anyone want to come visit and see them?",
-    image: "/placeholder.svg?height=300&width=500",
+    content: "Reached level 50 today! The journey has been incredible. Thanks to everyone who helped along the way. Special shoutout to the Noot Guild!",
+    image: "/images/guide/level 50 today.jpg",
     likes: 156,
     comments: 42,
     shares: 18,
@@ -154,7 +154,7 @@ export default function FarmFeed() {
         <CardContent>
           <div className="flex gap-3">
             <Avatar>
-              <AvatarImage src="/placeholder.svg?height=40&width=40" alt="Your avatar" />
+              <AvatarImage src="/images/nooter.png" alt="Your avatar" />
               <AvatarFallback>YA</AvatarFallback>
             </Avatar>
             <Textarea

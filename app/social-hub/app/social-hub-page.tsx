@@ -129,7 +129,7 @@ export function SocialHubPage({
                     className="h-16 w-16 rounded-full bg-[#111] overflow-hidden border border-[#333]"
                   >
                     <img
-                      src="/placeholder.svg?height=64&width=64"
+                      src="/images/nooter.png"
                       alt="User Avatar"
                       className="h-full w-full object-cover"
                     />
