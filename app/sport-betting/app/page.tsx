@@ -2,19 +2,14 @@
 
 import { useState, useEffect, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import LiveMatches from "../components/live-matches"
-import BettingSlip from "../components/betting-slip"
-import CurrencyDisplay from "../components/currency-display"
+import SportBettingInterface from "../components/sport-betting-interface"
 import PopularBets from "../components/popular-bets"
-import UpcomingMatches from "../components/upcoming-matches"
 import WinnersBanner from "../components/winners-banner"
 import CryptoTicker from "../components/crypto-ticker"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { Button } from "../components/ui/button"
 import { Bell, Gift, Flame, Zap, Trophy, Sparkles, Clock, Wallet, Maximize2 } from "lucide-react"
 import Confetti from "../components/confetti"
-import QuickBetPanel from "../components/quick-bet-panel"
-import CurrencySwitcher from "../components/currency-switcher"
 import HotStreakBonus from "../components/hot-streak-bonus"
 import LimitedTimeEvent from "../components/limited-time-event"
 import AchievementUnlocked from "../components/achievement-unlocked"
@@ -25,21 +20,13 @@ import useSound from "../hooks/use-sound"
 interface SportBettingPageProps {
   farmCoins: number;
   addFarmCoins: (amount: number) => void;
-  walletAddress?: string; // Optional prop for wallet address
-  provider?: any; // Optional prop for provider
 }
 
 export default function SportBettingPage({ 
   farmCoins, 
   addFarmCoins, 
-  walletAddress = "",
-  provider = null 
 }: SportBettingPageProps) {
   const [showConfetti, setShowConfetti] = useState(false)
-  const [cryptoBalance, setCryptoBalance] = useState(0.025)
-  const [activeCurrency, setActiveCurrency] = useState<"virtual" | "crypto">("virtual")
-  const [showBonus, setShowBonus] = useState(false)
-  const [pulseBalance, setPulseBalance] = useState(false)
   const [activeBets, setActiveBets] = useState(0)
   const [streak, setStreak] = useState(0)
   const [showHotStreak, setShowHotStreak] = useState(false)
@@ -56,6 +43,7 @@ export default function SportBettingPage({
   const [showPulsingBet, setShowPulsingBet] = useState(false)
   const [pulsingBetInterval, setPulsingBetInterval] = useState<NodeJS.Timeout | null>(null)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [showBonus, setShowBonus] = useState(false)
 
   const {
     playWinSound,
@@ -92,6 +80,7 @@ export default function SportBettingPage({
       }, 3000)
       setPulsingBetInterval(interval)
     }, 10000)
+
     timeoutRefs.current.push(pulsingBetTimer)
 
     // Countdown timer for limited time event
@@ -145,11 +134,7 @@ export default function SportBettingPage({
       playLevelUpSound()
 
       // Give reward for leveling up
-      if (activeCurrency === "virtual") {
-        addFarmCoins(userLevel * 200)
-      } else {
-        setCryptoBalance((prev) => prev + userLevel * 0.005)
-      }
+      addFarmCoins(userLevel * 200)
 
       // Show reward wheel every 3 levels
       if ((userLevel + 1) % 3 === 0) {
@@ -160,117 +145,65 @@ export default function SportBettingPage({
         timeoutRefs.current.push(wheelTimer)
       }
     }
-  }, [xpPoints, userLevel, activeCurrency, playLevelUpSound, playWheelSound, addFarmCoins])
+  }, [xpPoints, userLevel, addFarmCoins, playLevelUpSound, playWheelSound])
 
   const addXp = (amount: number) => {
     setXpPoints((prev) => prev + amount)
   }
 
-  const handleWin = (amount: number) => {
+  const handleWin = (amount: number, tokenSymbol: string) => {
+    console.log(`Page received WIN notification: ${amount} ${tokenSymbol}`);
     setShowConfetti(true)
     playWinSound()
-
-    if (activeCurrency === "virtual") {
-      addFarmCoins(amount)
-    } else {
-      setCryptoBalance((prev) => prev + amount / 40000) // Simulated conversion rate
-    }
-
-    setPulseBalance(true)
     setStreak((prev) => prev + 1)
     setWinCount((prev) => prev + 1)
     addXp(25)
 
-    setTimeout(() => {
-      setShowConfetti(false)
-      setPulseBalance(false)
-    }, 3000)
+    const confettiTimer = setTimeout(() => setShowConfetti(false), 4000)
+    timeoutRefs.current.push(confettiTimer)
   }
 
   const handleLoss = () => {
+    console.log(`Page received LOSS notification`);
     setStreak(0)
-    addXp(5) // Small XP even for losses to keep engagement
+    addXp(5)
   }
 
-  const handlePlaceBet = (amount: number) => {
-    playBetSound()
-
-    if (activeCurrency === "virtual") {
-      addFarmCoins(-amount)
-    } else {
-      setCryptoBalance((prev) => prev - amount / 40000) // Simulated conversion rate
-    }
-    setActiveBets((prev) => prev + 1)
-    setBetCount((prev) => prev + 1)
+  const handleBetPlaced = () => {
+    console.log("Page received BET PLACED notification");
+    setBetCount(prev => prev + 1)
     addXp(10)
+    setActiveBets(prev => prev + 1)
   }
 
   const claimBonus = () => {
     playButtonSound()
-
-    if (activeCurrency === "virtual") {
-      addFarmCoins(500)
-    } else {
-      setCryptoBalance((prev) => prev + 0.01)
-    }
-    setPulseBalance(true)
+    addFarmCoins(500)
     setShowBonus(false)
     addXp(20)
-
-    setTimeout(() => {
-      setPulseBalance(false)
-    }, 2000)
   }
 
   const claimHotStreakBonus = () => {
     playButtonSound()
-
-    if (activeCurrency === "virtual") {
-      addFarmCoins(1000)
-    } else {
-      setCryptoBalance((prev) => prev + 0.025)
-    }
-    setPulseBalance(true)
+    addFarmCoins(1000)
     setShowHotStreak(false)
+    setStreak(0)
     addXp(50)
-
-    setTimeout(() => {
-      setPulseBalance(false)
-    }, 2000)
   }
 
   const claimLimitedTimeReward = () => {
     playButtonSound()
-
-    if (activeCurrency === "virtual") {
-      addFarmCoins(2000)
-    } else {
-      setCryptoBalance((prev) => prev + 0.05)
-    }
-    setPulseBalance(true)
+    addFarmCoins(2000)
     setShowLimitedEvent(false)
-    addXp(100)
-
-    setTimeout(() => {
-      setPulseBalance(false)
-    }, 2000)
+    addXp(75)
+    setTimeLeft(1800)
+    const eventTimer = setTimeout(() => { setShowLimitedEvent(true); playTimerSound(); }, 30 * 60 * 1000)
+    timeoutRefs.current.push(eventTimer)
   }
 
   const handleWheelReward = (reward: number) => {
-    playWinSound()
-
-    if (activeCurrency === "virtual") {
-      addFarmCoins(reward)
-    } else {
-      setCryptoBalance((prev) => prev + reward / 40000)
-    }
-    setPulseBalance(true)
-    setShowRewardWheel(false)
-    addXp(75)
-
-    setTimeout(() => {
-      setPulseBalance(false)
-    }, 2000)
+    addFarmCoins(reward)
+    addXp(reward / 10)
   }
 
   const formatTime = (seconds: number) => {
@@ -280,255 +213,157 @@ export default function SportBettingPage({
   }
 
   const toggleFullscreen = () => {
-    setIsFullscreen(!isFullscreen)
+    if (!document.fullscreenElement) {
+       document.documentElement.requestFullscreen().catch(err => console.error(err))
+       setIsFullscreen(true)
+    } else {
+       if (document.exitFullscreen) {
+         document.exitFullscreen()
+         setIsFullscreen(false)
+       }
+    }
     playButtonSound()
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-gray-900 to-black p-4">
-      {showConfetti && <Confetti />}
-
-      {/* Main Game Container */}
-      <div 
-        className={`relative overflow-hidden rounded-xl border border-purple-800 bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900 shadow-2xl ${
-          isFullscreen ? 'fixed inset-0 z-50 m-0 h-screen w-screen rounded-none border-0' : 'max-h-[800px] w-full max-w-3xl'
-        }`}
-      >
-        {/* Game header with level progress */}
-        <div className="border-b border-purple-800/50 bg-gradient-to-r from-gray-900/90 to-gray-800/90 px-4 py-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-purple-600 text-xs font-bold">
-                {userLevel}
-              </div>
-              <div className="h-2 w-32 overflow-hidden rounded-full bg-gray-700">
-                <div
-                  className="h-full bg-gradient-to-r from-purple-600 to-pink-600"
-                  style={{ width: `${(xpPoints / (userLevel * 100)) * 100}%` }}
-                ></div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {showLimitedEvent && (
-                <div className="flex items-center gap-1 text-sm text-amber-400">
-                  <Clock className="h-3 w-3" />
-                  <span>{formatTime(timeLeft)}</span>
-                </div>
-              )}
-
-              <div className="flex items-center gap-1 text-xs">
-                <Sparkles className="h-3 w-3 text-yellow-400" />
-                <span className="font-medium text-yellow-400">{xpPoints} XP</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Currency and controls bar */}
-        <div className="border-b border-purple-800/50 bg-gradient-to-r from-indigo-900/80 to-purple-900/80 px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <CurrencyDisplay
-                virtualAmount={farmCoins}
-                cryptoAmount={cryptoBalance}
-                activeCurrency={activeCurrency}
-                pulsing={pulseBalance}
-              />
-              <CurrencySwitcher activeCurrency={activeCurrency} onSwitch={(currency) => setActiveCurrency(currency)} />
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="relative border-purple-500 bg-transparent text-white hover:bg-purple-800"
-                onClick={() => playButtonSound()}
-              >
-                <Bell className="h-4 w-4" />
-                {activeBets > 0 && (
-                  <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px]">
-                    {activeBets}
-                  </span>
-                )}
-              </Button>
-
-              <Button
-                variant="outline"
-                size="sm"
-                className="border-purple-500 bg-transparent text-white hover:bg-purple-800"
-                onClick={() => {
-                  setShowBonus(true)
-                  playButtonSound()
-                }}
-              >
-                <Gift className="h-4 w-4" />
-              </Button>
-
-              <Button
-                variant="outline"
-                size="sm"
-                className="border-purple-500 bg-transparent text-white hover:bg-purple-800"
-                onClick={toggleFullscreen}
-              >
-                <Maximize2 className="h-4 w-4" />
-              </Button>
-              
-              <Button
-                variant="outline"
-                size="sm"
-                className="border-purple-500 bg-transparent text-white hover:bg-purple-800"
-                onClick={() => playButtonSound()}
-              >
-                <Wallet className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        {/* Main game content area */}
-        <div className="h-[600px] overflow-y-auto scrollbar-thin scrollbar-track-gray-800 scrollbar-thumb-purple-600">
-          <div className="p-4">
-            <CryptoTicker />
-            <WinnersBanner />
-
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
-              className="mt-6"
+    <div className={`min-h-screen bg-gradient-to-br from-gray-900 via-black to-purple-900 text-white p-4 md:p-6 lg:p-8 font-sans ${isFullscreen ? 'fixed inset-0 z-[100] overflow-auto' : ''}`}>
+      <AnimatePresence>
+        {showConfetti && <Confetti />}
+        {showBonus && (
+          <motion.div
+            initial={{ y: -100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -100, opacity: 0 }}
+            className="fixed top-4 right-4 z-50"
+          >
+            <Button
+              onClick={claimBonus}
+              className="bg-gradient-to-r from-yellow-400 to-orange-500 text-black shadow-lg animate-pulse hover:animate-none"
             >
-              <div className="mb-4 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Flame className="h-5 w-5 text-red-500" />
-                  <h2 className="text-xl font-bold">Hot Right Now</h2>
-                </div>
-                <Button
-                  variant="link"
-                  className="text-purple-400 hover:text-purple-300"
-                  onClick={() => playButtonSound()}
-                >
-                  See All
-                </Button>
-              </div>
-              <QuickBetPanel
-                onPlaceBet={handlePlaceBet}
-                onWin={handleWin}
-                onLoss={handleLoss}
-                activeCurrency={activeCurrency}
-                isPulsing={showPulsingBet}
-              />
-            </motion.div>
+              <Gift className="mr-2 h-5 w-5" /> Claim Daily Bonus!
+            </Button>
+          </motion.div>
+        )}
+        {showHotStreak && (
+          <HotStreakBonus streak={streak} onClaim={claimHotStreakBonus} />
+        )}
+        {showLimitedEvent && (
+          <LimitedTimeEvent timeLeft={timeLeft} onClaim={claimLimitedTimeReward} onClose={() => setShowLimitedEvent(false)} />
+        )}
+        {showAchievement && (
+          <AchievementUnlocked type={achievementType} onClose={() => setShowAchievement(false)} />
+        )}
+        {showLevelUp && (
+          <LevelUpNotification level={userLevel} onClose={() => setShowLevelUp(false)} />
+        )}
+        {showRewardWheel && (
+           <RewardWheel onReward={handleWheelReward} onClose={() => setShowRewardWheel(false)} />
+        )}
+      </AnimatePresence>
 
-            <div className="mt-6">
-              <Tabs defaultValue="live" className="w-full">
-                <TabsList className="grid w-full grid-cols-3 bg-gray-800">
-                  <TabsTrigger
-                    value="live"
-                    className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-red-600 data-[state=active]:to-red-500 data-[state=active]:text-white"
-                    onClick={() => playButtonSound()}
-                  >
-                    <Zap className="mr-2 h-4 w-4" />
-                    Live Now
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="upcoming"
-                    className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-600 data-[state=active]:to-blue-500 data-[state=active]:text-white"
-                    onClick={() => playButtonSound()}
-                  >
-                    Upcoming
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="popular"
-                    className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-600 data-[state=active]:to-purple-500 data-[state=active]:text-white"
-                    onClick={() => playButtonSound()}
-                  >
-                    <Trophy className="mr-2 h-4 w-4" />
-                    Popular
-                  </TabsTrigger>
-                </TabsList>
+      {/* --- Top Bar --- */}
+      <div className="flex flex-col md:flex-row justify-between items-center mb-6 space-y-4 md:space-y-0">
+        {/* Logo/Title */}
+        <h1 className="text-3xl md:text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-pink-500 to-red-500">
+          NootBets
+        </h1>
 
-                <TabsContent value="live" className="mt-4">
-                  <LiveMatches
-                    onPlaceBet={handlePlaceBet}
-                    onWin={handleWin}
-                    onLoss={handleLoss}
-                    activeCurrency={activeCurrency}
-                  />
-                </TabsContent>
-
-                <TabsContent value="upcoming" className="mt-4">
-                  <UpcomingMatches onPlaceBet={handlePlaceBet} activeCurrency={activeCurrency} />
-                </TabsContent>
-
-                <TabsContent value="popular" className="mt-4">
-                  <PopularBets onPlaceBet={handlePlaceBet} activeCurrency={activeCurrency} />
-                </TabsContent>
-              </Tabs>
-            </div>
-
-            <div className="mt-6">
-              <BettingSlip
-                onPlaceBet={handlePlaceBet}
-                onWin={handleWin}
-                onLoss={handleLoss}
-                activeCurrency={activeCurrency}
+        {/* Currency & Profile Area */}
+        <div className="flex items-center space-x-4 bg-gray-800/50 p-2 rounded-lg border border-gray-700">
+          {/* Level & XP */}
+          <div className="text-center">
+            <span className="text-xs text-gray-400">LVL</span>
+            <div className="font-bold text-lg text-yellow-400">{userLevel}</div>
+            <div className="w-16 h-1 bg-gray-600 rounded-full overflow-hidden mt-1">
+              <motion.div 
+                className="h-full bg-yellow-400"
+                initial={{ width: 0 }}
+                animate={{ width: `${Math.min(100, (xpPoints / (userLevel * 100)) * 100)}%` }} 
               />
             </div>
+             <span className="text-[10px] text-gray-500">{xpPoints} / {userLevel * 100} XP</span>
           </div>
+
+          {/* Farm Coins Display (kept simple) */}
+           <div className="flex items-center gap-2 border-l border-gray-700 pl-4">
+                <span className="font-semibold text-lg text-green-400">{farmCoins}</span>
+                <span className="text-sm text-gray-400">Coins</span>
+           </div>
+
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleFullscreen}
+            className="text-gray-400 hover:text-white"
+            title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
+          >
+            <Maximize2 className="h-5 w-5" />
+          </Button>
+          <Button variant="ghost" size="icon" className="text-gray-400 hover:text-white relative" title="Notifications">
+              <Bell className="h-5 w-5" />
+          </Button>
         </div>
       </div>
 
-      {/* Notifications */}
-      <AnimatePresence>
-        {showBonus && (
-          <motion.div
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 50 }}
-            className="fixed bottom-8 left-0 right-0 z-50 mx-auto w-[90%] max-w-md rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 p-4 shadow-[0_0_15px_rgba(245,158,11,0.5)]"
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-yellow-300">
-                  <Gift className="h-5 w-5 text-amber-600" />
+      {/* --- Main Content Area --- */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+
+        {/* Left Sidebar / Main Betting Area (Now SportBettingInterface) */}
+        <div className="lg:col-span-3 space-y-6">
+          {/* Top Ticker */}
+          <CryptoTicker />
+          
+          {/* Winners Banner */}
+          <WinnersBanner />
+
+          {/* <<< Render the new SportBettingInterface here >>> */ 
+          <SportBettingInterface
+            onWin={handleWin}
+            onLoss={handleLoss}
+            onBetPlaced={handleBetPlaced}
+          /> 
+          
+          {/* Remove the old Tabs structure or repurpose it */}
+          {/* <Tabs defaultValue="live" className="w-full">
+            <TabsList className="grid w-full grid-cols-3 bg-gray-800/70 mb-4">
+              <TabsTrigger value="live" className="data-[state=active]:bg-red-600 data-[state=active]:text-white"><Flame className="mr-2 h-4 w-4" />Live</TabsTrigger>
+              <TabsTrigger value="upcoming" className="data-[state=active]:bg-purple-600 data-[state=active]:text-white"><Clock className="mr-2 h-4 w-4" />Upcoming</TabsTrigger>
+              <TabsTrigger value="quick" className="data-[state=active]:bg-yellow-500 data-[state=active]:text-black"><Zap className="mr-2 h-4 w-4" />Quick Bets</TabsTrigger>
+            </TabsList>
+            <TabsContent value="live">
+              <LiveMatches onBet={handlePlaceBet} onWin={handleWin} onLoss={handleLoss} />
+            </TabsContent>
+            <TabsContent value="upcoming">
+              <UpcomingMatches onBet={handlePlaceBet} />
+            </TabsContent>
+            <TabsContent value="quick">
+              <QuickBetPanel onBet={handlePlaceBet} />
+            </TabsContent>
+          </Tabs> */}
+        </div>
+
+        {/* Right Sidebar (Bet Slip / Popular Bets - Keep or Remove?) */}
+        {/* The new interface includes a bet slip, so this might be redundant */}
+        {/* <div className="lg:col-span-1 space-y-6">
+          <BettingSlip activeBets={activeBets} />
+          <PopularBets onBet={handlePlaceBet} isPulsing={showPulsingBet} />
+        </div> */}
+        
+        {/* Keep Popular Bets if desired separately */}
+         <div className="lg:col-span-1 space-y-6">
+           <PopularBets onBet={() => { console.log("Popular bet clicked"); playButtonSound(); }} isPulsing={showPulsingBet} />
+           {/* You could add other widgets here: Leaderboards, Chat, etc. */}
+           <div className="bg-gray-800/60 p-4 rounded-lg border border-gray-700">
+                <h3 className="text-lg font-bold mb-3 text-center text-yellow-300">Activity Feed</h3>
+                <div className="text-sm text-gray-400 space-y-2 max-h-48 overflow-y-auto">
+                    <p>PlayerA won 500 NOOT on Nooters FC!</p>
+                    <p>PlayerB just placed a bet on Abby's Army.</p>
+                    <p>PlayerC reached Level 5!</p>
                 </div>
-                <div>
-                  <h3 className="font-bold">Daily Bonus Available!</h3>
-                  <p className="text-sm">Claim {activeCurrency === "virtual" ? "500 coins" : "0.01 BTC"} now</p>
-                </div>
-              </div>
-              <Button onClick={claimBonus} className="bg-white font-bold text-amber-600 hover:bg-yellow-100">
-                CLAIM
-              </Button>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+         </div>
 
-      <AnimatePresence>
-        {showHotStreak && (
-          <HotStreakBonus streak={streak} onClaim={claimHotStreakBonus} activeCurrency={activeCurrency} />
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {showLimitedEvent && (
-          <LimitedTimeEvent onClaim={claimLimitedTimeReward} activeCurrency={activeCurrency} timeLeft={timeLeft} />
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {showAchievement && <AchievementUnlocked type={achievementType} onClose={() => setShowAchievement(false)} />}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {showLevelUp && <LevelUpNotification level={userLevel} onClose={() => setShowLevelUp(false)} />}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {showRewardWheel && <RewardWheel onReward={handleWheelReward} onClose={() => setShowRewardWheel(false)} />}
-      </AnimatePresence>
+      </div>
     </div>
   )
 }
