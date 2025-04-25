@@ -69,10 +69,22 @@ const PLAYER_SPEED = 5; // Assuming this matches server PLAYER_SPEED
 // Set canvas to full container size
 function resizeCanvas() {
   if (!canvas) return;
+  
   const container = canvas.parentElement;
   if (!container) return;
+  
+  // Force the gameAreaWrapper to have proper height
+  const gameWrapper = document.getElementById('gameAreaWrapper');
+  if (gameWrapper) {
+    gameWrapper.style.height = '100%';
+    gameWrapper.style.minHeight = '600px';
+  }
+  
+  // Set canvas dimensions to match container
   canvas.width = container.clientWidth;
-  canvas.height = container.clientHeight;
+  canvas.height = Math.max(600, container.clientHeight); // Ensure minimum height
+  
+  console.log(`[Noot.io App] Canvas resized to ${canvas.width}x${canvas.height}`);
 }
 
 window.addEventListener('resize', resizeCanvas);

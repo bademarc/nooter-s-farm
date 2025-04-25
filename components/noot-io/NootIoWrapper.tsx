@@ -75,7 +75,7 @@ const NootIoWrapper: React.FC<NootIoWrapperProps> = ({ farmCoins, addFarmCoins }
   };
 
   return (
-    <div className="w-full h-[600px] flex flex-col items-center">
+    <div className="w-full h-full flex flex-col items-center" style={{ minHeight: '600px' }}>
       {/* Add buttons above the iframe */}
       <div className="mb-2 flex space-x-4">
          {/* <button
@@ -95,9 +95,10 @@ const NootIoWrapper: React.FC<NootIoWrapperProps> = ({ farmCoins, addFarmCoins }
         ref={iframeRef}
         src="/noot-io/client/index.html"
         className="w-full h-full border-none"
+        style={{ flex: 1, minHeight: '600px' }}
         title="Noot.io Game"
         allowFullScreen
-        sandbox="allow-scripts allow-same-origin allow-storage-access-by-user-activation allow-forms allow-popups"
+        sandbox="allow-scripts allow-same-origin allow-storage-access-by-user-activation"
       />
       <div className="mt-4 text-white text-center text-sm">
         <p>Tip: Eat smaller cells and food to grow bigger! Avoid larger cells.</p>
