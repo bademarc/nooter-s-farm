@@ -18,7 +18,7 @@ const events = [
     title: "Spring Festival",
     description: "Celebrate the new season with special crops and limited-time animals!",
     date: "May 15 - May 30",
-    image: "/images/guide/farm.jpg",
+    image: "/assets/images/events/spring-festival.jpg",
     type: "Seasonal",
     isHot: true,
     rewards: ["Limited Edition Seeds", "Spring Nooter Skin"],
@@ -28,7 +28,7 @@ const events = [
     title: "Nooter Racing Championship",
     description: "Race your fastest Nooters against other farmers for amazing prizes!",
     date: "June 5 - June 7",
-    image: "/images/guide/Nooter Racing Championship.jpg",
+    image: "/assets/images/events/nooter-racing.jpg",
     type: "Competition",
     isHot: true,
     rewards: ["Golden Trophy", "Racing Nooter", "500 Farm Coins"],
@@ -38,7 +38,7 @@ const events = [
     title: "Crop Exchange Week",
     description: "Trade your crops with other farmers at special exchange rates!",
     date: "June 12 - June 19",
-    image: "/images/guide/Crop Exchange Week.jpg",
+    image: "/assets/images/events/crop-exchange.jpg",
     type: "Community",
     isHot: false,
     rewards: ["Rare Seeds", "Trading Badge"],
@@ -48,7 +48,7 @@ const events = [
     title: "Mystery Seed Hunt",
     description: "Find hidden mystery seeds across the game world for rare plants!",
     date: "June 25 - July 2",
-    image: "/images/guide/Mystery Seed Hunt.jpg",
+    image: "/assets/images/events/mystery-seed.jpg",
     type: "Special",
     isHot: true,
     rewards: ["Mystery Plant", "Explorer Badge", "200 Farm Coins"],
@@ -61,6 +61,31 @@ export default function EventsCarousel() {
   const [showConfetti, setShowConfetti] = useState(false)
   const [registeredEvents, setRegisteredEvents] = useState<number[]>([])
   const { toast } = useToast()
+  const [imagesLoaded, setImagesLoaded] = useState<boolean[]>([])
+
+  // Preload images
+  useEffect(() => {
+    const imagePromises = events.map((event, index) => {
+      return new Promise<void>((resolve) => {
+        const img = new Image();
+        img.src = event.image;
+        img.onload = () => {
+          setImagesLoaded(prev => {
+            const newState = [...prev];
+            newState[index] = true;
+            return newState;
+          });
+          resolve();
+        };
+        img.onerror = () => {
+          console.error(`Failed to load image: ${event.image}`);
+          resolve();
+        };
+      });
+    });
+
+    Promise.all(imagePromises);
+  }, []);
 
   // Debug images on component mount
   useEffect(() => {
@@ -150,9 +175,9 @@ export default function EventsCarousel() {
                 className="w-full h-full object-cover"
                 onError={(e) => {
                   console.error(`Failed to load image: ${events[currentIndex].image}`);
-                  // Fall back to a reliable image
-                  e.currentTarget.src = "/images/guide/farm.jpg";
-                  e.currentTarget.onerror = null; // Prevent infinite loop
+                  // Fallback to a reliable image
+                  e.currentTarget.src = "/assets/images/events/spring-festival.jpg";
+                  e.currentTarget.onerror = null;
                 }}
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent flex flex-col justify-end p-4">
