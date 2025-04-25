@@ -123,7 +123,7 @@ export default function FarmFeed() {
       toast({
         title: "Post shared!",
         description: "Your farm update has been shared with the community!",
-        variant: "success",
+        variant: "default",
       })
     }
   }

@@ -62,6 +62,11 @@ export default function EventsCarousel() {
   const [registeredEvents, setRegisteredEvents] = useState<number[]>([])
   const { toast } = useToast()
 
+  // Debug images on component mount
+  useEffect(() => {
+    console.log("Events carousel images:", events.map(event => event.image));
+  }, []);
+
   const nextSlide = () => {
     setCurrentIndex((prevIndex) => (prevIndex + 1) % events.length)
   }
@@ -104,7 +109,7 @@ export default function EventsCarousel() {
       toast({
         title: "Event Registration Successful!",
         description: `You've registered for ${events.find((e) => e.id === eventId)?.title}!`,
-        variant: "success",
+        variant: "default",
       })
     } else {
       setRegisteredEvents(registeredEvents.filter((id) => id !== eventId))
@@ -143,6 +148,12 @@ export default function EventsCarousel() {
                 src={events[currentIndex].image}
                 alt={events[currentIndex].title}
                 className="w-full h-full object-cover"
+                onError={(e) => {
+                  console.error(`Failed to load image: ${events[currentIndex].image}`);
+                  // Fall back to a reliable image
+                  e.currentTarget.src = "/images/guide/farm.jpg";
+                  e.currentTarget.onerror = null; // Prevent infinite loop
+                }}
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent flex flex-col justify-end p-4">
                 <div className="flex items-center gap-2 mb-2">
