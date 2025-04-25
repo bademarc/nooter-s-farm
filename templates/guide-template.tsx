@@ -1,29 +1,31 @@
-// Guide Template for Other Sections
+// Guide Template for Other Sections (Tab-based)
 // Copy and adapt this template for each game section that needs a guide
 
 // 1. Import at the top of your component file
-import { useGuides } from '../hooks/useGuides';
+import { useGuideContext } from '../context/guide-context';
 import GuideModal from '../components/GuideModal';
 
-// 2. Add inside your component's function body
+// 2. Add state variables to your component
 // Replace 'sectionName' with the actual section name (market, animals, etc.)
-const { shouldShowGuide, markGuideAsViewed, isNootPro } = useGuides();
-const [showGuide, setShowGuide] = useState(false);
+const { shouldShowGuide, markGuideAsViewed, isNootPro } = useGuideContext();
+const [showSectionGuide, setShowSectionGuide] = useState(false);
 
+// 3. Add useEffect to check when the tab becomes active
 useEffect(() => {
-  // Check if guide should be shown on component mount
-  if (shouldShowGuide('sectionName')) {
-    setShowGuide(true);
+  // This will trigger when the activeTab changes to this section
+  if (activeTab === "sectionName" && shouldShowGuide('sectionName')) {
+    setShowSectionGuide(true);
   }
-}, [shouldShowGuide]);
+}, [activeTab, shouldShowGuide]);
 
-const handleCloseGuide = () => {
-  setShowGuide(false);
+// 4. Add handler to close the guide
+const handleCloseSectionGuide = () => {
+  setShowSectionGuide(false);
   markGuideAsViewed('sectionName');
 };
 
-// 3. Add inside your JSX return, typically at the end before the closing tag
-{showGuide && (
+// 5. Add the guide modal to your JSX return, typically at the end before the closing tag
+{showSectionGuide && (
   <GuideModal
     imagePath="/images/guide/sectionName.jpg"
     title="Welcome to Section Name!"
@@ -38,12 +40,13 @@ const handleCloseGuide = () => {
         </ol>
       </div>
     }
-    onClose={handleCloseGuide}
+    onClose={handleCloseSectionGuide}
     isNootPro={isNootPro}
   />
 )}
 
 // Notes:
-// 1. Make sure to have a corresponding image at the specified path
+// 1. Make sure to have a corresponding image at the specified path (/images/guide/sectionName.jpg)
 // 2. Customize the content for each section
-// 3. Update the section name in useGuides.tsx if adding a new section type 
+// 3. Make sure 'sectionName' is listed in the GuideSection type in useGuides.tsx
+// 4. The activeTab variable should be available in your component 

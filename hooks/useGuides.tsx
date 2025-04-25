@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 
-type GuideSection = 'farm' | 'market' | 'animals' | 'crafting' | 'defend' | 'social' | 'quests';
+type GuideSection = 'farm' | 'market' | 'animals' | 'crafting' | 'defend' | 'social' | 'quests' | 'profile' | 'swap' | 'platformer';
 
 export function useGuides() {
   const [viewedGuides, setViewedGuides] = useState<Record<GuideSection, boolean>>({
@@ -10,7 +10,10 @@ export function useGuides() {
     crafting: false,
     defend: false,
     social: false,
-    quests: false
+    quests: false,
+    profile: false,
+    swap: false,
+    platformer: false
   });
   
   const [isNootPro, setIsNootPro] = useState(false);
@@ -64,7 +67,10 @@ export function useGuides() {
       crafting: false,
       defend: false,
       social: false,
-      quests: false
+      quests: false,
+      profile: false,
+      swap: false,
+      platformer: false
     };
     
     setViewedGuides(resetGuides);
