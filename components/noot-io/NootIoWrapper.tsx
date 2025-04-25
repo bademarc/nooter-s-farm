@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 interface NootIoWrapperProps {
   farmCoins: number;
@@ -10,6 +10,8 @@ interface NootIoWrapperProps {
 const NootIoWrapper: React.FC<NootIoWrapperProps> = ({ farmCoins, addFarmCoins }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const isInitialRender = useRef(true);
+  const [gameMode, setGameMode] = useState<'offline' | 'online' | null>(null);
+  const [iframeLoaded, setIframeLoaded] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -22,6 +24,11 @@ const NootIoWrapper: React.FC<NootIoWrapperProps> = ({ farmCoins, addFarmCoins }
         if (event.data.action === 'earn-coins') {
           // Add coins when the player earns them in the game
           addFarmCoins(event.data.coins || 0);
+        } else if (event.data.action === 'game-mode-changed') {
+          // Update game mode state when it changes in the iframe
+          setGameMode(event.data.mode);
+        } else if (event.data.action === 'game-started') {
+          console.log('Game started in mode:', event.data.mode);
         }
       }
     };
@@ -42,55 +49,79 @@ const NootIoWrapper: React.FC<NootIoWrapperProps> = ({ farmCoins, addFarmCoins }
     }
 
     const iframe = iframeRef.current;
-    if (iframe && iframe.contentWindow) {
-      // Wait for iframe to load
-      const onIframeLoad = () => {
-        // Send initial coins data to the game
-        iframe.contentWindow?.postMessage({
-          type: 'noot-io-init',
-          farmCoins
-        }, '*');
-      };
-
-      if (iframe.complete) {
-        onIframeLoad();
-      } else {
-        iframe.addEventListener('load', onIframeLoad);
-        return () => iframe.removeEventListener('load', onIframeLoad);
-      }
+    if (iframe && iframe.contentWindow && iframeLoaded) {
+      // Send initial coins data to the game
+      iframe.contentWindow.postMessage({
+        type: 'noot-io-init',
+        farmCoins
+      }, '*');
+      
+      console.log('Sent initial farm coins to game:', farmCoins);
     }
-  }, [farmCoins]);
+  }, [farmCoins, iframeLoaded]);
 
   // Function to send commands to the iframe
   const sendCommandToGame = (command: string) => {
     const iframe = iframeRef.current;
     if (iframe && iframe.contentWindow) {
+      console.log('Sending command to game:', command);
       iframe.contentWindow.postMessage({
         type: 'noot-io-command',
         command: command
       }, "*"); // Use '*' as the target origin when sending command to iframe
+      
+      // Update local game mode state
+      if (command === 'start-offline') {
+        setGameMode('offline');
+      } else if (command === 'start-online') {
+        setGameMode('online');
+      }
     } else {
       console.error("Cannot send command: Iframe not ready.");
     }
   };
+  
+  // Handle iframe load event
+  const handleIframeLoad = () => {
+    setIframeLoaded(true);
+    console.log('Noot.io iframe loaded');
+    
+    // Auto-start in offline mode after a short delay
+    setTimeout(() => {
+      if (!gameMode) {
+        console.log('Auto-starting game in offline mode');
+        sendCommandToGame('start-offline');
+      }
+    }, 1500);
+  };
 
   return (
     <div className="w-full h-full flex flex-col items-center" style={{ minHeight: '600px' }}>
-      {/* Add buttons above the iframe */}
+      {/* Game mode selection buttons */}
       <div className="mb-2 flex space-x-4">
-         {/* <button
-           onClick={() => sendCommandToGame('start-online')} // Assuming default is online or handle explicitly
-           className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition duration-150"
+         <button
+           onClick={() => sendCommandToGame('start-online')}
+           className={`px-4 py-2 ${gameMode === 'online' ? 'bg-blue-600' : 'bg-gray-600'} hover:bg-blue-700 text-white rounded transition duration-150`}
          >
-           Play Online (Implicit)
-         </button> */}
+           Play Online
+         </button>
          <button
            onClick={() => sendCommandToGame('start-offline')}
-           className="px-4 py-2 bg-white text-black hover:bg-white/90 border-0 rounded-none text-sm font-medium noot-text transition-colors duration-200"
+           className={`px-4 py-2 ${gameMode === 'offline' ? 'bg-green-600' : 'bg-gray-600'} hover:bg-green-700 text-white rounded transition duration-150`}
          >
            Play Offline (vs Bots)
          </button>
       </div>
+      
+      {/* Game status */}
+      {gameMode && (
+        <div className="mb-2 text-sm">
+          <span className={`px-2 py-1 rounded ${gameMode === 'offline' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>
+            {gameMode === 'offline' ? 'Offline Mode' : 'Online Mode'}
+          </span>
+        </div>
+      )}
+      
       <iframe
         ref={iframeRef}
         src="/noot-io/client/index.html"
@@ -99,9 +130,11 @@ const NootIoWrapper: React.FC<NootIoWrapperProps> = ({ farmCoins, addFarmCoins }
         title="Noot.io Game"
         allowFullScreen
         sandbox="allow-scripts allow-same-origin allow-storage-access-by-user-activation"
+        onLoad={handleIframeLoad}
       />
       <div className="mt-4 text-white text-center text-sm">
         <p>Tip: Eat smaller cells and food to grow bigger! Avoid larger cells.</p>
+        <p className="mt-1">Press SPACE to split your cell, W to eject mass.</p>
         <p className="text-yellow-400 mt-2">
           Every 100 mass points you gain adds 10 Farm Coins!
         </p>

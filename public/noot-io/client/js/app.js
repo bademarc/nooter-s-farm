@@ -29,7 +29,7 @@ let mouseX = 0;
 let mouseY = 0;
 const colors = ['#F44336', '#E91E63', '#9C27B0', '#673AB7', '#3F51B5', '#2196F3', '#03A9F4', '#00BCD4', '#009688', '#4CAF50', '#8BC34A', '#CDDC39', '#FFEB3B', '#FFC107', '#FF9800', '#FF5722'];
 
-// --- Noot Wrapper Communication --- (Moved listener into initApp)
+// --- Noot Wrapper Communication ---
 let initialFarmCoins = 0;
 let lastKnownMass = 0;
 let parentOrigin = '*'; // IMPORTANT: Replace '*' with the actual origin of the parent window in production
@@ -43,6 +43,34 @@ function sendEarnedCoins(coins) {
       action: 'earn-coins',
       coins: coins
     }, parentOrigin); // Use the stored origin
+  }
+}
+
+// Function to notify the wrapper about mode changes
+function notifyWrapperOfModeChange(mode) {
+  try {
+    window.parent.postMessage({
+      type: 'noot-io',
+      action: 'game-mode-changed',
+      mode: mode // 'offline' or 'online'
+    }, parentOrigin);
+    console.log(`[Noot.io App] Notified wrapper about mode change: ${mode}`);
+  } catch (e) {
+    console.error('[Noot.io App] Error notifying wrapper:', e);
+  }
+}
+
+// Function to notify the wrapper when game starts
+function notifyWrapperOfGameStart(mode) {
+  try {
+    window.parent.postMessage({
+      type: 'noot-io',
+      action: 'game-started',
+      mode: mode // 'offline' or 'online'
+    }, parentOrigin);
+    console.log(`[Noot.io App] Notified wrapper about game start: ${mode}`);
+  } catch (e) {
+    console.error('[Noot.io App] Error notifying wrapper:', e);
   }
 }
 
@@ -62,6 +90,96 @@ function checkEarnedCoins(currentMass) {
   lastKnownMass = currentMass; // Update last known mass
 }
 // --- End Noot Wrapper Communication ---
+
+// Function to initialize offline mode
+function initOfflineMode() {
+  console.log("[Noot.io App] Initializing OFFLINE mode...");
+  isOfflineMode = true;
+  isGameInitialized = true;
+  
+  // Notify wrapper
+  notifyWrapperOfModeChange('offline');
+  
+  // Show start menu
+  const startMenu = document.getElementById('startMenu');
+  if (startMenu) startMenu.style.display = 'block';
+  
+  // Hide game area until game starts
+  const gameWrapper = document.getElementById('gameAreaWrapper');
+  if (gameWrapper) gameWrapper.style.display = 'none';
+  
+  // Activate the offline button visually
+  const offlineButton = document.getElementById('offlineButton');
+  const onlineButton = document.getElementById('onlineButton');
+  if (offlineButton) {
+    offlineButton.classList.add('active');
+    if (onlineButton) onlineButton.classList.remove('active');
+  }
+  
+  console.log("[Noot.io App] OFFLINE mode initialized successfully.");
+}
+
+// Function to initialize online mode
+function initOnlineMode() {
+  console.log("[Noot.io App] Initializing ONLINE mode...");
+  isOfflineMode = false;
+  
+  // Notify wrapper
+  notifyWrapperOfModeChange('online');
+  
+  // Activate the online button visually
+  const onlineButton = document.getElementById('onlineButton');
+  const offlineButton = document.getElementById('offlineButton');
+  if (onlineButton) {
+    onlineButton.classList.add('active');
+    if (offlineButton) offlineButton.classList.remove('active');
+  }
+  
+  // Show loading indicator
+  const loadingIndicator = document.getElementById('loading');
+  if (loadingIndicator) loadingIndicator.style.display = 'block';
+  
+  // Initialize the socket connection
+  try {
+    const websocketURL = getWebSocketURL();
+    socket = io(websocketURL, { /* options */ });
+    setupSocketListeners(); // Setup listeners for real socket
+    
+    socket.once('connect', () => {
+      console.log("[Noot.io App] Socket connected for online mode.");
+      isGameInitialized = true;
+      if (loadingIndicator) loadingIndicator.style.display = 'none';
+      
+      // Display start menu
+      const startMenu = document.getElementById('startMenu');
+      if (startMenu) startMenu.style.display = 'block';
+    });
+    
+    socket.once('connect_error', (err) => {
+      console.error("[Noot.io App] Initial connection failed:", err.message);
+      isGameInitialized = false;
+      if (loadingIndicator) loadingIndicator.style.display = 'none';
+      
+      // Show error message
+      const serverStatus = document.getElementById('server-status');
+      if (serverStatus) serverStatus.style.display = 'block';
+      
+      // Switch to offline mode automatically
+      setTimeout(() => initOfflineMode(), 1000);
+    });
+  } catch (error) {
+    console.error("[Noot.io App] Failed to initialize socket connection:", error);
+    isGameInitialized = false;
+    if (loadingIndicator) loadingIndicator.style.display = 'none';
+    
+    // Show error message
+    const serverStatus = document.getElementById('server-status');
+    if (serverStatus) serverStatus.style.display = 'block';
+    
+    // Switch to offline mode automatically
+    setTimeout(() => initOfflineMode(), 1000);
+  }
+}
 
 // Game Constants (Added for Prediction)
 const START_MASS = 10; // Assuming this matches server START_MASS
@@ -1428,8 +1546,171 @@ function gameLoop() {
 }
 
 
+// --- Function to update wrapper about mode changes ---
+function notifyWrapperOfModeChange(mode) {
+  try {
+    window.parent.postMessage({
+      type: 'noot-io',
+      action: 'game-mode-changed',
+      mode: mode // 'offline' or 'online'
+    }, parentOrigin);
+    console.log(`[Noot.io App] Notified wrapper about mode change: ${mode}`);
+  } catch (e) {
+    console.error('[Noot.io App] Error notifying wrapper:', e);
+  }
+}
+
+// --- Function to notify wrapper when game starts ---
+function notifyWrapperOfGameStart(mode) {
+  try {
+    window.parent.postMessage({
+      type: 'noot-io',
+      action: 'game-started',
+      mode: mode // 'offline' or 'online'
+    }, parentOrigin);
+    console.log(`[Noot.io App] Notified wrapper about game start: ${mode}`);
+  } catch (e) {
+    console.error('[Noot.io App] Error notifying wrapper:', e);
+  }
+}
+
+// --- Offline Mode Initialization ---
+function initOfflineMode() {
+  console.log("[Noot.io App] Initializing OFFLINE mode...");
+  isOfflineMode = true;
+  isGameInitialized = true;
+  
+  // Notify wrapper
+  notifyWrapperOfModeChange('offline');
+  
+  // Show start menu
+  const startMenu = document.getElementById('startMenu');
+  if (startMenu) startMenu.style.display = 'block';
+  
+  // Hide game area until game starts
+  const gameWrapper = document.getElementById('gameAreaWrapper');
+  if (gameWrapper) gameWrapper.style.display = 'none';
+  
+  // Activate the offline button visually
+  const offlineButton = document.getElementById('offlineButton');
+  const onlineButton = document.getElementById('onlineButton');
+  if (offlineButton) {
+    offlineButton.classList.add('active');
+    if (onlineButton) onlineButton.classList.remove('active');
+  }
+  
+  console.log("[Noot.io App] OFFLINE mode initialized successfully.");
+}
+
+// --- Online Mode Initialization ---
+function initOnlineMode() {
+  console.log("[Noot.io App] Initializing ONLINE mode...");
+  isOfflineMode = false;
+  
+  // Notify wrapper
+  notifyWrapperOfModeChange('online');
+  
+  // Activate the online button visually
+  const onlineButton = document.getElementById('onlineButton');
+  const offlineButton = document.getElementById('offlineButton');
+  if (onlineButton) {
+    onlineButton.classList.add('active');
+    if (offlineButton) offlineButton.classList.remove('active');
+  }
+  
+  // Show loading indicator
+  const loadingIndicator = document.getElementById('loading');
+  if (loadingIndicator) loadingIndicator.style.display = 'block';
+  
+  // Initialize the socket connection
+  try {
+    const websocketURL = getWebSocketURL();
+    socket = io(websocketURL, { /* options */ });
+    setupSocketListeners(); // Setup listeners for real socket
+    
+    socket.once('connect', () => {
+      console.log("[Noot.io App] Socket connected for online mode.");
+      isGameInitialized = true;
+      if (loadingIndicator) loadingIndicator.style.display = 'none';
+      
+      // Display start menu
+      const startMenu = document.getElementById('startMenu');
+      if (startMenu) startMenu.style.display = 'block';
+    });
+    
+    socket.once('connect_error', (err) => {
+      console.error("[Noot.io App] Initial connection failed:", err.message);
+      isGameInitialized = false;
+      if (loadingIndicator) loadingIndicator.style.display = 'none';
+      
+      // Show error message
+      const serverStatus = document.getElementById('server-status');
+      if (serverStatus) serverStatus.style.display = 'block';
+      
+      // Switch to offline mode automatically
+      setTimeout(() => initOfflineMode(), 1000);
+    });
+  } catch (error) {
+    console.error("[Noot.io App] Failed to initialize socket connection:", error);
+    isGameInitialized = false;
+    if (loadingIndicator) loadingIndicator.style.display = 'none';
+    
+    // Show error message
+    const serverStatus = document.getElementById('server-status');
+    if (serverStatus) serverStatus.style.display = 'block';
+    
+    // Switch to offline mode automatically
+    setTimeout(() => initOfflineMode(), 1000);
+  }
+}
+
+// --- Setup mode selection buttons ---
+function setupModeButtons() {
+  const onlineButton = document.getElementById('onlineButton');
+  const offlineButton = document.getElementById('offlineButton');
+  
+  if (offlineButton) {
+    offlineButton.addEventListener('click', () => {
+      if (isGameInitialized && isGameRunning) return; // Don't change mode during gameplay
+      
+      console.log("[Noot.io App] Offline button clicked");
+      initOfflineMode();
+    });
+  } else {
+    console.error("[Noot.io App] Could not find offline button element!");
+  }
+  
+  if (onlineButton) {
+    onlineButton.addEventListener('click', () => {
+      if (isGameInitialized && isGameRunning) return; // Don't change mode during gameplay
+      
+      console.log("[Noot.io App] Online button clicked");
+      initOnlineMode();
+    });
+  } else {
+    console.error("[Noot.io App] Could not find online button element!");
+  }
+  
+  // Add direct method to play offline mode
+  window.playOffline = function() {
+    console.log("[Noot.io App] Direct offline mode requested");
+    initOfflineMode();
+    setTimeout(() => {
+      const startButton = document.getElementById('startButton');
+      if (startButton) startButton.click();
+    }, 500);
+  };
+  
+  // Check if the "Play Offline" button exists and wire it up
+  const playOfflineButton = document.getElementById('play-offline-btn');
+  if (playOfflineButton) {
+    playOfflineButton.addEventListener('click', function() {
+      window.playOffline();
+    });
+  }
+}
+
 // Start game function (called by button click or restart)
-// Modify startGame to accept an optional mode hint, but rely on isOfflineMode
 function startGame() {
     console.log(`[Noot.io App] startGame called. isOfflineMode: ${isOfflineMode}`);
     const restartButton = document.getElementById('restart-button');
@@ -1497,23 +1778,42 @@ function startGame() {
         }
         
         resizeCanvas(); // Ensure canvas size is correct
+        
+        // Notify wrapper that game has started
+        notifyWrapperOfGameStart('offline');
+        
         console.log("[Noot.io App] Offline game setup complete. Player:", player);
 
     } else { // Online Mode
         if (!socket || !socket.connected) {
             console.error("Socket not ready for online play!");
-            // Display error to user? Show start menu again?
-             const startMenu = document.getElementById('startMenu');
-             if (startMenu) startMenu.style.display = 'block';
-             isGameInitialized = false; // Allow retrying connection/mode selection
+            // Display error to user
+            const startMenu = document.getElementById('startMenu');
+            if (startMenu) startMenu.style.display = 'block';
+            
+            // Show server status error
+            const serverStatus = document.getElementById('server-status');
+            if (serverStatus) serverStatus.style.display = 'block';
+            
+            isGameInitialized = false; // Allow retrying connection/mode selection
+            
+            // Switch to offline mode automatically with delay
+            setTimeout(() => {
+              initOfflineMode();
+              startGame(); // Try again with offline mode
+            }, 1500);
+            
             return;
         }
         console.log("[Noot.io App] Requesting to join ONLINE game with name:", nickname);
         socket.emit('joinGame', { nickname: nickname });
+        
+        // Notify wrapper that game has started
+        notifyWrapperOfGameStart('online');
+        
         // isGameRunning will be set true by the 'initGame' event from server
     }
 }
-
 
 // --- Initialization ---
 async function initApp() {
@@ -1568,23 +1868,7 @@ async function initApp() {
             if (isGameInitialized && isGameRunning) return; // Don't change mode during gameplay
             
             console.log("[Noot.io App] Offline button clicked");
-            
-            // Toggle active class
-            offlineButton.classList.add('active');
-            if (onlineButton) onlineButton.classList.remove('active');
-            
-            // Set mode
-            isOfflineMode = true;
-            isGameInitialized = true;
-            
-            // Hide loading indicator
-            if (loadingIndicator) loadingIndicator.style.display = 'none';
-            
-            // Display start menu
-            const startMenu = document.getElementById('startMenu');
-            if (startMenu) startMenu.style.display = 'block';
-            
-            console.log("[Noot.io App] Mode set to OFFLINE with 50 bots and 10 big bots.");
+            initOfflineMode();
         });
     } else {
         console.error("[Noot.io App] Could not find offline button element!");
@@ -1595,49 +1879,7 @@ async function initApp() {
             if (isGameInitialized && isGameRunning) return; // Don't change mode during gameplay
             
             console.log("[Noot.io App] Online button clicked");
-            
-            // Toggle active class
-            onlineButton.classList.add('active');
-            if (offlineButton) offlineButton.classList.remove('active');
-            
-            // Set mode
-            isOfflineMode = false;
-            
-            // Show loading indicator
-            if (loadingIndicator) loadingIndicator.style.display = 'block';
-            
-            // Initialize socket connection
-            try {
-                const websocketURL = getWebSocketURL();
-                socket = io(websocketURL, { /* options */ });
-                setupSocketListeners(); // Setup listeners for real socket
-                
-                socket.once('connect', () => {
-                    console.log("[Noot.io App] Socket connected for online mode.");
-                    isGameInitialized = true;
-                    if (loadingIndicator) loadingIndicator.style.display = 'none';
-                    
-                    // Display start menu
-                    const startMenu = document.getElementById('startMenu');
-                    if (startMenu) startMenu.style.display = 'block';
-                });
-                
-                socket.once('connect_error', (err) => {
-                    console.error("[Noot.io App] Initial connection failed:", err.message);
-                    isGameInitialized = false;
-                    if (loadingIndicator) loadingIndicator.style.display = 'none';
-                    alert("Failed to connect to online server. Please try offline mode instead.");
-                    // Auto-switch to offline mode on connection error
-                    if (offlineButton) offlineButton.click();
-                });
-            } catch (error) {
-                console.error("[Noot.io App] Failed to initialize socket connection:", error);
-                isGameInitialized = false;
-                if (loadingIndicator) loadingIndicator.style.display = 'none';
-                alert("Error setting up online mode. Switching to offline mode.");
-                // Auto-switch to offline mode on error
-                if (offlineButton) offlineButton.click();
-            }
+            initOnlineMode();
         });
     } else {
         console.error("[Noot.io App] Could not find online button element!");
@@ -1658,6 +1900,7 @@ async function initApp() {
             // Show loading indicator
             if (loadingIndicator) loadingIndicator.style.display = 'block';
             
+            
             // Start the game with a slight delay to allow loading indicator to display
             setTimeout(() => {
                 startGame();
@@ -1669,10 +1912,11 @@ async function initApp() {
         console.error("[Noot.io App] Could not find start button element!");
     }
 
-    // Add listener for restart button (using the already defined variable)
+    // Add listener for restart button
     if (restartButton) {
         restartButton.addEventListener('click', () => {
             // Show loading indicator
+            const loadingIndicator = document.getElementById('loading');
             if (loadingIndicator) loadingIndicator.style.display = 'block';
             
             // Restart should respect the current mode (isOfflineMode)
@@ -1690,9 +1934,9 @@ async function initApp() {
 
     // --- Wrapper Command/Init Listener ---
     window.addEventListener('message', async (event) => {
-        // IMPORTANT: Validate event.origin in production
-        // if (event.origin !== 'YOUR_EXPECTED_ORIGIN') { console.warn("Ignoring message from wrong origin:", event.origin); return; }
-
+        // Save origin for future communication
+        parentOrigin = event.origin === 'null' ? '*' : event.origin;
+        
         if (event.data && event.data.type === 'noot-io-command') {
             if (isGameInitialized && isGameRunning) { // Don't re-init if game is actively running
                 console.log("[Noot.io App] Game already running, ignoring command.");
@@ -1714,72 +1958,33 @@ async function initApp() {
 
             if (command === 'start-offline') {
                  if (isGameInitialized) return; // Double check guard
-                isOfflineMode = true;
-                isGameInitialized = true; // Mark as initialized (mode selected)
-                // Show start menu to enter name etc.
-                const startMenu = document.getElementById('startMenu');
-                if (startMenu) startMenu.style.display = 'block';
-                 const gameWrapper = document.getElementById('gameAreaWrapper');
-                 if (gameWrapper) gameWrapper.style.display = 'none'; // Hide game area until startGame
-                console.log("[Noot.io App] Mode set to OFFLINE. Ready for player name.");
-
+                 initOfflineMode();
+                 
+                // Auto-start game after a short delay if requested from wrapper
+                setTimeout(() => {
+                    const startButton = document.getElementById('startButton');
+                    if (startButton) startButton.click();
+                }, 500);
             } else if (command === 'start-online') {
                  if (isGameInitialized) return; // Double check guard
-                isOfflineMode = false;
-                // Initialize the REAL socket connection
-                try {
-                    const websocketURL = getWebSocketURL();
-                    socket = io(websocketURL, { /* options */ });
-                    setupSocketListeners(); // Setup listeners ONLY for real socket
-
-                    // Wait for connection confirmation before marking initialized? Or handle in listeners.
-                     socket.once('connect', () => { // Use once to avoid multiple calls if reconnects
-                        console.log("[Noot.io App] Socket connected for online mode.");
-                         isGameInitialized = true; // Mark as initialized (mode selected + connected)
-                         // Show start menu to enter name etc.
-                         const startMenu = document.getElementById('startMenu');
-                         if (startMenu) startMenu.style.display = 'block';
-                          const gameWrapper = document.getElementById('gameAreaWrapper');
-                          if (gameWrapper) gameWrapper.style.display = 'none'; // Hide game area
-                     });
-                     socket.once('connect_error', (err) => { // Use once
-                         console.error("[Noot.io App] Initial connection failed:", err.message);
-                         isGameInitialized = false; // Reset flag on failure
-                          // Provide user feedback (e.g., alert or message on screen)
-                          alert("Failed to connect to online server. Please try offline mode instead.");
-                     });
-
-                } catch (error) {
-                    console.error("[Noot.io App] Failed to initialize real socket connection:", error);
-                    isGameInitialized = false;
-                    alert("Error setting up online mode. Switching to offline mode.");
-                }
+                 initOnlineMode();
             }
         } else if (event.data && event.data.type === 'noot-io-init') {
             // Handle initial farm coins data
             initialFarmCoins = event.data.farmCoins || 0;
-            parentOrigin = event.origin;
+            parentOrigin = event.origin === 'null' ? '*' : event.origin;
             console.log('[Noot.io Game] Received initial farm coins:', initialFarmCoins);
         }
     });
 
-    // Initial call to game loop
-    gameLoop();
-    
     // Add direct method to play offline mode
     window.playOffline = function() {
         console.log("[Noot.io App] Direct offline mode requested");
-        if (offlineButton) {
-            offlineButton.click();
-            setTimeout(() => {
-                const startButton = document.getElementById('startButton');
-                if (startButton) {
-                    startButton.click();
-                }
-            }, 500);
-        } else {
-            console.error("[Noot.io App] Offline button not found!");
-        }
+        initOfflineMode();
+        setTimeout(() => {
+            const startButton = document.getElementById('startButton');
+            if (startButton) startButton.click();
+        }, 500);
     };
     
     // Check if the "Play Offline" button exists and wire it up
@@ -1789,16 +1994,18 @@ async function initApp() {
             window.playOffline();
         });
     }
+
+    // Initial call to game loop
+    gameLoop();
     
     // Add a safety check to auto-click the offline button if none are active after a short delay
     setTimeout(() => {
         if (!isGameInitialized && !isGameRunning) {
             console.log("[Noot.io App] No mode selected, defaulting to offline mode");
-            if (offlineButton) offlineButton.click();
+            initOfflineMode();
         }
     }, 1000);
 }
-
 
 // Wait for the DOM to be fully loaded before initializing
 document.addEventListener('DOMContentLoaded', initApp);

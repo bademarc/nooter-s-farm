@@ -10,6 +10,48 @@
     <!-- Audio -->
     <audio id="split_cell" src="audio/split.mp3"></audio>
     <audio id="spawn_cell" src="audio/spawn.mp3"></audio>
+    <style>
+        .mode-button {
+            margin: 5px;
+            padding: 10px 20px;
+            font-size: 14px;
+            cursor: pointer;
+            background-color: #555;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            transition: background-color 0.3s;
+        }
+        .mode-button.active {
+            background-color: #008CBA;
+            font-weight: bold;
+        }
+        .mode-button:hover {
+            background-color: #777;
+        }
+        .mode-button.active:hover {
+            background-color: #0077A0;
+        }
+        #server-status {
+            color: #FF5722;
+            display: none;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        #server-status.hidden {
+            display: none;
+        }
+        #loading {
+            display: none;
+            margin-top: 10px;
+        }
+        #restart-button {
+            display: none;
+            background-color: #4CAF50;
+            margin: 10px auto;
+            padding: 10px 20px;
+        }
+    </style>
 </head>
 <body>
     <div id="gameAreaWrapper">
@@ -23,16 +65,28 @@
            <input type="image" id="feed" class="feed" src="img/feed.png" alt="feedBtn">
         </div>
         <canvas tabindex="1" id="cvs"></canvas>
+        <button id="restart-button">Play Again</button>
     </div>
     <div id="startMenuWrapper">
         <div id="startMenu">
             <p>Noot.io</p>
+            
+            <!-- Game Mode Selection -->
+            <div id="game-mode-selection">
+                <h3>Select Game Mode</h3>
+                <button id="onlineButton" class="mode-button">Online Mode</button>
+                <button id="offlineButton" class="mode-button">Offline Mode (vs Bots)</button>
+                <div id="server-status">Server connection failed. Playing in offline mode.</div>
+                <div id="loading">Connecting...</div>
+            </div>
+            
             <input type="text" tabindex="0" autofocus placeholder="Enter your name here" id="playerNameInput" maxlength="25" />
             <b class="input-error">Nick must be alphanumeric characters only!</b>
             <br />
             <a onclick="document.getElementById('spawn_cell').play();"><button id="startButton">Play</button></a>
             <button id="spectateButton">Spectate</button>
             <button id="settingsButton">Settings</button>
+            <button id="play-offline-btn" style="margin-top: 10px; background-color: #4CAF50;">Play Offline Now</button>
             <br />
             <div id="settings">
                 <h3>Settings</h3>
@@ -54,6 +108,7 @@
                     <li>A player's mass is the number of food particles eaten.</li>
                     <li>Objective: Try to get fat and eat other players.</li>
                     <li>Earn Farm Coins for every 100 mass you gain!</li>
+                    <li>Press SPACE to split, W to eject mass.</li>
                 </ul>
             </div>
         </div>
