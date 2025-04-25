@@ -17,7 +17,9 @@ const io = socketIO(server, {
   cors: {
     origin: "*", // Also configure Socket.IO CORS
     methods: ["GET", "POST"]
-  }
+  },
+  pingInterval: 30000, // Send pings every 30 seconds (default 25s)
+  pingTimeout: 60000   // Wait 60 seconds for pong response (default 20s)
 });
 
 // Game constants
