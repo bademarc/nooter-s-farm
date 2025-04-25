@@ -352,6 +352,8 @@ function gameLoop() {
         render.drawGrid(global, player, global.screen, graph);
         foods.forEach(food => {
             let position = getPosition(food, player, global.screen);
+            // *** NEW Log: Check position and food object before drawing ***
+            // console.log('Drawing food:', food, 'at position:', position);
             render.drawFood(position, food, graph);
         });
         fireFood.forEach(fireFood => {
