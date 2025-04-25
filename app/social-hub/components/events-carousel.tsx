@@ -18,7 +18,7 @@ const events = [
     title: "Spring Festival",
     description: "Celebrate the new season with special crops and limited-time animals!",
     date: "May 15 - May 30",
-    image: "/placeholder.svg?height=150&width=300",
+    image: "/images/guide/farm.jpg",
     type: "Seasonal",
     isHot: true,
     rewards: ["Limited Edition Seeds", "Spring Nooter Skin"],
@@ -140,7 +140,7 @@ export default function EventsCarousel() {
               className="absolute inset-0"
             >
               <img
-                src={events[currentIndex].image || "/placeholder.svg"}
+                src={events[currentIndex].image}
                 alt={events[currentIndex].title}
                 className="w-full h-full object-cover"
               />

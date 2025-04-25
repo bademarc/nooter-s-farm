@@ -15,7 +15,7 @@ export function SocialFeed() {
       id: 1,
       author: {
         name: "NootExplorer",
-        avatar: "/avatars/noot1.png",
+        avatar: "/images/nooter.png",
         verified: true,
       },
       content: "Just completed the Ancient Ruins quest! Found some rare artifacts and earned 500 XP. Who wants to join me for the Forest Expedition next?",
@@ -24,14 +24,14 @@ export function SocialFeed() {
       comments: 5,
       liked: false,
       saved: false,
-      media: "/images/quest-complete.jpg",
+      media: "/images/guide/Ancient Ruins quest.jpg",
       tags: ["QuestComplete", "AncientRuins"]
     },
     {
       id: 2,
       author: {
         name: "NootMaster99",
-        avatar: "/avatars/noot2.png",
+        avatar: "/images/nooter.png",
         verified: false,
       },
       content: "Trading rare items at the marketplace tomorrow. Looking for enchanted boots and magical scrolls. I have plenty of healing potions to offer!",
@@ -47,7 +47,7 @@ export function SocialFeed() {
       id: 3,
       author: {
         name: "AdventureNoot",
-        avatar: "/avatars/noot3.png",
+        avatar: "/images/nooter.png",
         verified: true,
       },
       content: "Reached level 50 today! The journey has been incredible. Thanks to everyone who helped along the way. Special shoutout to the Noot Guild!",
@@ -56,7 +56,7 @@ export function SocialFeed() {
       comments: 32,
       liked: false,
       saved: false,
-      media: "/images/level-up.jpg",
+      media: "/images/guide/level 50 today.jpg",
       tags: ["LevelUp", "Milestone"]
     },
   ])
@@ -96,7 +96,7 @@ export function SocialFeed() {
       id: Date.now(),
       author: {
         name: "YourNootName",
-        avatar: "/avatars/user.png",
+        avatar: "/images/nooter.png",
         verified: false,
       },
       content: newPostContent,
@@ -120,7 +120,7 @@ export function SocialFeed() {
         <form onSubmit={handleSubmitPost} className="space-y-4">
           <div className="flex items-start gap-3">
             <Avatar className="w-10 h-10 border border-[#333]">
-              <AvatarImage src="/avatars/user.png" alt="Your Avatar" />
+              <AvatarImage src="/images/nooter.png" alt="Your Avatar" />
               <AvatarFallback>YN</AvatarFallback>
             </Avatar>
             <Input

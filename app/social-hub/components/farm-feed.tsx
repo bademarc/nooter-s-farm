@@ -2,21 +2,21 @@
 
 import { useState, useEffect } from "react"
 import { Heart, MessageCircle, Share2, MoreHorizontal, Award } from "lucide-react"
-import { Button } from "../../components/ui/button"
-import { Textarea } from "../../components/ui/textarea"
-import { Avatar } from "../../components/ui/avatar"
-import { AvatarImage } from "../../components/ui/avatar"
-import { AvatarFallback } from "../../components/ui/avatar"
-import { CardContent } from "../../components/ui/card"
-import { CardFooter } from "../../components/ui/card"
-import { CardHeader } from "../../components/ui/card"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../components/ui/dropdown-menu"
+import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
+import { Avatar } from "@/components/ui/avatar"
+import { AvatarImage } from "@/components/ui/avatar"
+import { AvatarFallback } from "@/components/ui/avatar"
+import { CardContent } from "@/components/ui/card"
+import { CardFooter } from "@/components/ui/card"
+import { CardHeader } from "@/components/ui/card"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { motion, AnimatePresence } from "framer-motion"
-import { useToast } from "../../hooks/use-toast"
-import { AnimatedCard } from "../../components/ui/animated-card"
-import { AnimatedBadge } from "../../components/ui/animated-badge"
-import { ShimmerButton } from "../../components/ui/shimmer-button"
-import { Confetti } from "../../components/ui/confetti"
+import { useToast } from "@/hooks/use-toast"
+import { AnimatedCard } from "@/components/ui/animated-card"
+import { AnimatedBadge } from "@/components/ui/animated-badge"
+import { ShimmerButton } from "@/components/ui/shimmer-button"
+import { Confetti } from "@/components/ui/confetti"
 
 // Sample feed data
 const feedItems = [
@@ -102,7 +102,7 @@ export default function FarmFeed() {
         id: Date.now(),
         user: {
           name: "FarmerJoe123",
-          avatar: "/placeholder.svg?height=40&width=40",
+          avatar: "/images/nooter.png",
           level: 42,
           isPremium: false,
         },
@@ -234,7 +234,7 @@ export default function FarmFeed() {
             <p className="mb-3">{item.content}</p>
             {item.image && (
               <motion.div whileHover={{ scale: 1.01 }} className="rounded-lg overflow-hidden bg-muted">
-                <img src={item.image || "/placeholder.svg"} alt="Post content" className="w-full h-auto object-cover" />
+                <img src={item.image} alt="Post content" className="w-full h-auto object-cover" />
               </motion.div>
             )}
           </CardContent>
