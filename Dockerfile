@@ -7,22 +7,30 @@ FROM node:${NODE_VERSION}-slim AS base
 
 LABEL fly_launch_runtime="Node.js (Noot.io Backend)"
 
-# Set working directory *inside* the backend folder within the image
-WORKDIR /app/backend
+# Set working directory *inside* the backend/server folder within the image
+WORKDIR /app/backend/server
 
-# Copy backend package files ONLY into the WORKDIR
-COPY backend/package.json backend/package-lock.json* ./
+# Copy backend package files ONLY into the /app/backend directory first
+# This assumes the package.json relevant to the server is in /backend, not /backend/server
+COPY backend/package.json backend/package-lock.json* /app/backend/
 # Allow package-lock.json to be optional
 
-# Install backend dependencies ONLY using npm
+# Install backend dependencies ONLY using npm in the /app/backend directory
 # Use --omit=dev to avoid installing devDependencies
-RUN npm install --omit=dev
+RUN npm install --prefix /app/backend --omit=dev
 
-# Copy the backend server code explicitly into the WORKDIR (/app/backend)
-COPY backend/server.js ./server.js
+# Copy the specific backend server code into the WORKDIR (/app/backend/server)
+COPY backend/server/ ./ 
+
+# Copy necessary config if it's outside backend/server (adjust path as needed)
+# Example: If config.js is in /app/backend
+COPY backend/config.js /app/backend/config.js
+
+# Ensure Node can find modules installed in the parent directory
+ENV NODE_PATH=/app/backend/node_modules
 
 # Expose the port the app listens on (8080)
 EXPOSE 8080
 
-# Run the backend server using the server.js inside the workdir (/app/backend)
+# Run the backend server using the server.js inside the workdir (/app/backend/server)
 CMD [ "node", "server.js" ]

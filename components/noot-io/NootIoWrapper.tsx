@@ -65,7 +65,7 @@ const NootIoWrapper: React.FC<NootIoWrapperProps> = ({ farmCoins, addFarmCoins }
     <div className="w-full h-[600px] flex flex-col">
       <iframe
         ref={iframeRef}
-        src="/noot-io/index.html"
+        src="/noot-io/client/index.html"
         className="w-full h-full border-none"
         title="Noot.io Game"
         allowFullScreen
