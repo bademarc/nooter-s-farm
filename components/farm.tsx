@@ -168,6 +168,9 @@ type ActiveTab = "farm" | "quests" | "market" | "swap" | "social" | "profile" | 
 import { useGuideContext } from '../context/guide-context';
 import GuideModal from './GuideModal';
 
+// Import the new EnhancedGuideContent
+import EnhancedGuideContent from './EnhancedGuideContent';
+
 export function Farm() {
   // --- Guide State ---
   const { shouldShowGuide, markGuideAsViewed, isNootPro } = useGuideContext();
@@ -2090,18 +2093,7 @@ export function Farm() {
     <GuideModal
       imagePath="/images/guide/profile.jpg"
       title="Your Nooter Profile"
-      content={
-        <div>
-          <p className="mb-4">Customize your profile and track your progress:</p>
-          <ol className="list-decimal pl-6 space-y-2">
-            <li><strong>Nickname:</strong> Set your farmer name for others to see.</li>
-            <li><strong>Bio:</strong> Share a short description about yourself or your farm.</li>
-            <li><strong>Level:</strong> Your farmer level increases as you gain XP from farming activities.</li>
-            <li><strong>Statistics:</strong> View your farming accomplishments, including crops harvested and coins earned.</li>
-            <li><strong>Achievements:</strong> Unlock special badges by completing farming milestones.</li>
-          </ol>
-        </div>
-      }
+      content={<EnhancedGuideContent guideType="profile" />}
       onClose={handleCloseProfileGuide}
       isNootPro={isNootPro}
     />
@@ -2112,18 +2104,7 @@ export function Farm() {
     <GuideModal
       imagePath="/images/guide/social.jpg"
       title="Social Hub"
-      content={
-        <div>
-          <p className="mb-4">Connect with other farmers in the Nooter community:</p>
-          <ol className="list-decimal pl-6 space-y-2">
-            <li><strong>Friends:</strong> Add other farmers to your friends list to visit their farms.</li>
-            <li><strong>Leaderboards:</strong> See who has the most impressive farm stats and try to climb the rankings.</li>
-            <li><strong>Messages:</strong> Chat with other farmers to exchange tips and tricks.</li>
-            <li><strong>Gifts:</strong> Send and receive daily gifts to help each other's farms grow.</li>
-            <li><strong>Events:</strong> Participate in community farming events for special rewards.</li>
-          </ol>
-        </div>
-      }
+      content={<EnhancedGuideContent guideType="social" />}
       onClose={handleCloseSocialGuide}
       isNootPro={isNootPro}
     />
@@ -2132,20 +2113,9 @@ export function Farm() {
   {/* Token Swap Guide Modal */}
   {showSwapGuide && (
     <GuideModal
-      imagePath="/images/guide/token swap.jpg"
+      imagePath="/images/guide/swap.jpg"
       title="Token Swap"
-      content={
-        <div>
-          <p className="mb-4">Exchange your Farm Coins for $NOOT tokens:</p>
-          <ol className="list-decimal pl-6 space-y-2">
-            <li><strong>Farm Coins:</strong> Earned in-game through farming activities.</li>
-            <li><strong>$NOOT Tokens:</strong> Blockchain tokens that can be traded or used for special items.</li>
-            <li><strong>Exchange Rate:</strong> The current conversion rate between Farm Coins and $NOOT.</li>
-            <li><strong>Swapping:</strong> Enter the amount you want to exchange and confirm the transaction.</li>
-            <li><strong>Wallet:</strong> Connect your crypto wallet to store your $NOOT tokens securely.</li>
-          </ol>
-        </div>
-      }
+      content={<EnhancedGuideContent guideType="swap" />}
       onClose={handleCloseSwapGuide}
       isNootPro={isNootPro}
     />
@@ -2156,18 +2126,7 @@ export function Farm() {
     <GuideModal
       imagePath="/images/guide/platformer.jpg"
       title="Platformer Game"
-      content={
-        <div>
-          <p className="mb-4">Play the Nooter Platformer game to earn extra Farm Coins:</p>
-          <ol className="list-decimal pl-6 space-y-2">
-            <li><strong>Controls:</strong> Use arrow keys or WASD to move, space to jump.</li>
-            <li><strong>Objective:</strong> Collect coins and reach the end of each level.</li>
-            <li><strong>Power-ups:</strong> Find special items that give you temporary abilities.</li>
-            <li><strong>Enemies:</strong> Avoid or defeat creatures that try to stop you.</li>
-            <li><strong>Rewards:</strong> Convert your in-game score to Farm Coins at the end of each level.</li>
-          </ol>
-        </div>
-      }
+      content={<EnhancedGuideContent guideType="platformer" />}
       onClose={handleClosePlatformerGuide}
       isNootPro={isNootPro}
     />
@@ -2178,18 +2137,7 @@ export function Farm() {
     <GuideModal
       imagePath="/images/guide/defend your farm.jpg"
       title="Defend Your Farm"
-      content={
-        <div>
-          <p className="mb-4">Protect your crops from waves of hungry enemy:</p>
-          <ol className="list-decimal pl-6 space-y-2">
-            <li><strong>Defenses:</strong> Place Ice Mage Asbter, Fire Mage Noot, Wizard Abster, and Cool Noot with cannon to stop enemy.</li>
-            <li><strong>Enemies:</strong> Different enemy have different speeds, health, and weaknesses.</li>
-            <li><strong>Waves:</strong> Face increasingly difficult waves of enemy as you progress.</li>
-            <li><strong>Strategy:</strong> Position your defenses strategically to maximize coverage.</li>
-            <li><strong>Rewards:</strong> Earn Farm Coins based on your performance and waves survived.</li>
-          </ol>
-        </div>
-      }
+      content={<EnhancedGuideContent guideType="defend" />}
       onClose={handleCloseDefendGuide}
       isNootPro={isNootPro}
     />
@@ -4044,18 +3992,7 @@ export function Farm() {
         <GuideModal
           imagePath="/images/guide/farm.jpg"
           title="Welcome to Nooter's Farm!"
-          content={
-            <div>
-              <p className="mb-4">Farming is the core of Nooter's Farm. Here's the cycle:</p>
-              <ol className="list-decimal pl-6 space-y-2">
-                <li><strong>Buy Seeds:</strong> Purchase seeds from the Market tab.</li>
-                <li><strong>Select & Plant:</strong> Choose a seed from the 'Seed Selector' panel and click an empty plot on your farm. Coins are deducted upon planting.</li>
-                <li><strong>Wait for Growth:</strong> Each crop has a specific growth time, influenced by the current Season and Weather. You can click a growing plot to see remaining time and apply Boosters.</li>
-                <li><strong>Harvest:</strong> Once a crop is ready (indicated by a checkmark ✓), click the plot to harvest. The crop goes into your inventory (visible in the Market tab).</li>
-                <li><strong>Sell Crops:</strong> Sell your harvested crops in the Market tab for Farm Coins 🪙.</li>
-              </ol>
-            </div>
-          }
+          content={<EnhancedGuideContent guideType="farm" />}
           onClose={handleCloseGuide}
           isNootPro={isNootPro}
         />
@@ -4066,18 +4003,7 @@ export function Farm() {
         <GuideModal
           imagePath="/images/guide/quest.jpg"
           title="Complete Quests for Rewards!"
-          content={
-            <div>
-              <p className="mb-4">Quests are special tasks that reward you with Farm Coins when completed:</p>
-              <ol className="list-decimal pl-6 space-y-2">
-                <li><strong>Daily Quests:</strong> These reset every 24 hours. Complete them daily for steady coin rewards.</li>
-                <li><strong>Weekly Quests:</strong> These are more challenging but offer higher rewards. They reset every 7 days.</li>
-                <li><strong>Track Progress:</strong> Each quest shows a progress bar indicating how close you are to completion.</li>
-                <li><strong>Claim Rewards:</strong> Once a quest is complete, claim your Farm Coin reward by clicking on it.</li>
-                <li><strong>Strategic Planning:</strong> Plan your farming activities around quests to maximize your earnings!</li>
-              </ol>
-            </div>
-          }
+          content={<EnhancedGuideContent guideType="quests" />}
           onClose={handleCloseQuestsGuide}
           isNootPro={isNootPro}
         />
@@ -4089,18 +4015,7 @@ export function Farm() {
         <GuideModal
           imagePath="/images/guide/profile.jpg"
           title="Your Nooter Profile"
-          content={
-            <div>
-              <p className="mb-4">Customize your profile and track your progress:</p>
-              <ol className="list-decimal pl-6 space-y-2">
-                <li><strong>Nickname:</strong> Set your farmer name for others to see.</li>
-                <li><strong>Bio:</strong> Share a short description about yourself or your farm.</li>
-                <li><strong>Level:</strong> Your farmer level increases as you gain XP from farming activities.</li>
-                <li><strong>Statistics:</strong> View your farming accomplishments, including crops harvested and coins earned.</li>
-                <li><strong>Achievements:</strong> Unlock special badges by completing farming milestones.</li>
-              </ol>
-            </div>
-          }
+          content={<EnhancedGuideContent guideType="profile" />}
           onClose={handleCloseProfileGuide}
           isNootPro={isNootPro}
         />
@@ -4111,18 +4026,7 @@ export function Farm() {
         <GuideModal
           imagePath="/images/guide/social.jpg"
           title="Social Hub"
-          content={
-            <div>
-              <p className="mb-4">Connect with other farmers in the Nooter community:</p>
-              <ol className="list-decimal pl-6 space-y-2">
-                <li><strong>Friends:</strong> Add other farmers to your friends list to visit their farms.</li>
-                <li><strong>Leaderboards:</strong> See who has the most impressive farm stats and try to climb the rankings.</li>
-                <li><strong>Messages:</strong> Chat with other farmers to exchange tips and tricks.</li>
-                <li><strong>Gifts:</strong> Send and receive daily gifts to help each other's farms grow.</li>
-                <li><strong>Events:</strong> Participate in community farming events for special rewards.</li>
-              </ol>
-            </div>
-          }
+          content={<EnhancedGuideContent guideType="social" />}
           onClose={handleCloseSocialGuide}
           isNootPro={isNootPro}
         />
@@ -4131,20 +4035,9 @@ export function Farm() {
       {/* Token Swap Guide Modal */}
       {showSwapGuide && (
         <GuideModal
-          imagePath="/images/guide/token swap.jpg"
+          imagePath="/images/guide/swap.jpg"
           title="Token Swap"
-          content={
-            <div>
-              <p className="mb-4">Exchange your Farm Coins for $NOOT tokens:</p>
-              <ol className="list-decimal pl-6 space-y-2">
-                <li><strong>Farm Coins:</strong> Earned in-game through farming activities.</li>
-                <li><strong>$NOOT Tokens:</strong> Blockchain tokens that can be traded or used for special items.</li>
-                <li><strong>Exchange Rate:</strong> The current conversion rate between Farm Coins and $NOOT.</li>
-                <li><strong>Swapping:</strong> Enter the amount you want to exchange and confirm the transaction.</li>
-                <li><strong>Wallet:</strong> Connect your crypto wallet to store your $NOOT tokens securely.</li>
-              </ol>
-            </div>
-          }
+          content={<EnhancedGuideContent guideType="swap" />}
           onClose={handleCloseSwapGuide}
           isNootPro={isNootPro}
         />
@@ -4155,18 +4048,7 @@ export function Farm() {
         <GuideModal
           imagePath="/images/guide/platformer.jpg"
           title="Platformer Game"
-          content={
-            <div>
-              <p className="mb-4">Play the Nooter Platformer game to earn extra Farm Coins:</p>
-              <ol className="list-decimal pl-6 space-y-2">
-                <li><strong>Controls:</strong> Use arrow keys or WASD to move, space to jump.</li>
-                <li><strong>Objective:</strong> Collect coins and reach the end of each level.</li>
-                <li><strong>Power-ups:</strong> Find special items that give you temporary abilities.</li>
-                <li><strong>Enemies:</strong> Avoid or defeat creatures that try to stop you.</li>
-                <li><strong>Rewards:</strong> Convert your in-game score to Farm Coins at the end of each level.</li>
-              </ol>
-            </div>
-          }
+          content={<EnhancedGuideContent guideType="platformer" />}
           onClose={handleClosePlatformerGuide}
           isNootPro={isNootPro}
         />
@@ -4177,18 +4059,7 @@ export function Farm() {
         <GuideModal
           imagePath="/images/guide/defend your farm.jpg"
           title="Defend Your Farm"
-          content={
-            <div>
-              <p className="mb-4">Protect your crops from waves of hungry pests:</p>
-              <ol className="list-decimal pl-6 space-y-2">
-                <li><strong>Defenses:</strong> Place scarecrows, dogs, traps, and fences to stop pests.</li>
-                <li><strong>Enemies:</strong> Different pests have different speeds, health, and weaknesses.</li>
-                <li><strong>Waves:</strong> Face increasingly difficult waves of pests as you progress.</li>
-                <li><strong>Strategy:</strong> Position your defenses strategically to maximize coverage.</li>
-                <li><strong>Rewards:</strong> Earn Farm Coins based on your performance and waves survived.</li>
-              </ol>
-            </div>
-          }
+          content={<EnhancedGuideContent guideType="defend" />}
           onClose={handleCloseDefendGuide}
           isNootPro={isNootPro}
         />
