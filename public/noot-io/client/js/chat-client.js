@@ -1,6 +1,7 @@
-var global = require('./global');
+// var global = require('./global'); // Remove require
 
-class ChatClient {
+// Assign class to window.ChatClient
+window.ChatClient = class ChatClient {
     constructor(params) {
         this.canvas = global.canvas;
         this.socket = global.socket;
@@ -219,4 +220,4 @@ class ChatClient {
     }
 }
 
-module.exports = ChatClient;
+// module.exports = ChatClient; // Remove module.exports

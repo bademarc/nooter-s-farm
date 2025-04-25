@@ -1,6 +1,7 @@
-var global = require('./global');
+// var global = require('./global'); // Remove require
 
-class Canvas {
+// Assign class to window.Canvas
+window.Canvas = class Canvas {
     constructor(params) {
         this.directionLock = false;
         this.target = global.target;
@@ -149,6 +150,6 @@ class Canvas {
             document.getElementById('chatInput').focus();
         }
     }
-}
+};
 
-module.exports = Canvas;
+// module.exports = Canvas; // Remove module.exports
