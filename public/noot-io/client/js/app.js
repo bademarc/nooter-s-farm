@@ -125,8 +125,8 @@ async function preloadSkins() {
       };
       // Construct the path correctly relative to the HTML file in /client/
       // Assuming index.html is in /public/noot-io/client/
-      // and images are in /public/noot-io/case items/
-      img.src = `../${path}`; // Go up one level from js/ to client/, then down to case items/
+      // and images are in /public/case items/
+      img.src = `../../../${path}`; // Corrected relative path from js/ to public/case items/
     }));
   }
   try {
