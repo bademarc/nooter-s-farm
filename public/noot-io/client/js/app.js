@@ -310,7 +310,12 @@ function animloop() {
 }
 
 function gameLoop() {
+    // Debugging:
+    // console.log('gameLoop running. gameStart:', global.gameStart, 'users:', users.length, 'foods:', foods.length);
+
     if (global.gameStart) {
+        // More Debugging:
+        // try {
         graph.fillStyle = global.backgroundColor;
         graph.fillRect(0, 0, global.screen.width, global.screen.height);
 
@@ -361,6 +366,10 @@ function gameLoop() {
         render.drawCells(cellsToDraw, playerConfig, global.toggleMassState, borders, graph);
 
         socket.emit('0', window.canvas.target); // playerSendTarget "Heartbeat".
+        // } catch (e) {
+        //     console.error('Error in gameLoop drawing:', e);
+        //     global.gameStart = false; // Stop loop on error
+        // }
     }
 }
 
