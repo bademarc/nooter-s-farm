@@ -2180,11 +2180,11 @@ export function Farm() {
       title="Defend Your Farm"
       content={
         <div>
-          <p className="mb-4">Protect your crops from waves of hungry pests:</p>
+          <p className="mb-4">Protect your crops from waves of hungry enemy:</p>
           <ol className="list-decimal pl-6 space-y-2">
-            <li><strong>Defenses:</strong> Place scarecrows, dogs, traps, and fences to stop pests.</li>
-            <li><strong>Enemies:</strong> Different pests have different speeds, health, and weaknesses.</li>
-            <li><strong>Waves:</strong> Face increasingly difficult waves of pests as you progress.</li>
+            <li><strong>Defenses:</strong> Place Ice Mage Asbter, Fire Mage Noot, Wizard Abster, and Cool Noot with cannon to stop enemy.</li>
+            <li><strong>Enemies:</strong> Different enemy have different speeds, health, and weaknesses.</li>
+            <li><strong>Waves:</strong> Face increasingly difficult waves of enemy as you progress.</li>
             <li><strong>Strategy:</strong> Position your defenses strategically to maximize coverage.</li>
             <li><strong>Rewards:</strong> Earn Farm Coins based on your performance and waves survived.</li>
           </ol>
