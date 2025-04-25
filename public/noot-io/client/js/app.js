@@ -375,9 +375,19 @@ function setupSocketListeners() {
 
     // Hide start menu, show canvas/wrapper
     const startMenu = document.getElementById('startMenu');
+    const startMenuWrapper = document.getElementById('startMenuWrapper');
     const gameWrapper = document.getElementById('gameAreaWrapper'); // Target the wrapper div
+    
     if (startMenu) startMenu.style.display = 'none';
-    if (gameWrapper) gameWrapper.style.display = 'block'; // Show wrapper
+    if (startMenuWrapper) {
+        startMenuWrapper.style.display = 'none';
+        startMenuWrapper.style.zIndex = '-1';
+    }
+    if (gameWrapper) {
+        gameWrapper.style.display = 'block';
+        gameWrapper.style.zIndex = '1';
+    }
+    
     resizeCanvas(); // Ensure canvas size is correct
   });
 
@@ -1019,9 +1029,19 @@ function startGame() {
 
         // Hide start menu, show canvas wrapper
         const startMenu = document.getElementById('startMenu');
+        const startMenuWrapper = document.getElementById('startMenuWrapper');
         const gameWrapper = document.getElementById('gameAreaWrapper'); // Target the wrapper div
+        
         if (startMenu) startMenu.style.display = 'none';
-        if (gameWrapper) gameWrapper.style.display = 'block'; // Show wrapper
+        if (startMenuWrapper) {
+            startMenuWrapper.style.display = 'none';
+            startMenuWrapper.style.zIndex = '-1';
+        }
+        if (gameWrapper) {
+            gameWrapper.style.display = 'block'; 
+            gameWrapper.style.zIndex = '1';
+        }
+        
         resizeCanvas(); // Ensure canvas size is correct
         console.log("[Noot.io App] Offline game setup complete. Player:", player);
 
