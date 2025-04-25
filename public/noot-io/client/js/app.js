@@ -1,5 +1,5 @@
 // Noot.io - A simplified agar.io-like game
-const canvas = document.getElementById('canvas');
+const canvas = document.getElementById('cvs');
 const ctx = canvas.getContext('2d');
 let socket; // Define socket variable, will be assigned later
 
