@@ -112,17 +112,36 @@ export const Sidebar = ({
 
   const handleResetGame = () => {
     try {
+      // Add confirmation dialog
+      if (!window.confirm("Are you sure you want to delete your account? This will reset all your progress, farm coins, and game data. This action cannot be undone.")) {
+        return; // User canceled
+      }
+      
       // Call the reset game function from the game component
-      if (typeof window !== 'undefined' && window.gameFunctions?.resetGame) {
-        window.gameFunctions.resetGame();
-        // Reset farm coins in the context
+      if (typeof window !== 'undefined') {
+        // Clear all game data from localStorage
+        localStorage.clear();
+        
+        // Call context resetGame function
         resetGame();
-        console.log("Game reset successfully");
+        
+        // Call game component resetGame if available
+        if (window.gameFunctions?.resetGame) {
+          window.gameFunctions.resetGame();
+          console.log("Game reset successfully");
+        }
+        
+        // Show success message to user
+        alert("Account deleted successfully. Your game data has been reset.");
+        
+        // Redirect to home page
+        window.location.href = '/';
       } else {
         console.error("Reset game function not available");
       }
     } catch (error) {
       console.error("Error resetting game:", error);
+      alert("Failed to delete account. Please try again.");
     }
   };
 
