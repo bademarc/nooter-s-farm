@@ -501,6 +501,22 @@ function setupSocketListeners() {
 
       lastKnownMass = player.mass; // Reset mass tracker
       isGameRunning = true; // Re-enable game loop
+      
+      // Hide start menu, show canvas/wrapper
+      const startMenu = document.getElementById('startMenu');
+      const startMenuWrapper = document.getElementById('startMenuWrapper');
+      const gameWrapper = document.getElementById('gameAreaWrapper');
+      
+      if (startMenu) startMenu.style.display = 'none';
+      if (startMenuWrapper) {
+          startMenuWrapper.style.display = 'none';
+          startMenuWrapper.style.zIndex = '-1';
+      }
+      if (gameWrapper) {
+          gameWrapper.style.display = 'block';
+          gameWrapper.style.zIndex = '1';
+      }
+      
       const restartButton = document.getElementById('restart-button');
       if (restartButton) restartButton.style.display = 'none';
       console.log("[Noot.io App] Respawned as:", player);
@@ -1476,9 +1492,22 @@ function startGame() {
     // Reset game state
     isGameRunning = true;
     
+    // Hide start menu and its wrapper
+    const startMenu = document.getElementById('startMenu');
+    const startMenuWrapper = document.getElementById('startMenuWrapper');
+    
+    if (startMenu) startMenu.style.display = 'none';
+    if (startMenuWrapper) {
+        startMenuWrapper.style.display = 'none';
+        startMenuWrapper.style.zIndex = '-1';
+    }
+    
     // Show game area
     const gameWrapper = document.getElementById('gameAreaWrapper');
-    if (gameWrapper) gameWrapper.style.display = 'block';
+    if (gameWrapper) {
+        gameWrapper.style.display = 'block';
+        gameWrapper.style.zIndex = '1';
+    }
     
     // Show restart button
     const restartButton = document.getElementById('restart-button');
@@ -1650,6 +1679,12 @@ async function initApp() {
             // Restart should respect the current mode (isOfflineMode)
             console.log("Restart button clicked. Restarting in", isOfflineMode ? "Offline" : "Online", "mode.");
             isGameRunning = false; // Ensure loop stops if somehow still running
+            
+            // Make sure start menu stays hidden during restart
+            const startMenu = document.getElementById('startMenu');
+            const startMenuWrapper = document.getElementById('startMenuWrapper');
+            if (startMenu) startMenu.style.display = 'none';
+            if (startMenuWrapper) startMenuWrapper.style.display = 'none';
             
             // Start the game with a slight delay to allow loading indicator to display
             setTimeout(() => {

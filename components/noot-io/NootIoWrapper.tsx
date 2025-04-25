@@ -71,7 +71,7 @@ const NootIoWrapper: React.FC<NootIoWrapperProps> = ({ farmCoins, addFarmCoins }
         console.log('Auto-starting game in offline mode');
         sendCommandToGame('start-offline');
       }
-    }, 1500);
+    }, 1000);
   };
 
   // Function to send commands to the iframe
