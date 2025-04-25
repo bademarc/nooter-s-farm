@@ -81,11 +81,31 @@ window.addEventListener('load', resizeCanvas);
 // Track mouse position
 function setupMouseTracking() {
   if (!canvas) return;
+  
+  // Set initial mouse position to center of screen to avoid movement issues
+  mouseX = canvas.width / 2;
+  mouseY = canvas.height / 2;
+  
+  // Desktop mouse movement
   canvas.addEventListener('mousemove', function(e) {
     const rect = canvas.getBoundingClientRect();
     mouseX = e.clientX - rect.left;
     mouseY = e.clientY - rect.top;
   });
+  
+  // Touch support for mobile
+  canvas.addEventListener('touchmove', function(e) {
+    e.preventDefault(); // Prevent scrolling
+    if (e.touches.length > 0) {
+      const rect = canvas.getBoundingClientRect();
+      const touch = e.touches[0];
+      mouseX = touch.clientX - rect.left;
+      mouseY = touch.clientY - rect.top;
+    }
+  }, { passive: false });
+  
+  // Log initialization
+  console.log("[Noot.io App] Mouse tracking initialized.");
 }
 
 // Interpolation factor (adjust for smoother/more responsive)
@@ -622,307 +642,320 @@ function gameLoop() {
   }
 
   // --- Shared: Calculate local player movement based on mouse ---
-    const targetWorldX = player.x + (mouseX - canvas.width / 2);
-    const targetWorldY = player.y + (mouseY - canvas.height / 2);
-    const dx = targetWorldX - player.x;
-    const dy = targetWorldY - player.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    let moveX = 0;
-    let moveY = 0;
+  const targetWorldX = player.x + (mouseX - canvas.width / 2);
+  const targetWorldY = player.y + (mouseY - canvas.height / 2);
+  const dx = targetWorldX - player.x;
+  const dy = targetWorldY - player.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  let moveX = 0;
+  let moveY = 0;
 
-    if (dist > 1 && player.mass > 0) { // Check player.mass > 0
-        const speed = PLAYER_SPEED / Math.max(1, Math.sqrt(player.mass / START_MASS));
-        moveX = Math.min(speed, dist) * (dx / dist);
-        moveY = Math.min(speed, dist) * (dy / dist);
-
-        player.x += moveX;
-        player.y += moveY;
-
-        // Clamp player position
-        player.x = Math.max(0, Math.min(WORLD_WIDTH, player.x));
-        player.y = Math.max(0, Math.min(WORLD_HEIGHT, player.y));
+  // Player movement - check if movement is detected and player exists
+  if (dist > 0.1 && player && player.mass > 0) { // Changed from 1 to 0.1 for more responsive movement
+    // Calculate speed based on mass (larger = slower)
+    const speed = PLAYER_SPEED / Math.max(1, Math.sqrt(player.mass / START_MASS));
+    
+    // Calculate movement vector
+    moveX = Math.min(speed, dist) * (dx / dist);
+    moveY = Math.min(speed, dist) * (dy / dist);
+    
+    // Apply movement
+    player.x += moveX;
+    player.y += moveY;
+    
+    // Ensure player stays within world bounds with a buffer
+    const buffer = 50; // Prevent getting stuck at edges
+    player.x = Math.max(buffer, Math.min(WORLD_WIDTH - buffer, player.x));
+    player.y = Math.max(buffer, Math.min(WORLD_HEIGHT - buffer, player.y));
+    
+    // Debug movement periodically
+    if (Math.random() < 0.01) { // Only log occasionally
+      console.log(`[Noot.io App] Player moving: ${Math.round(moveX)},${Math.round(moveY)} to ${Math.round(player.x)},${Math.round(player.y)}`);
     }
-    // --- End Player Movement ---
+  } else if (!player || player.mass <= 0) {
+    console.warn("[Noot.io App] Player not valid for movement:", player);
+  }
+  // --- End Player Movement ---
 
-    // --- Mode Specific Logic ---
-    if (isOfflineMode) {
-        // --- Offline Bot Movement ---
-        bots.forEach(bot => {
-            if (bot.mass <= 0) return; // Skip dead bots
-            
-            // Intelligence based on size comparison with player
-            const botRadius = Math.sqrt(bot.mass / Math.PI) * 10;
-            const playerRadius = Math.sqrt(player.mass / Math.PI) * 10;
-            const distToPlayer = Math.sqrt((bot.x - player.x)**2 + (bot.y - player.y)**2);
-            const awarenessRadius = 300; // How far bots can "see" the player
-            
-            if (distToPlayer < awarenessRadius) {
-                // Bot is aware of player
-                if (bot.mass > player.mass * 1.2) {
-                    // Bot is bigger than player - HUNT PLAYER!
-                    console.log(`Bot ${bot.name} is hunting player!`);
-                    bot.targetX = player.x;
-                    bot.targetY = player.y;
-                    bot.speed = 3 + Math.random(); // Aggressive speed
-                } else if (player.mass > bot.mass * 1.2) {
-                    // Player is bigger than bot - RUN AWAY!
-                    console.log(`Bot ${bot.name} is fleeing from player!`);
-                    // Calculate vector away from player
-                    const fleeX = bot.x - player.x;
-                    const fleeY = bot.y - player.y;
-                    const fleeDist = Math.sqrt(fleeX*fleeX + fleeY*fleeY);
-                    if (fleeDist > 0) {
-                        // Normalize and scale to position at edge of world
-                        const escapeMultiplier = 500 / fleeDist;
-                        bot.targetX = bot.x + fleeX * escapeMultiplier;
-                        bot.targetY = bot.y + fleeY * escapeMultiplier;
-                        
-                        // Ensure target is within world bounds
-                        bot.targetX = Math.max(100, Math.min(WORLD_WIDTH - 100, bot.targetX));
-                        bot.targetY = Math.max(100, Math.min(WORLD_HEIGHT - 100, bot.targetY));
-                        bot.speed = 4 + Math.random(); // Faster when fleeing
-                    }
-                }
-            } else {
-                // Normal wandering behavior when player is not nearby
-                const botDx = bot.targetX - bot.x;
-                const botDy = bot.targetY - bot.y;
-                const botDist = Math.sqrt(botDx * botDx + botDy * botDy);
-                
-                // If bot has reached target or doesn't have one, pick a new random target
-                if (botDist < 20 || isNaN(bot.targetX) || isNaN(bot.targetY)) {
-                    bot.targetX = Math.random() * WORLD_WIDTH;
-                    bot.targetY = Math.random() * WORLD_HEIGHT;
-                    bot.speed = 2 + Math.random(); // Normal wandering speed
-                }
-            }
-            
-            // Bot movement logic (unchanged)
-            const botDx = bot.targetX - bot.x;
-            const botDy = bot.targetY - bot.y;
-            const botDist = Math.sqrt(botDx * botDx + botDy * botDy);
-            const botSpeed = bot.speed / Math.max(1, Math.sqrt(bot.mass / START_MASS));
-            
-            // Only move if there's a valid direction
-            if (botDist > 0) {
-                bot.x += Math.min(botSpeed, botDist) * (botDx / botDist);
-                bot.y += Math.min(botSpeed, botDist) * (botDy / botDist);
-                // Clamp bot position
-                bot.x = Math.max(0, Math.min(WORLD_WIDTH, bot.x));
-                bot.y = Math.max(0, Math.min(WORLD_HEIGHT, bot.y));
-            }
-        });
-        
-        // --- Offline Collision Detection ---
-        const playerRadius = Math.sqrt(player.mass / Math.PI) * 10;
+  // --- Mode Specific Logic ---
+  if (isOfflineMode) {
+      // --- Offline Bot Movement ---
+      bots.forEach(bot => {
+          if (bot.mass <= 0) return; // Skip dead bots
+          
+          // Intelligence based on size comparison with player
+          const botRadius = Math.sqrt(bot.mass / Math.PI) * 10;
+          const playerRadius = Math.sqrt(player.mass / Math.PI) * 10;
+          const distToPlayer = Math.sqrt((bot.x - player.x)**2 + (bot.y - player.y)**2);
+          const awarenessRadius = 300; // How far bots can "see" the player
+          
+          if (distToPlayer < awarenessRadius) {
+              // Bot is aware of player
+              if (bot.mass > player.mass * 1.2) {
+                  // Bot is bigger than player - HUNT PLAYER!
+                  console.log(`Bot ${bot.name} is hunting player!`);
+                  bot.targetX = player.x;
+                  bot.targetY = player.y;
+                  bot.speed = 3 + Math.random(); // Aggressive speed
+              } else if (player.mass > bot.mass * 1.2) {
+                  // Player is bigger than bot - RUN AWAY!
+                  console.log(`Bot ${bot.name} is fleeing from player!`);
+                  // Calculate vector away from player
+                  const fleeX = bot.x - player.x;
+                  const fleeY = bot.y - player.y;
+                  const fleeDist = Math.sqrt(fleeX*fleeX + fleeY*fleeY);
+                  if (fleeDist > 0) {
+                      // Normalize and scale to position at edge of world
+                      const escapeMultiplier = 500 / fleeDist;
+                      bot.targetX = bot.x + fleeX * escapeMultiplier;
+                      bot.targetY = bot.y + fleeY * escapeMultiplier;
+                      
+                      // Ensure target is within world bounds
+                      bot.targetX = Math.max(100, Math.min(WORLD_WIDTH - 100, bot.targetX));
+                      bot.targetY = Math.max(100, Math.min(WORLD_HEIGHT - 100, bot.targetY));
+                      bot.speed = 4 + Math.random(); // Faster when fleeing
+                  }
+              }
+          } else {
+              // Normal wandering behavior when player is not nearby
+              const botDx = bot.targetX - bot.x;
+              const botDy = bot.targetY - bot.y;
+              const botDist = Math.sqrt(botDx * botDx + botDy * botDy);
+              
+              // If bot has reached target or doesn't have one, pick a new random target
+              if (botDist < 20 || isNaN(bot.targetX) || isNaN(bot.targetY)) {
+                  bot.targetX = Math.random() * WORLD_WIDTH;
+                  bot.targetY = Math.random() * WORLD_HEIGHT;
+                  bot.speed = 2 + Math.random(); // Normal wandering speed
+              }
+          }
+          
+          // Bot movement logic (unchanged)
+          const botDx = bot.targetX - bot.x;
+          const botDy = bot.targetY - bot.y;
+          const botDist = Math.sqrt(botDx * botDx + botDy * botDy);
+          const botSpeed = bot.speed / Math.max(1, Math.sqrt(bot.mass / START_MASS));
+          
+          // Only move if there's a valid direction
+          if (botDist > 0) {
+              bot.x += Math.min(botSpeed, botDist) * (botDx / botDist);
+              bot.y += Math.min(botSpeed, botDist) * (botDy / botDist);
+              // Clamp bot position
+              bot.x = Math.max(0, Math.min(WORLD_WIDTH, bot.x));
+              bot.y = Math.max(0, Math.min(WORLD_HEIGHT, bot.y));
+          }
+      });
+      
+      // --- Offline Collision Detection ---
+      const playerRadius = Math.sqrt(player.mass / Math.PI) * 10;
 
-        // Player vs Food
-        foods = foods.filter(food => {
-            const foodRadius = 5; // Match drawFood radius approx
-            const collisionDistSq = (player.x - food.x)**2 + (player.y - food.y)**2;
-            const radiiSumSq = (playerRadius + foodRadius)**2; // Maybe playerRadius^2 is enough?
-            if (collisionDistSq < playerRadius*playerRadius * 0.9) { // Eat if food center is inside player radius
-                player.mass += food.mass;
-                checkEarnedCoins(player.mass); // Check for farm coin gain
-                // Respawn one food elsewhere
-                food.x = Math.random() * WORLD_WIDTH;
-                food.y = Math.random() * WORLD_HEIGHT;
-                return true; // Keep the food object, just move it
-                // return false; // Remove eaten food - leads to empty world
-            }
-            return true; // Keep food
-        });
-         // Ensure minimum food count
-         while (foods.length < FOOD_COUNT * 0.8) {
-             spawnOfflineFood();
-         }
+      // Player vs Food
+      foods = foods.filter(food => {
+          const foodRadius = 5; // Match drawFood radius approx
+          const collisionDistSq = (player.x - food.x)**2 + (player.y - food.y)**2;
+          const radiiSumSq = (playerRadius + foodRadius)**2; // Maybe playerRadius^2 is enough?
+          if (collisionDistSq < playerRadius*playerRadius * 0.9) { // Eat if food center is inside player radius
+              player.mass += food.mass;
+              checkEarnedCoins(player.mass); // Check for farm coin gain
+              // Respawn one food elsewhere
+              food.x = Math.random() * WORLD_WIDTH;
+              food.y = Math.random() * WORLD_HEIGHT;
+              return true; // Keep the food object, just move it
+              // return false; // Remove eaten food - leads to empty world
+          }
+          return true; // Keep food
+      });
+       // Ensure minimum food count
+       while (foods.length < FOOD_COUNT * 0.8) {
+           spawnOfflineFood();
+       }
 
-        // Player vs Bots & Bot vs Bots (Simplified)
-        let entities = [player, ...bots];
-        for (let i = 0; i < entities.length; i++) {
-             if (!entities[i] || entities[i].mass <= 0) continue; // Skip null/dead entities
-            for (let j = i + 1; j < entities.length; j++) {
-                 if (!entities[j] || entities[j].mass <= 0) continue; // Skip null/dead entities
-                let p1 = entities[i];
-                let p2 = entities[j];
-                const distSq = (p1.x - p2.x)**2 + (p1.y - p2.y)**2;
-                const r1 = Math.sqrt(p1.mass / Math.PI) * 10;
-                const r2 = Math.sqrt(p2.mass / Math.PI) * 10;
+      // Player vs Bots & Bot vs Bots (Simplified)
+      let entities = [player, ...bots];
+      for (let i = 0; i < entities.length; i++) {
+           if (!entities[i] || entities[i].mass <= 0) continue; // Skip null/dead entities
+          for (let j = i + 1; j < entities.length; j++) {
+               if (!entities[j] || entities[j].mass <= 0) continue; // Skip null/dead entities
+              let p1 = entities[i];
+              let p2 = entities[j];
+              const distSq = (p1.x - p2.x)**2 + (p1.y - p2.y)**2;
+              const r1 = Math.sqrt(p1.mass / Math.PI) * 10;
+              const r2 = Math.sqrt(p2.mass / Math.PI) * 10;
 
-                // Check for overlap based on larger radius containing center of smaller one + mass check
-                const eatThreshold = 1.2; // Must be 20% bigger (more challenging)
-                const overlapFactor = 0.7; // Center must be within 70% of radius (better detection)
+              // Check for overlap based on larger radius containing center of smaller one + mass check
+              const eatThreshold = 1.2; // Must be 20% bigger (more challenging)
+              const overlapFactor = 0.7; // Center must be within 70% of radius (better detection)
 
-                if (p1.mass > p2.mass * eatThreshold && distSq < (r1 * overlapFactor)**2) { // P1 eats P2
-                    console.log(`${p1.name} ate ${p2.name}`);
-                    p1.mass += p2.mass * 0.8; // Only gain 80% of eaten mass (more balanced)
-                    if (p1 === player) checkEarnedCoins(player.mass);
+              if (p1.mass > p2.mass * eatThreshold && distSq < (r1 * overlapFactor)**2) { // P1 eats P2
+                  console.log(`${p1.name} ate ${p2.name}`);
+                  p1.mass += p2.mass * 0.8; // Only gain 80% of eaten mass (more balanced)
+                  if (p1 === player) checkEarnedCoins(player.mass);
 
-                    // Mark p2 as eaten (set mass to 0)
-                    p2.mass = 0;
-                    const botIndex = bots.findIndex(b => b.id === p2.id);
-                    if (botIndex !== -1) {
-                        // Respawn bot after a delay? For now, just remove and add new one
-                        bots.splice(botIndex, 1);
-                        spawnOfflineBot(bots.length); // Keep count stable
-                    }
-                    // Update entities array for next checks? No, use mass check
-                    continue; // P2 is gone, check next entity against P1
-                } else if (p2.mass > p1.mass * eatThreshold && distSq < (r2 * overlapFactor)**2) { // P2 eats P1
-                    console.log(`${p2.name} ate ${p1.name}`);
-                    p2.mass += p1.mass * 0.8; // Only gain 80% of eaten mass (more balanced)
+                  // Mark p2 as eaten (set mass to 0)
+                  p2.mass = 0;
+                  const botIndex = bots.findIndex(b => b.id === p2.id);
+                  if (botIndex !== -1) {
+                      // Respawn bot after a delay? For now, just remove and add new one
+                      bots.splice(botIndex, 1);
+                      spawnOfflineBot(bots.length); // Keep count stable
+                  }
+                  // Update entities array for next checks? No, use mass check
+                  continue; // P2 is gone, check next entity against P1
+              } else if (p2.mass > p1.mass * eatThreshold && distSq < (r2 * overlapFactor)**2) { // P2 eats P1
+                  console.log(`${p2.name} ate ${p1.name}`);
+                  p2.mass += p1.mass * 0.8; // Only gain 80% of eaten mass (more balanced)
 
-                    if (p1 === player) { // Player was eaten
-                        console.log("[Noot.io App] Player eaten in offline mode!");
-                        isGameRunning = false; // Stop game logic
-                        isGameInitialized = false; // Allow re-init
-                         player.mass = 0; // Mark player as dead
-                        // Show restart button
-                        const restartButton = document.getElementById('restart-button');
-                        if (restartButton) restartButton.style.display = 'block';
-                        break; // Exit inner loop
-                    } else {
-                        // Bot ate another bot
-                        p1.mass = 0; // Mark p1 as eaten
-                        const botIndex = bots.findIndex(b => b.id === p1.id);
-                        if (botIndex !== -1) {
-                            bots.splice(botIndex, 1);
-                            spawnOfflineBot(bots.length);
-                        }
-                        // Restart inner loop for p2 vs remaining entities? No, just continue outer loop.
-                    }
-                }
-            }
-            if (!isGameRunning) break; // Exit outer loop if player was eaten
-        }
-         // Clean up dead bots from main array
-         bots = bots.filter(b => b.mass > 0);
-
-
-        // Interpolate Player render position
-        player.renderX = lerp(player.renderX, player.x, INTERPOLATION_FACTOR);
-        player.renderY = lerp(player.renderY, player.y, INTERPOLATION_FACTOR);
-         // Interpolate bot render positions
-         bots.forEach(bot => {
-             if (bot.mass > 0) {
-                bot.renderX = lerp(bot.renderX, bot.x, INTERPOLATION_FACTOR * 0.5); // Slower lerp maybe
-                bot.renderY = lerp(bot.renderY, bot.y, INTERPOLATION_FACTOR * 0.5);
-             }
-         });
+                  if (p1 === player) { // Player was eaten
+                      console.log("[Noot.io App] Player eaten in offline mode!");
+                      isGameRunning = false; // Stop game logic
+                      isGameInitialized = false; // Allow re-init
+                       player.mass = 0; // Mark player as dead
+                      // Show restart button
+                      const restartButton = document.getElementById('restart-button');
+                      if (restartButton) restartButton.style.display = 'block';
+                      break; // Exit inner loop
+                  } else {
+                      // Bot ate another bot
+                      p1.mass = 0; // Mark p1 as eaten
+                      const botIndex = bots.findIndex(b => b.id === p1.id);
+                      if (botIndex !== -1) {
+                          bots.splice(botIndex, 1);
+                          spawnOfflineBot(bots.length);
+                      }
+                      // Restart inner loop for p2 vs remaining entities? No, just continue outer loop.
+                  }
+              }
+          }
+          if (!isGameRunning) break; // Exit outer loop if player was eaten
+      }
+       // Clean up dead bots from main array
+       bots = bots.filter(b => b.mass > 0);
 
 
-    } else { // Online Mode
-        // Send Input to Server
-        if (socket && socket.connected) {
-            const worldMouseX = player.x + (mouseX - canvas.width / 2);
-            const worldMouseY = player.y + (mouseY - canvas.height / 2);
-            socket.emit('0', { x: worldMouseX, y: worldMouseY }); // '0' is the event name for player movement
-        }
-        // Interpolate Player render position based on logical position (prediction)
-        player.renderX = lerp(player.renderX, player.x, INTERPOLATION_FACTOR);
-        player.renderY = lerp(player.renderY, player.y, INTERPOLATION_FACTOR);
-        // Interpolate OTHER players based on server data
-        players.forEach(p => {
-            if (p.serverX !== undefined) {
-                p.renderX = lerp(p.renderX, p.serverX, INTERPOLATION_FACTOR);
-                p.renderY = lerp(p.renderY, p.serverY, INTERPOLATION_FACTOR);
-            } else {
-                p.renderX = p.x; p.renderY = p.y; // Fallback
-            }
-        });
-    }
-
-    // --- Rendering (Shared Logic) ---
-    try {
-        ctx.fillStyle = '#111827';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        // Use player's interpolated render position for camera center
-        let cameraX = player.renderX;
-        let cameraY = player.renderY;
-        if (isNaN(cameraX) || isNaN(cameraY)) {
-           console.warn("[Noot.io Loop] Invalid camera position! Resetting.", { player });
-           // Reset camera to logical position if render is NaN
-           cameraX = player.x;
-           cameraY = player.y;
-           // Also reset render positions to prevent propagation
-           player.renderX = player.x;
-           player.renderY = player.y;
-        }
-
-
-        // Draw food (shared)
-        foods.forEach(food => {
-            const drawX = food.x - cameraX + canvas.width / 2;
-            const drawY = food.y - cameraY + canvas.height / 2;
-            const radius = 5; // Consistent food size
-             if (drawX + radius > 0 && drawX - radius < canvas.width && drawY + radius > 0 && drawY - radius < canvas.height) {
-                 drawCircle(drawX, drawY, radius, food.color || '#8BC34A');
-             }
-        });
-
-        // Draw mass food (Only relevant for online? Render if exists)
-        massFood.forEach(mf => {
-           const drawX = mf.x - cameraX + canvas.width / 2;
-           const drawY = mf.y - cameraY + canvas.height / 2;
-           const radius = Math.max(2, Math.sqrt(mf.mass));
-           if (drawX + radius > 0 && drawX - radius < canvas.width && drawY + radius > 0 && drawY - radius < canvas.height) {
-               drawCircle(drawX, drawY, radius, mf.color);
+      // Interpolate Player render position
+      player.renderX = lerp(player.renderX, player.x, INTERPOLATION_FACTOR);
+      player.renderY = lerp(player.renderY, player.y, INTERPOLATION_FACTOR);
+       // Interpolate bot render positions
+       bots.forEach(bot => {
+           if (bot.mass > 0) {
+              bot.renderX = lerp(bot.renderX, bot.x, INTERPOLATION_FACTOR * 0.5); // Slower lerp maybe
+              bot.renderY = lerp(bot.renderY, bot.y, INTERPOLATION_FACTOR * 0.5);
            }
-        });
-
-        // Draw other entities (Bots in offline, Players in online)
-        const entitiesToDraw = isOfflineMode ? bots : players;
-        entitiesToDraw.forEach(p => {
-             if (p.mass <= 0) return; // Don't draw dead entities
-            const entityDrawData = {
-                ...p,
-                renderX: p.renderX - cameraX + canvas.width / 2, // Adjust position relative to camera
-                renderY: p.renderY - cameraY + canvas.height / 2
-            };
-            const radius = Math.sqrt(p.mass / Math.PI) * 10;
-            if (entityDrawData.renderX + radius > 0 && entityDrawData.renderX - radius < canvas.width &&
-                entityDrawData.renderY + radius > 0 && entityDrawData.renderY - radius < canvas.height) {
-                drawPlayer(entityDrawData);
-            }
-        });
-
-        // Draw current player (centered) only if alive
-        if (player.mass > 0) {
-            const selfDrawData = {
-              ...player,
-              renderX: canvas.width / 2,
-              renderY: canvas.height / 2
-            };
-            drawPlayer(selfDrawData);
-        }
+       });
 
 
-        // Update Stats Display (shared) - Use different elements?
-        // const scoreElement = document.getElementById('score'); // Assuming this exists
-        // if (scoreElement) {
-        //   scoreElement.textContent = `Mass: ${player.mass ? Math.floor(player.mass).toLocaleString() : 0}`;
-        // }
+  } else { // Online Mode
+      // Send Input to Server
+      if (socket && socket.connected) {
+          const worldMouseX = player.x + (mouseX - canvas.width / 2);
+          const worldMouseY = player.y + (mouseY - canvas.height / 2);
+          socket.emit('0', { x: worldMouseX, y: worldMouseY }); // '0' is the event name for player movement
+      }
+      // Interpolate Player render position based on logical position (prediction)
+      player.renderX = lerp(player.renderX, player.x, INTERPOLATION_FACTOR);
+      player.renderY = lerp(player.renderY, player.y, INTERPOLATION_FACTOR);
+      // Interpolate OTHER players based on server data
+      players.forEach(p => {
+          if (p.serverX !== undefined) {
+              p.renderX = lerp(p.renderX, p.serverX, INTERPOLATION_FACTOR);
+              p.renderY = lerp(p.renderY, p.serverY, INTERPOLATION_FACTOR);
+          } else {
+              p.renderX = p.x; p.renderY = p.y; // Fallback
+          }
+      });
+  }
 
-        // Draw leaderboard (Online) or Offline Stats
-        if (!isOfflineMode) {
-             drawLeaderboard();
-        } else {
-             // Draw offline score/stats top-left
-             ctx.textAlign = 'left'; // Align left for stats
-             drawText(`Mass: ${player.mass ? Math.floor(player.mass).toLocaleString() : 0}`, 20, 30, '#FFFFFF', 16);
-             drawText(`Bots: ${bots.length}`, 20, 50, '#FFFFFF', 16);
-             // Could add FPS counter here too
-        }
+  // --- Rendering (Shared Logic) ---
+  try {
+      ctx.fillStyle = '#111827';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Use player's interpolated render position for camera center
+      let cameraX = player.renderX;
+      let cameraY = player.renderY;
+      if (isNaN(cameraX) || isNaN(cameraY)) {
+         console.warn("[Noot.io Loop] Invalid camera position! Resetting.", { player });
+         // Reset camera to logical position if render is NaN
+         cameraX = player.x;
+         cameraY = player.y;
+         // Also reset render positions to prevent propagation
+         player.renderX = player.x;
+         player.renderY = player.y;
+      }
 
 
-    } catch (e) {
-        console.error("[gameLoop] Error during rendering phase:", e);
-        isGameRunning = false; // Stop loop on critical error
-        isGameInitialized = false;
-    }
+      // Draw food (shared)
+      foods.forEach(food => {
+          const drawX = food.x - cameraX + canvas.width / 2;
+          const drawY = food.y - cameraY + canvas.height / 2;
+          const radius = 5; // Consistent food size
+           if (drawX + radius > 0 && drawX - radius < canvas.width && drawY + radius > 0 && drawY - radius < canvas.height) {
+               drawCircle(drawX, drawY, radius, food.color || '#8BC34A');
+           }
+      });
 
-    requestAnimationFrame(gameLoop);
+      // Draw mass food (Only relevant for online? Render if exists)
+      massFood.forEach(mf => {
+         const drawX = mf.x - cameraX + canvas.width / 2;
+         const drawY = mf.y - cameraY + canvas.height / 2;
+         const radius = Math.max(2, Math.sqrt(mf.mass));
+         if (drawX + radius > 0 && drawX - radius < canvas.width && drawY + radius > 0 && drawY - radius < canvas.height) {
+             drawCircle(drawX, drawY, radius, mf.color);
+         }
+      });
+
+      // Draw other entities (Bots in offline, Players in online)
+      const entitiesToDraw = isOfflineMode ? bots : players;
+      entitiesToDraw.forEach(p => {
+           if (p.mass <= 0) return; // Don't draw dead entities
+          const entityDrawData = {
+              ...p,
+              renderX: p.renderX - cameraX + canvas.width / 2, // Adjust position relative to camera
+              renderY: p.renderY - cameraY + canvas.height / 2
+          };
+          const radius = Math.sqrt(p.mass / Math.PI) * 10;
+          if (entityDrawData.renderX + radius > 0 && entityDrawData.renderX - radius < canvas.width &&
+              entityDrawData.renderY + radius > 0 && entityDrawData.renderY - radius < canvas.height) {
+              drawPlayer(entityDrawData);
+          }
+      });
+
+      // Draw current player (centered) only if alive
+      if (player.mass > 0) {
+          const selfDrawData = {
+            ...player,
+            renderX: canvas.width / 2,
+            renderY: canvas.height / 2
+          };
+          drawPlayer(selfDrawData);
+      }
+
+
+      // Update Stats Display (shared) - Use different elements?
+      // const scoreElement = document.getElementById('score'); // Assuming this exists
+      // if (scoreElement) {
+      //   scoreElement.textContent = `Mass: ${player.mass ? Math.floor(player.mass).toLocaleString() : 0}`;
+      // }
+
+      // Draw leaderboard (Online) or Offline Stats
+      if (!isOfflineMode) {
+           drawLeaderboard();
+      } else {
+           // Draw offline score/stats top-left
+           ctx.textAlign = 'left'; // Align left for stats
+           drawText(`Mass: ${player.mass ? Math.floor(player.mass).toLocaleString() : 0}`, 20, 30, '#FFFFFF', 16);
+           drawText(`Bots: ${bots.length}`, 20, 50, '#FFFFFF', 16);
+           // Could add FPS counter here too
+      }
+
+
+  } catch (e) {
+      console.error("[gameLoop] Error during rendering phase:", e);
+      isGameRunning = false; // Stop loop on critical error
+      isGameInitialized = false;
+  }
+
+  requestAnimationFrame(gameLoop);
 }
 
 
@@ -943,8 +976,8 @@ function startGame() {
         player = {
             id: `offline_${Date.now()}`, // Unique enough for offline
             name: nickname,
-            x: Math.random() * WORLD_WIDTH,
-            y: Math.random() * WORLD_HEIGHT,
+            x: WORLD_WIDTH/2 + (Math.random() * 400 - 200), // Spawn near center with slight randomization
+            y: WORLD_HEIGHT/2 + (Math.random() * 400 - 200), // Spawn near center with slight randomization
             mass: START_MASS,
             color: colors[Math.floor(Math.random() * colors.length)],
             renderX: 0, // Will be set relative to camera
