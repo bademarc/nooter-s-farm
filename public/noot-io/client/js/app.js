@@ -108,14 +108,25 @@ function checkEarnedCoins(currentMass) {
 // --- End Noot Wrapper Communication ---
 
 // Helper function to set game messages
-function setGameMessage(message) {
+function setGameMessage(message, isRespawnMessage = false) {
   const gameMessage = document.getElementById('gameMessage');
   if (gameMessage) {
     if (message) {
       gameMessage.textContent = message;
       gameMessage.style.display = 'block';
+      
+      // Clear any existing animation class
+      gameMessage.classList.remove('respawn-animation');
+      
+      // Apply animation for respawn messages
+      if (isRespawnMessage) {
+        // Force a reflow (necessary for animation restart)
+        void gameMessage.offsetWidth;
+        gameMessage.classList.add('respawn-animation');
+      }
     } else {
       gameMessage.style.display = 'none';
+      gameMessage.classList.remove('respawn-animation');
     }
   }
 }
@@ -470,13 +481,28 @@ function setupSocketListeners() {
       if (isOfflineMode) return;
       console.log(`[Noot.io App] Eaten by ${data.by}!`);
       isGameRunning = false; // Stop local processing
-      isGameInitialized = false; // Allow re-init/mode selection
-      const restartButton = document.getElementById('restart-button');
-      if (restartButton) restartButton.style.display = 'block';
+      isGameInitialized = true; // Keep initialization
       player = {};
       players = [];
       foods = [];
       massFood = [];
+      
+      // Show respawn message
+      setGameMessage('Respawning in 2 seconds...', true);
+      
+      // Auto-respawn after 2 seconds
+      setTimeout(() => {
+          // Request respawn from server
+          if (socket && socket.connected) {
+              socket.emit('respawn', { name: player.name || 'Player' });
+              
+              // Show respawn notification briefly
+              setGameMessage('Respawned!', true);
+              setTimeout(() => setGameMessage(''), 2000);
+          } else {
+              setGameMessage('Connection lost. Please refresh.', true);
+          }
+      }, 2000);
   });
 
   // Listen for explicit respawn data from server
@@ -1926,20 +1952,32 @@ function handleEntityCollisions() {
               if (p1 === player) { // Player was eaten
                   console.log("[Noot.io App] Player eaten in offline mode!");
                   isGameRunning = false; // Stop game logic
-                  isGameInitialized = false; // Allow re-init
+                  isGameInitialized = true; // Keep initialization
                   player.mass = 0; // Mark player as dead
                   
-                  // Show restart button with proper fixed positioning
-                  const restartButton = document.getElementById('restart-button');
-                  if (restartButton) {
-                      restartButton.style.display = 'block';
-                      restartButton.style.position = 'fixed'; // Use fixed instead of absolute
-                      restartButton.style.top = '50%';
-                      restartButton.style.left = '50%';
-                      restartButton.style.transform = 'translate(-50%, -50%)';
-                      restartButton.style.zIndex = '1000'; // Very high z-index to ensure it's on top
-                      restartButton.textContent = 'PLAY AGAIN';
-                  }
+                  // Show respawn message
+                  setGameMessage('Respawning in 2 seconds...', true);
+                  
+                  // Auto-respawn after 2 seconds
+                  setTimeout(() => {
+                      // Respawn player
+                      player.mass = START_MASS;
+                      player.x = Math.random() * WORLD_WIDTH;
+                      player.y = Math.random() * WORLD_HEIGHT;
+                      player.renderX = player.x;
+                      player.renderY = player.y;
+                      
+                      // Restart game logic
+                      isGameRunning = true;
+                      
+                      // Show respawn notification briefly
+                      setGameMessage('Respawned!', true);
+                      setTimeout(() => setGameMessage(''), 2000);
+                      
+                      // Update leaderboard after respawn
+                      updateOfflineLeaderboard();
+                  }, 2000);
+                  
                   break; // Exit inner loop
               } else if (p1.isPlayerSplit || p1.isBotSplit) {
                   // Just remove split cells when eaten
