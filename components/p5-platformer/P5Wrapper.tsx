@@ -7,6 +7,7 @@ import platformerSketch from '../games/game'; // Import the sketch without exten
 
 interface SketchProps extends P5WrappedElementProps {
   volume: number;
+  isActive: boolean;
 }
 
 function P5Wrapper() {
@@ -14,26 +15,97 @@ function P5Wrapper() {
   const [soundLibraryReady, setSoundLibraryReady] = useState(false); 
   const [errorLoading, setErrorLoading] = useState<string | null>(null);
   const [masterVolume, setMasterVolume] = useState(1.0); // Add state for volume
+  const [isActive, setIsActive] = useState(true); // Track if component is active/visible
   const gameInstanceRef = useRef<any>(null);
+  const p5InstanceRef = useRef<any>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
 
-  // Ensure this only runs client-side first
-  useEffect(() => {
-    setIsClient(true);
+  // Function to properly clean up p5 and stop all sounds
+  const cleanupGame = () => {
+    console.log("P5Wrapper: Cleaning up game instance and stopping sounds");
+    
+    // Stop all sounds first
+    if (p5InstanceRef.current) {
+      try {
+        // Try standard p5.sound methods
+        if (typeof p5InstanceRef.current.soundOut !== 'undefined') {
+          // Option 1: Try direct access to p5.sound's master output
+          p5InstanceRef.current.soundOut.disconnect();
+        }
+        
+        // Option 2: Try global sound context muting
+        if (typeof p5InstanceRef.current.getAudioContext === 'function') {
+          const audioContext = p5InstanceRef.current.getAudioContext();
+          if (audioContext && audioContext.state === 'running') {
+            console.log("Suspending audio context");
+            audioContext.suspend();
+          }
+        }
+        
+        // Option 3: Use game's own sound stopping method if available
+        if (gameInstanceRef.current && typeof gameInstanceRef.current.stopAllSounds === 'function') {
+          gameInstanceRef.current.stopAllSounds();
+        }
+      } catch (err) {
+        console.warn("Error while stopping sounds:", err);
+      }
+    }
+    
+    // Remove the p5 instance itself
+    if (p5InstanceRef.current && typeof p5InstanceRef.current.remove === 'function') {
+      try {
+        p5InstanceRef.current.remove();
+        p5InstanceRef.current = null;
+      } catch (err) {
+        console.warn("Error removing p5 instance:", err);
+      }
+    }
+    
+    // Clean up any references to game objects
+    gameInstanceRef.current = null;
+    
+    // Remove canvas elements as a fallback
+    if (canvasContainerRef.current) {
+      const canvases = canvasContainerRef.current.querySelectorAll('canvas');
+      canvases.forEach(canvas => canvas.remove());
+    }
+  };
 
-    // Cleanup function
-    return () => {
-      // Clean up any existing game instances
-      if (gameInstanceRef.current) {
-        console.log("P5Wrapper: Cleaning up previous game instance");
-        // Remove existing canvas elements
-        if (canvasContainerRef.current) {
-          const canvases = canvasContainerRef.current.querySelectorAll('canvas');
-          canvases.forEach(canvas => canvas.remove());
+  // Effect to handle visibility change
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      const isVisible = document.visibilityState === 'visible';
+      setIsActive(isVisible);
+      
+      // When tab becomes hidden, mute all sounds
+      if (!isVisible && p5InstanceRef.current) {
+        if (typeof p5InstanceRef.current.setMasterVolume === 'function') {
+          console.log("Muting sounds as tab is not visible");
+          p5InstanceRef.current._prevVolume = masterVolume;
+          p5InstanceRef.current.setMasterVolume(0);
+        }
+      } else if (isVisible && p5InstanceRef.current) {
+        // Restore volume when visible again
+        if (typeof p5InstanceRef.current.setMasterVolume === 'function' && 
+            p5InstanceRef.current._prevVolume !== undefined) {
+          console.log("Restoring volume as tab is visible again");
+          p5InstanceRef.current.setMasterVolume(p5InstanceRef.current._prevVolume);
         }
       }
     };
-  }, []);
+
+    // Add visibility change listener
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    // Ensure this only runs client-side first
+    setIsClient(true);
+
+    // Cleanup function runs when component unmounts
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      cleanupGame();
+    };
+  }, [masterVolume]);
 
   // Dynamically import p5 core AND p5.sound *after* client mount
   useEffect(() => {
@@ -65,6 +137,11 @@ function P5Wrapper() {
           setErrorLoading("Failed to load p5 library or sound addon. Sound will be disabled."); 
         });
     }
+    
+    // Cleanup on effect refresh or component unmount
+    return () => {
+      cleanupGame();
+    };
   }, [isClient]); // Run when isClient becomes true
 
   // Handle volume change from slider
@@ -78,6 +155,9 @@ function P5Wrapper() {
     return (p: any) => {
       let gameStarted = false;
       
+      // Store p5 instance for cleanup
+      p5InstanceRef.current = p;
+      
       // Original sketch call - only called once for initialization
       const sketchInstance = platformerSketch(p);
       
@@ -86,6 +166,33 @@ function P5Wrapper() {
       
       // Handle prop updates (like volume changes)
       p.updateWithProps = (props: SketchProps) => {
+        // Handle active state changes
+        if (props.isActive !== undefined) {
+          // If component is not active, pause the game and mute sounds
+          if (!props.isActive) {
+            if (typeof p.setMasterVolume === 'function') {
+              p._prevVolume = props.volume || masterVolume;
+              p.setMasterVolume(0);
+            }
+            
+            // Pause game if possible
+            if (gameInstanceRef.current && typeof gameInstanceRef.current.pauseGame === 'function') {
+              gameInstanceRef.current.pauseGame();
+            }
+          } else {
+            // Restore previous state
+            if (typeof p.setMasterVolume === 'function' && p._prevVolume !== undefined) {
+              p.setMasterVolume(p._prevVolume);
+            }
+            
+            // Resume game if possible
+            if (gameInstanceRef.current && typeof gameInstanceRef.current.resumeGame === 'function') {
+              gameInstanceRef.current.resumeGame();
+            }
+          }
+        }
+        
+        // Handle volume changes
         if (props.volume !== undefined && typeof p.setMasterVolume === 'function') {
           p.setMasterVolume(props.volume);
         } else if (props.volume !== undefined && p.internalMasterVolume !== undefined) {
@@ -114,6 +221,7 @@ function P5Wrapper() {
           <ReactP5Wrapper 
             sketch={wrappedSketch} 
             volume={masterVolume} // Pass volume prop here
+            isActive={isActive} // Pass active state
             key="single-instance-p5-sketch" // Key helps ensure a single instance
           />}
       </div>
