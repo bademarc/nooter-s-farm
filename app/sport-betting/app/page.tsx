@@ -15,7 +15,7 @@ import LimitedTimeEvent from "../components/limited-time-event"
 import AchievementUnlocked from "../components/achievement-unlocked"
 import LevelUpNotification from "../components/level-up-notification"
 import RewardWheel from "../components/reward-wheel"
-import useSound from "../hooks/use-sound"
+// import useSound from "../hooks/use-sound"
 
 interface SportBettingPageProps {
   farmCoins: number;
@@ -45,15 +45,16 @@ export default function SportBettingPage({
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [showBonus, setShowBonus] = useState(false)
 
-  const {
-    playWinSound,
-    playBetSound,
-    playButtonSound,
-    playLevelUpSound,
-    playAchievementSound,
-    playWheelSound,
-    playTimerSound,
-  } = useSound()
+  // Comment out the hook destructuring
+  // const {
+  //   playWinSound,
+  //   playBetSound,
+  //   playButtonSound,
+  //   playLevelUpSound,
+  //   playAchievementSound,
+  //   playWheelSound,
+  //   playTimerSound,
+  // } = useSound();
 
   // Reference to store timeout IDs for cleanup
   const timeoutRefs = useRef<NodeJS.Timeout[]>([])
@@ -68,7 +69,7 @@ export default function SportBettingPage({
     // Show limited time event after 15 seconds
     const eventTimer = setTimeout(() => {
       setShowLimitedEvent(true)
-      playTimerSound()
+      // playTimerSound(); // <-- Commented out
     }, 15000)
     timeoutRefs.current.push(eventTimer)
 
@@ -100,7 +101,7 @@ export default function SportBettingPage({
       if (pulsingBetInterval) clearInterval(pulsingBetInterval)
       clearInterval(countdownInterval)
     }
-  }, [playTimerSound])
+  }, []) // Removed playTimerSound dependency
 
   useEffect(() => {
     // Show hot streak bonus when streak reaches 3
@@ -114,15 +115,15 @@ export default function SportBettingPage({
     if (betCount === 5 && !achievementType) {
       setAchievementType("first_steps")
       setShowAchievement(true)
-      playAchievementSound()
+      // playAchievementSound(); // <-- Commented out
       addXp(50)
     } else if (winCount === 3 && achievementType !== "winning_streak") {
       setAchievementType("winning_streak")
       setShowAchievement(true)
-      playAchievementSound()
+      // playAchievementSound(); // <-- Commented out
       addXp(100)
     }
-  }, [betCount, winCount, achievementType, playAchievementSound])
+  }, [betCount, winCount, achievementType]) // Removed playAchievementSound dependency
 
   useEffect(() => {
     // Level up system
@@ -131,7 +132,7 @@ export default function SportBettingPage({
       setUserLevel((prev) => prev + 1)
       setXpPoints((prev) => prev - xpNeeded)
       setShowLevelUp(true)
-      playLevelUpSound()
+      // playLevelUpSound(); // <-- Commented out
 
       // Give reward for leveling up
       addFarmCoins(userLevel * 200)
@@ -140,12 +141,12 @@ export default function SportBettingPage({
       if ((userLevel + 1) % 3 === 0) {
         const wheelTimer = setTimeout(() => {
           setShowRewardWheel(true)
-          playWheelSound()
+          // playWheelSound(); // <-- Commented out
         }, 2000)
         timeoutRefs.current.push(wheelTimer)
       }
     }
-  }, [xpPoints, userLevel, addFarmCoins, playLevelUpSound, playWheelSound])
+  }, [xpPoints, userLevel, addFarmCoins]) // Removed sound hook dependencies
 
   const addXp = (amount: number) => {
     setXpPoints((prev) => prev + amount)
@@ -154,7 +155,7 @@ export default function SportBettingPage({
   const handleWin = (amount: number, tokenSymbol: string) => {
     console.log(`Page received WIN notification: ${amount} ${tokenSymbol}`);
     setShowConfetti(true)
-    playWinSound()
+    // playWinSound(); // <-- Commented out
     setStreak((prev) => prev + 1)
     setWinCount((prev) => prev + 1)
     addXp(25)
@@ -177,14 +178,14 @@ export default function SportBettingPage({
   }
 
   const claimBonus = () => {
-    playButtonSound()
+    // playButtonSound(); // <-- Commented out
     addFarmCoins(500)
     setShowBonus(false)
     addXp(20)
   }
 
   const claimHotStreakBonus = () => {
-    playButtonSound()
+    // playButtonSound(); // <-- Commented out
     addFarmCoins(1000)
     setShowHotStreak(false)
     setStreak(0)
@@ -192,12 +193,12 @@ export default function SportBettingPage({
   }
 
   const claimLimitedTimeReward = () => {
-    playButtonSound()
+    // playButtonSound(); // <-- Commented out
     addFarmCoins(2000)
     setShowLimitedEvent(false)
     addXp(75)
     setTimeLeft(1800)
-    const eventTimer = setTimeout(() => { setShowLimitedEvent(true); playTimerSound(); }, 30 * 60 * 1000)
+    const eventTimer = setTimeout(() => { setShowLimitedEvent(true); /* playTimerSound(); */ }, 30 * 60 * 1000)
     timeoutRefs.current.push(eventTimer)
   }
 
@@ -213,16 +214,17 @@ export default function SportBettingPage({
   }
 
   const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-       document.documentElement.requestFullscreen().catch(err => console.error(err))
-       setIsFullscreen(true)
-    } else {
-       if (document.exitFullscreen) {
-         document.exitFullscreen()
-         setIsFullscreen(false)
-       }
-    }
-    playButtonSound()
+    // if (!document.fullscreenElement) {
+    //    document.documentElement.requestFullscreen().catch(err => console.error(err))
+    //    setIsFullscreen(true)
+    // } else {
+    //    if (document.exitFullscreen) {
+    //      document.exitFullscreen()
+    //      setIsFullscreen(false)
+    //    }
+    // }
+    // playButtonSound(); // <-- Commented out
+    console.log("Toggle fullscreen called (body commented out for debug)"); // Keep a log
   }
 
   return (
@@ -293,13 +295,13 @@ export default function SportBettingPage({
           <Button
             variant="ghost"
             size="icon"
-            onClick={toggleFullscreen}
+            onClick={() => { toggleFullscreen(); /* playButtonSound(); */ }}
             className="text-gray-400 hover:text-white"
             title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
           >
             <Maximize2 className="h-5 w-5" />
           </Button>
-          <Button variant="ghost" size="icon" className="text-gray-400 hover:text-white relative" title="Notifications">
+          <Button variant="ghost" size="icon" onClick={() => { /* playButtonSound(); */ }} className="text-gray-400 hover:text-white relative" title="Notifications">
               <Bell className="h-5 w-5" />
           </Button>
         </div>
@@ -351,7 +353,7 @@ export default function SportBettingPage({
         
         {/* Keep Popular Bets if desired separately */}
          <div className="lg:col-span-1 space-y-6">
-           <PopularBets onBet={() => { console.log("Popular bet clicked"); playButtonSound(); }} isPulsing={showPulsingBet} />
+           <PopularBets onBet={() => { console.log("Popular bet clicked"); /* playButtonSound(); */ }} isPulsing={showPulsingBet} />
            {/* You could add other widgets here: Leaderboards, Chat, etc. */}
            <div className="bg-gray-800/60 p-4 rounded-lg border border-gray-700">
                 <h3 className="text-lg font-bold mb-3 text-center text-yellow-300">Activity Feed</h3>
