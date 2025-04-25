@@ -318,15 +318,16 @@ export default function SportBettingPage({
           {/* Winners Banner */}
           <WinnersBanner />
 
-          {/* <<< Render the new SportBettingInterface here >>> */ 
+          {/* Render the new SportBettingInterface here */}
           <SportBettingInterface
             onWin={handleWin}
             onLoss={handleLoss}
             onBetPlaced={handleBetPlaced}
-          /> 
-          
+          />
+
           {/* Remove the old Tabs structure or repurpose it */}
-          {/* <Tabs defaultValue="live" className="w-full">
+          {/*
+          <Tabs defaultValue="live" className="w-full">
             <TabsList className="grid w-full grid-cols-3 bg-gray-800/70 mb-4">
               <TabsTrigger value="live" className="data-[state=active]:bg-red-600 data-[state=active]:text-white"><Flame className="mr-2 h-4 w-4" />Live</TabsTrigger>
               <TabsTrigger value="upcoming" className="data-[state=active]:bg-purple-600 data-[state=active]:text-white"><Clock className="mr-2 h-4 w-4" />Upcoming</TabsTrigger>
@@ -341,7 +342,8 @@ export default function SportBettingPage({
             <TabsContent value="quick">
               <QuickBetPanel onBet={handlePlaceBet} />
             </TabsContent>
-          </Tabs> */}
+          </Tabs>
+          */}
         </div>
 
         {/* Right Sidebar (Bet Slip / Popular Bets - Keep or Remove?) */}
