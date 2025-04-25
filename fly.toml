@@ -4,6 +4,11 @@
 app = 'noot-nootio'
 primary_region = 'fra' # Frankfurt, Germany (Chosen for Kazakhstan proximity)
 
+# Explicitly define the build settings
+[build]
+  # Specify the Dockerfile to use, relative to the project root
+  dockerfile = "backend/Dockerfile"
+
 # No explicit build section needed, Dockerfile will be used
 
 # No http_service section needed if only using TCP services for WS
