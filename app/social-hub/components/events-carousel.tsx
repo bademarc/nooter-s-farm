@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { ChevronLeft, ChevronRight, Calendar, Star, Clock } from "lucide-react"
+import { useState } from "react"
+import { Calendar, Star, Clock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -17,6 +17,7 @@ const events = [
     title: "Spring Festival",
     description: "Celebrate the new season with special crops and limited-time animals!",
     date: "May 15 - May 30",
+    image: "/images/guide/farm.jpg",
     backgroundColor: "#4CAF50",
     type: "Seasonal",
     isHot: true,
@@ -27,6 +28,7 @@ const events = [
     title: "Nooter Racing Championship",
     description: "Race your fastest Nooters against other farmers for amazing prizes!",
     date: "June 5 - June 7",
+    image: "/images/guide/Nooter Racing Championship.jpg",
     backgroundColor: "#F44336",
     type: "Competition",
     isHot: true,
@@ -37,6 +39,7 @@ const events = [
     title: "Crop Exchange Week",
     description: "Trade your crops with other farmers at special exchange rates!",
     date: "June 12 - June 19",
+    image: "/images/guide/Crop Exchange Week.jpg",
     backgroundColor: "#2196F3",
     type: "Community",
     isHot: false,
@@ -47,6 +50,7 @@ const events = [
     title: "Mystery Seed Hunt",
     description: "Find hidden mystery seeds across the game world for rare plants!",
     date: "June 25 - July 2",
+    image: "/images/guide/Mystery Seed Hunt.jpg",
     backgroundColor: "#9C27B0",
     type: "Special",
     isHot: true,
@@ -55,29 +59,9 @@ const events = [
 ]
 
 export default function EventsCarousel() {
-  const [currentIndex, setCurrentIndex] = useState(0)
-  const [autoplay, setAutoplay] = useState(true)
   const [showConfetti, setShowConfetti] = useState(false)
   const [registeredEvents, setRegisteredEvents] = useState<number[]>([])
   const { toast } = useToast()
-
-  const nextSlide = () => {
-    setCurrentIndex((prevIndex) => (prevIndex + 1) % events.length)
-  }
-
-  const prevSlide = () => {
-    setCurrentIndex((prevIndex) => (prevIndex - 1 + events.length) % events.length)
-  }
-
-  useEffect(() => {
-    if (!autoplay) return
-
-    const interval = setInterval(() => {
-      nextSlide()
-    }, 5000)
-
-    return () => clearInterval(interval)
-  }, [autoplay, currentIndex])
 
   const getBadgeColor = (type: string) => {
     switch (type) {
@@ -124,73 +108,65 @@ export default function EventsCarousel() {
           <h2 className="text-lg font-bold text-white">Upcoming Events</h2>
         </div>
 
-        <div
-          className="relative h-[300px] overflow-hidden"
-          onMouseEnter={() => setAutoplay(false)}
-          onMouseLeave={() => setAutoplay(true)}
-        >
-          <div className="absolute inset-0" style={{ backgroundColor: events[currentIndex].backgroundColor }}>
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent flex flex-col justify-end p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <Badge className={`${getBadgeColor(events[currentIndex].type)}`}>{events[currentIndex].type}</Badge>
-                {events[currentIndex].isHot && <AnimatedBadge variant="hot">HOT!</AnimatedBadge>}
-              </div>
-              <h3 className="text-2xl font-bold text-white">
-                {events[currentIndex].title}
-              </h3>
-              <p className="text-sm text-white/90 mb-3">
-                {events[currentIndex].description}
-              </p>
-
-              <div className="flex flex-col gap-2 mb-3">
-                <div className="flex items-center gap-1 text-white/90">
-                  <Clock className="h-4 w-4" />
-                  <span className="text-sm">{events[currentIndex].date}</span>
+        <div className="p-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+          {events.map((event) => (
+            <Card key={event.id} className="overflow-hidden">
+              <div 
+                className="h-24 relative" 
+                style={{ backgroundColor: event.backgroundColor }}
+              >
+                {event.image && (
+                  <img 
+                    src={event.image}
+                    alt={event.title}
+                    className="absolute inset-0 w-full h-full object-cover"
+                    onError={(e) => {
+                      console.error(`Failed to load image: ${event.image}`);
+                      // Image error - the background color will show instead
+                      e.currentTarget.style.display = 'none';
+                    }}
+                  />
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent flex items-end p-2">
+                  <div className="flex items-center gap-2">
+                    <Badge className={`${getBadgeColor(event.type)}`}>{event.type}</Badge>
+                    {event.isHot && <AnimatedBadge variant="hot">HOT!</AnimatedBadge>}
+                  </div>
                 </div>
-                <div className="flex flex-wrap gap-1">
-                  {events[currentIndex].rewards.map((reward, idx) => (
+              </div>
+              <div className="p-3">
+                <h3 className="text-lg font-bold">{event.title}</h3>
+                <p className="text-xs text-muted-foreground line-clamp-2 mb-2">{event.description}</p>
+
+                <div className="flex items-center gap-1 text-muted-foreground mb-2">
+                  <Clock className="h-3 w-3" />
+                  <span className="text-xs">{event.date}</span>
+                </div>
+                
+                <div className="flex flex-wrap gap-1 mb-3">
+                  {event.rewards.slice(0, 2).map((reward, idx) => (
                     <span
                       key={idx}
-                      className="inline-flex items-center gap-1 rounded-full bg-yellow-400/90 px-2 py-0.5 text-xs font-medium text-black"
+                      className="inline-flex items-center gap-1 rounded-full bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-100 px-2 py-0.5 text-[10px] font-medium"
                     >
-                      <Star className="h-3 w-3" />
+                      <Star className="h-2 w-2" />
                       {reward}
                     </span>
                   ))}
+                  {event.rewards.length > 2 && (
+                    <span className="text-[10px] text-muted-foreground">+{event.rewards.length - 2} more</span>
+                  )}
                 </div>
-              </div>
 
-              <div className="flex justify-between items-center">
-                <span className="text-xs text-white/90 bg-black/30 px-2 py-1 rounded-full">
-                  {currentIndex + 1}/{events.length}
-                </span>
                 <ShimmerButton
-                  onClick={() => handleRegister(events[currentIndex].id)}
-                  className={registeredEvents.includes(events[currentIndex].id) ? "bg-green-600" : ""}
+                  className={`w-full ${registeredEvents.includes(event.id) ? "bg-green-600" : ""}`}
+                  onClick={() => handleRegister(event.id)}
                 >
-                  {registeredEvents.includes(events[currentIndex].id) ? "Registered!" : "Register Now"}
+                  {registeredEvents.includes(event.id) ? "Registered!" : "Register Now"}
                 </ShimmerButton>
               </div>
-            </div>
-          </div>
-
-          <Button
-            variant="ghost"
-            size="icon"
-            className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/30 text-white hover:bg-black/50 rounded-full h-8 w-8 z-10"
-            onClick={prevSlide}
-          >
-            <ChevronLeft className="h-5 w-5" />
-          </Button>
-
-          <Button
-            variant="ghost"
-            size="icon"
-            className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/30 text-white hover:bg-black/50 rounded-full h-8 w-8 z-10"
-            onClick={nextSlide}
-          >
-            <ChevronRight className="h-5 w-5" />
-          </Button>
+            </Card>
+          ))}
         </div>
       </div>
     </Card>
