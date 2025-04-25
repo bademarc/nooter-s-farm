@@ -1,0 +1,19 @@
+{
+  "name": "noot-io-backend",
+  "version": "1.0.0",
+  "description": "Multiplayer backend for Noot.io game",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "socket.io": "^4.7.5" 
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+} 

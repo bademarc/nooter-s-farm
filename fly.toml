@@ -1,23 +1,53 @@
-# fly.toml app configuration file generated for noot-nootio
-#
+# fly.toml app configuration file for noot-nootio backend
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
-#
 
 app = 'noot-nootio'
-primary_region = 'arn' # Stockholm, Sweden based on your previous selection
+primary_region = 'arn' # Stockholm, Sweden
 
-# [build]
-#  builder = 'paketobuildpacks/builder:base'
+# No explicit build section needed, Dockerfile will be used
 
-[http_service]
-  internal_port = 3000
-  force_https = true
-  auto_stop_machines = true
-  auto_start_machines = true
-  min_machines_running = 0
-  processes = ['app']
+# Remove the http_service section, as we only need TCP for WebSockets (or keep for basic health check)
+# [http_service]
+#   internal_port = 8080 # Changed from 3000
+#   force_https = true
+#   auto_stop_machines = true
+#   auto_start_machines = true
+#   min_machines_running = 0
+#   processes = ['app']
 
 [[vm]]
   cpu_kind = 'shared'
   cpus = 1
-  memory_mb = 1024 
+  memory_mb = 256 # Backend might need less memory than frontend initially
+
+[[services]]
+  protocol = "tcp"
+  internal_port = 8080 # Port the backend server listens on
+  processes = ["app"] # Process group named "app" by default
+
+  [[services.ports]]
+    port = 80 # For HTTP -> WS upgrade
+    handlers = ["http"]
+    force_https = true
+
+  [[services.ports]]
+    port = 443 # For HTTPS -> WSS upgrade
+    handlers = ["tls", "http"]
+
+  [[services.tcp_checks]]
+    interval = "15s"
+    timeout = "2s"
+    grace_period = "1s"
+    restart_limit = 0
+
+  # Optional: HTTP check if your server responds to basic HTTP GET
+  # [[services.http_checks]]
+  #   interval = "15s"
+  #   timeout = "2s"
+  #   grace_period = "5s"
+  #   method = "get"
+  #   path = "/" # Path your server responds to with 2xx status
+  #   protocol = "http"
+
+# [build]
+#  builder = 'paketobuildpacks/builder:base' 

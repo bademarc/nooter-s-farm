@@ -1,52 +1,32 @@
 # syntax = docker/dockerfile:1
 
-# Adjust NODE_VERSION as desired
+# Use the official Node.js 20 image.
+# https://hub.docker.com/_/node
 ARG NODE_VERSION=20.19.0
 FROM node:${NODE_VERSION}-slim AS base
 
-LABEL fly_launch_runtime="Next.js"
+LABEL fly_launch_runtime="Node.js (Noot.io Backend)"
 
-# Next.js app lives here
-WORKDIR /app
+# Set working directory for backend
+WORKDIR /app/backend
 
-# Set production environment
-ENV NODE_ENV="production"
-
-# Install pnpm
+# Install pnpm globally (optional, but can be useful if needed by backend scripts)
 ARG PNPM_VERSION=10.9.0
 RUN npm install -g pnpm@$PNPM_VERSION
 
+# Copy backend package files
+COPY backend/package.json backend/pnpm-lock.yaml* ./ 
+# Allow pnpm-lock.yaml to be optional initially
 
-# Throw-away build stage to reduce size of final image
-FROM base AS build
+# Install backend dependencies using npm (simpler for basic backend)
+# If you want to use pnpm for backend: RUN pnpm install --prod
+RUN npm install --omit=dev
 
-# Install packages needed to build node modules
-RUN apt-get update -qq && \
-    apt-get install --no-install-recommends -y build-essential node-gyp pkg-config python-is-python3
+# Copy the rest of the backend code
+COPY backend/ .
 
-# Install node modules
-COPY .npmrc package-lock.json package.json pnpm-lock.yaml ./
-RUN pnpm install --prod=false
+# Expose the port the app listens on (should match PORT in server.js)
+EXPOSE 8080
 
-# Copy application code
-COPY . .
-
-# Build application
-RUN npx next build --experimental-build-mode compile
-
-# Remove development dependencies
-RUN pnpm prune --prod
-
-
-# Final stage for app image
-FROM base
-
-# Copy built application
-COPY --from=build /app /app
-
-# Entrypoint sets up the container.
-ENTRYPOINT [ "/app/docker-entrypoint.js" ]
-
-# Start the server by default, this can be overwritten at runtime
-EXPOSE 3000
-CMD [ "pnpm", "run", "start" ]
+# Run the backend server
+CMD [ "node", "server.js" ]
