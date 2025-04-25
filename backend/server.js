@@ -204,6 +204,9 @@ function checkFoodCollision(player, nearbyEntities) {
 
 // Check for collisions between player and mass food (using grid)
 function checkMassFoodCollision(player, nearbyEntities) {
+  let eatenMassFoodIds = []; // Collect IDs of eaten items
+  let massGained = 0;
+
   for (let i = nearbyEntities.length - 1; i >= 0; i--) {
     const entity = nearbyEntities[i];
     // Check if entity is mass food (duck typing)
@@ -217,24 +220,31 @@ function checkMassFoodCollision(player, nearbyEntities) {
         const dy = player.y - mf.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
         const playerRadius = Math.sqrt(player.mass / Math.PI);
-        const mfRadius = Math.sqrt(mf.mass / Math.PI);
+        // const mfRadius = Math.sqrt(mf.mass / Math.PI); // Mass food radius is tiny, ignore for collision check
 
-        if (distance < playerRadius + mfRadius * 0.5) { // Player radius needs to overlap significantly
-            // Find the actual mass food index in the global 'massFood' array
+        // Simplified collision: Player radius overlaps mass food center
+        if (distance < playerRadius) {
+            // Check if this mf is still in the global list (important check)
             const mfIndex = massFood.findIndex(m => m.id === mf.id);
             if (mfIndex !== -1) {
-                // Increase player mass
-                player.mass += massFood[mfIndex].mass;
-                // Remove the mass food
-                massFood.splice(mfIndex, 1);
-                 // No need to broadcast mass food removal? Clients get full list in 'update'
-                return true; // Collision occurred
+                massGained += massFood[mfIndex].mass;
+                eatenMassFoodIds.push(mf.id);
+                // Don't splice here! We'll filter later.
             } else {
-                 console.warn(`Mass Food ${mf.id} found in grid but not in global list?`);
+                 // Already eaten by someone else this tick or removed?
             }
         }
     }
   }
+
+  // After checking all nearby entities, update player mass and filter global list
+  if (eatenMassFoodIds.length > 0) {
+    player.mass += massGained;
+    // Filter the global massFood array
+    massFood = massFood.filter(mf => !eatenMassFoodIds.includes(mf.id));
+    return true; // Indicate that *some* collision happened
+  }
+
   return false;
 }
 
