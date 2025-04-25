@@ -44,7 +44,7 @@ export default function LimitedTimeEvent({ onClaim, activeCurrency, timeLeft }: 
                 <span>{formatTime(timeLeft)}</span>
               </motion.div>
             </div>
-            <p className="text-sm">Claim {activeCurrency === "virtual" ? "2000 coins" : "0.05 BTC"} now!</p>
+            <p className="text-sm">Claim 2000 Farm Coins now!</p>
           </div>
         </div>
         <Button onClick={onClaim} className="bg-white font-bold text-pink-600 hover:bg-pink-100">

@@ -158,7 +158,15 @@ export default function SportBettingPage({
     // playWinSound(); // <-- Commented out
     setStreak((prev) => prev + 1)
     setWinCount((prev) => prev + 1)
-    addXp(25)
+    addXp(25) // Base XP for winning
+
+    // --- Convert win amount to Farm Coins (Simple 1:1 for now) ---
+    const farmCoinReward = Math.round(amount); // Use the crypto amount directly
+    addFarmCoins(farmCoinReward);
+    console.log(`Awarded ${farmCoinReward} Farm Coins for the win.`);
+    // You could add more sophisticated conversion logic here based on tokenSymbol
+    // if (tokenSymbol === 'NOOT') { addFarmCoins(amount * 1); }
+    // else if (tokenSymbol === 'ABSTER') { addFarmCoins(amount * 0.5); } // Example
 
     const confettiTimer = setTimeout(() => setShowConfetti(false), 4000)
     timeoutRefs.current.push(confettiTimer)

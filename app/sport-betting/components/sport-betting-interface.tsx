@@ -479,13 +479,38 @@ const SportBettingInterface = ({ onWin, onLoss, onBetPlaced }: SportBettingInter
 
 // TODO: Add function to handle claiming wins, which would call onWin prop
 const handleClaimWinnings = async (betId: string) => {
-    // ... logic to call contract's claim function ...
-    // On successful claim from contract:
-    // const winnings = /* amount won */;
-    // const tokenSymbol = /* symbol of token won */;
-    // fetchTokenBalances(); // Update balance
-    // onWin?.(winnings, tokenSymbol); // Notify parent page
-    // showToast(`Claimed ${winnings} ${tokenSymbol}!`, "success");
+    console.log(`Attempting to claim winnings for bet ID: ${betId}`);
+    // --- TODO: Replace with actual contract interaction ---
+    // const provider = new ethers.BrowserProvider(metamaskProvider || window.ethereum);
+    // const signer = await provider.getSigner();
+    // const bettingContractAddress = getChecksumAddress(BETTING_CONTRACT_ADDRESS);
+    // const bettingContract = new ethers.Contract(bettingContractAddress, SPORT_BETTING_CONTRACT_ABI, signer);
+    // try {
+    //   const claimTx = await bettingContract.claimWinnings(betId);
+    //   const receipt = await claimTx.wait();
+    //   if (receipt && receipt.status === 1) {
+    //     // Extract winnings amount and token symbol from event logs or return value
+    //     const winnings = 100; // Placeholder amount
+    //     const tokenSymbol = "NOOT"; // Placeholder symbol
+    //     showToast(`Claimed ${winnings} ${tokenSymbol}!`, "success");
+    //     fetchTokenBalances(); // Update crypto balance display
+    //     onWin?.(winnings, tokenSymbol); // <<< Notify parent page about the crypto win
+    //   } else {
+    //      throw new Error("Claim transaction failed");
+    //   }
+    // } catch (error: any) {
+    //    console.error("Error claiming winnings:", error);
+    //    showToast(`Claim failed: ${error.reason || error.message || 'Unknown error'}`, "error");
+    // }
+    // --- End Contract Interaction ---
+
+    // --- MOCK SUCCESS (Remove when contract call is added) ---
+    const mockWinnings = 100;
+    const mockTokenSymbol = selectedToken; // Use the token that was bet with for mock
+    showToast(`Mock Claimed ${mockWinnings} ${mockTokenSymbol}!`, "success");
+    onWin?.(mockWinnings, mockTokenSymbol); // Notify parent page
+    fetchTokenBalances(); // Refresh balances
+    // --- End Mock ---
 }
 
 
