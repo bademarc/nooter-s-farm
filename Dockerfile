@@ -18,14 +18,15 @@ WORKDIR /app
 COPY package.json package-lock.json* ./ 
 # Allow package-lock.json to be optional
 
-# Install dependencies using npm
+# Install backend dependencies using npm
+# Use --omit=dev to avoid installing devDependencies
 RUN npm install --omit=dev
 
-# Copy the server code from the root
-COPY server.js .
+# Copy the backend server code explicitly into the working directory (/app/backend)
+COPY backend/server.js ./server.js
 
 # Expose the port the app listens on (8080)
 EXPOSE 8080
 
-# Run the backend server
+# Run the backend server using the server.js inside the workdir (/app/backend)
 CMD [ "node", "server.js" ]
