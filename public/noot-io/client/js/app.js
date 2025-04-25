@@ -238,19 +238,37 @@ function setupSocket(socket) {
         window.chat.addChatLine(data.sender, data.message, false);
     });
 
-    // Handle movement.
-    socket.on('serverTellPlayerMove', function (playerData, userData, foodsList, massList, virusList) {
-        if (global.playerType == 'player') {
+    // Handle movement and game state updates (replaces old serverTellPlayerMove for continuous updates)
+    socket.on('nearbyEntitiesUpdate', function (data) {
+        // Update lists of other entities
+        users = data.players || [];
+        foods = data.foods || [];
+        massFood = data.massFood || [];
+        // viruses = data.viruses || []; // Add if viruses are implemented
+
+        // We get self updates via 'updatedSelf', so no need to process player data here
+        // unless checking for players leaving the nearby area.
+    });
+
+    // Handle updates specific to the player controlled by this client
+    socket.on('updatedSelf', function (playerData) {
+        if (global.playerType === 'player' && player && playerData.id === player.id) {
             player.x = playerData.x;
             player.y = playerData.y;
-            player.hue = playerData.hue;
-            player.massTotal = playerData.massTotal;
-            player.cells = playerData.cells;
+            player.massTotal = playerData.mass; // Server sends 'mass', client uses 'massTotal'
+            // Update cells if needed, assuming single cell for now based on server code
+            if (player.cells && player.cells[0]) {
+                 player.cells[0].x = playerData.x;
+                 player.cells[0].y = playerData.y;
+                 player.cells[0].mass = playerData.mass;
+                 player.cells[0].radius = Math.sqrt(playerData.mass / Math.PI);
+            }
+             // Update the global player object as well
+             global.player.x = playerData.x;
+             global.player.y = playerData.y;
+             global.player.massTotal = playerData.mass;
+             // global.player.cells = ... update if necessary
         }
-        users = userData;
-        foods = foodsList;
-        viruses = virusList;
-        fireFood = massList;
     });
 
     // Death.
@@ -316,6 +334,13 @@ function gameLoop() {
     if (global.gameStart) {
         // More Debugging:
         // try {
+        // Uncommented log from previous step:
+        console.log('gameLoop running. gameStart:', global.gameStart, 'users:', users.length, 'foods:', foods.length);
+        // *** NEW Log: Check food array content ***
+        if (foods.length > 0) {
+            // console.log('First food item:', foods[0]);
+        }
+
         graph.fillStyle = global.backgroundColor;
         graph.fillRect(0, 0, global.screen.width, global.screen.height);
 

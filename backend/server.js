@@ -375,6 +375,10 @@ io.on('connection', function(socket) {
   const simplifiedFoods = foods.map(f => ({ id: f.id, x: f.x, y: f.y, color: f.color, mass: f.mass })); // Client needs mass?
   const simplifiedMassFood = massFood.map(mf => ({ id: mf.id, x: mf.x, y: mf.y, color: mf.color, mass: mf.mass }));
   // TODO: Add viruses if implemented
+
+  // *** NEW Log: Check food count being sent ***
+  console.log(`[Connection ${socket.id}] Sending initial state: ${simplifiedPlayers.length} players, ${simplifiedFoods.length} foods, ${simplifiedMassFood.length} massFoods.`);
+
   socket.emit('serverTellPlayerMove', player, simplifiedPlayers, simplifiedFoods, simplifiedMassFood, []);
 
   // Notify existing players about the new player (simplify?)
