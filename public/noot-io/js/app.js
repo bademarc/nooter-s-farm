@@ -195,6 +195,12 @@ function setupSocketListeners() {
 
 // Game rendering functions
 function drawCircle(x, y, radius, color) {
+  // Defensive checks
+  if (isNaN(x) || isNaN(y) || isNaN(radius) || radius <= 0) {
+    console.error(`[drawCircle] Invalid parameters: x=${x}, y=${y}, radius=${radius}`);
+    return;
+  }
+  // console.log(`[drawCircle] Drawing at (${x.toFixed(1)}, ${y.toFixed(1)}), radius ${radius.toFixed(1)}, color ${color}`);
   ctx.beginPath();
   ctx.arc(x, y, radius, 0, 2 * Math.PI);
   ctx.fillStyle = color;
@@ -202,6 +208,11 @@ function drawCircle(x, y, radius, color) {
 }
 
 function drawText(text, x, y, color, size) {
+  if (isNaN(x) || isNaN(y) || isNaN(size) || size <= 0) {
+      console.error(`[drawText] Invalid parameters: x=${x}, y=${y}, size=${size}`);
+      return;
+  }
+  // console.log(`[drawText] Drawing "${text}" at (${x.toFixed(1)}, ${y.toFixed(1)}), size ${size}, color ${color}`);
   ctx.font = `${size}px Arial`;
   ctx.fillStyle = color;
   ctx.textAlign = 'center';
@@ -209,6 +220,7 @@ function drawText(text, x, y, color, size) {
 }
 
 function drawPlayer(p) {
+  // console.log("[drawPlayer] Data:", p); // Uncomment for full player data log
   drawCircle(p.x, p.y, p.mass, p.color || '#FFFFFF');
   if (p.name) {
     drawText(p.name, p.x, p.y, '#FFFFFF', 14);
@@ -216,6 +228,7 @@ function drawPlayer(p) {
 }
 
 function drawFood(food) {
+   // console.log("[drawFood] Data:", food); // Uncomment for full food data log
   drawCircle(food.x, food.y, 5, food.color || '#8BC34A');
 }
 
