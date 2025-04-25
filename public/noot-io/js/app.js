@@ -126,6 +126,10 @@ function setupSocketListeners() {
     // Find our player data in the update
     const updatedSelf = data.players.find(p => p.id === player.id);
     if (updatedSelf) {
+        // --- DEBUGGING --- Log the self-update data received from server
+        console.log('[Noot.io Debug] Received updatedSelf from server:', JSON.stringify(updatedSelf));
+        // --- END DEBUGGING ---
+
         // Store the authoritative server position
         player.serverX = updatedSelf.x;
         player.serverY = updatedSelf.y;
@@ -144,6 +148,12 @@ function setupSocketListeners() {
 
     // Update other players
     const otherPlayersFromServer = data.players.filter(p => p.id !== player.id);
+    // --- DEBUGGING --- Log received other player data in update loop
+    otherPlayersFromServer.forEach(pData => {
+      console.log(`[Noot.io Debug] Processing other pData in update for ID ${pData.id}:`, JSON.stringify(pData));
+    });
+    // --- END DEBUGGING ---
+
     // Update existing other players or add new ones
     otherPlayersFromServer.forEach(serverPlayer => {
         let localOtherPlayer = players.find(p => p.id === serverPlayer.id);
@@ -200,6 +210,10 @@ function setupSocketListeners() {
 
   // Listen for initial game state
   socket.on('initGame', (data) => {
+    // --- DEBUGGING --- Log received initial player data
+    console.log('[Noot.io Debug] Received data.player in initGame:', JSON.stringify(data.player));
+    // --- END DEBUGGING ---
+
     console.log("[Noot.io App] Received initGame");
     player = data.player || {};
     // Initialize server and render positions
@@ -214,7 +228,7 @@ function setupSocketListeners() {
         renderX: p.x,
         renderY: p.y,
         serverX: p.x,
-        serverY: p.y
+        serverY: p.x
     }));
 
     foods = data.foods || [];
@@ -230,6 +244,10 @@ function setupSocketListeners() {
     if (startMenu) startMenu.style.display = 'none';
     if (gameCanvas) gameCanvas.style.display = 'block';
     resizeCanvas(); // Ensure canvas is sized correctly
+
+    // --- DEBUGGING --- Log the created player object
+    console.log('[Noot.io Debug] Client player object created:', JSON.stringify(player));
+    // --- END DEBUGGING ---
   });
 
    // Handle new players joining (add to local list for interpolation)
@@ -259,9 +277,10 @@ function lerp(start, end, factor) {
 
 // Game rendering functions
 function drawCircle(x, y, radius, color) {
-  if (isNaN(x) || isNaN(y) || isNaN(radius) || radius <= 0) {
-    console.error(`[drawCircle] Invalid parameters: x=${x}, y=${y}, radius=${radius}`);
-    return;
+  // Add a check for NaN as well, just in case
+  if (typeof x !== 'number' || isNaN(x) || typeof y !== 'number' || isNaN(y) || typeof radius !== 'number' || isNaN(radius) || radius <= 0) {
+      console.error(`[drawCircle] Invalid parameters: x=${x}, y=${y}, radius=${radius}, color=${color}`);
+      return; // Don't draw if parameters are invalid
   }
   // console.log(`[drawCircle] Attempting: x=${x.toFixed(1)}, y=${y.toFixed(1)}, radius=${radius.toFixed(1)}, color=${color}`); // Commented out - Performance intensive!
   try {
@@ -290,8 +309,13 @@ function drawText(text, x, y, color, size) {
 }
 
 function drawPlayer(p) {
-  // console.log("[drawPlayer] Data:", p); // Uncomment for full player data log
-  drawCircle(p.x, p.y, p.size, p.color || '#FFFFFF');
+  // --- DEBUGGING --- Log the player object being drawn
+  // console.log(`[Noot.io Debug] drawPlayer called with p (ID: ${p.id}):`, JSON.stringify(p)); // Commented out - too noisy potentially
+  // --- END DEBUGGING ---
+
+  // Calculate radius based on mass (e.g., sqrt for area relation)
+  const radius = p.mass; // Still using mass directly for radius for now
+  drawCircle(p.x, p.y, radius, p.color || '#FFFFFF');
   if (p.name) {
     drawText(p.name, p.x, p.y, '#FFFFFF', 14);
   }
