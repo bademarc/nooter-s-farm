@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { useGuides } from '../hooks/useGuides';
+import { useGuideContext } from '../context/guide-context';
 
 const DevTools: React.FC = () => {
-  const { resetAllGuides, setNootProStatus, isNootPro } = useGuides();
+  const { resetAllGuides, setNootProStatus, isNootPro } = useGuideContext();
   const [isOpen, setIsOpen] = useState(false);
   
   if (!isOpen) {

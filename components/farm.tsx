@@ -3860,7 +3860,7 @@ export function Farm() {
       {/* Farm Guide Modal */}
       {showFarmGuide && (
         <GuideModal
-          imagePath="/images/guid/farm.jpg"
+          imagePath="/images/guide/farm.jpg"
           title="Welcome to Nooter's Farm!"
           content={
             <div>

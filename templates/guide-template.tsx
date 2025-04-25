@@ -25,7 +25,7 @@ const handleCloseGuide = () => {
 // 3. Add inside your JSX return, typically at the end before the closing tag
 {showGuide && (
   <GuideModal
-    imagePath="/images/guid/sectionName.jpg"
+    imagePath="/images/guide/sectionName.jpg"
     title="Welcome to Section Name!"
     content={
       <div>
