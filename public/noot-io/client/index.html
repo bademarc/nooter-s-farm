@@ -68,6 +68,14 @@
             <input type="text" tabindex="0" autofocus placeholder="Enter your name here" id="playerNameInput" maxlength="25" />
             <b class="input-error">Nick must be alphanumeric characters only!</b>
             <br />
+            <div id="gameMode">
+                <button id="onlineButton" class="modeButton active">Online Mode</button>
+                <button id="offlineButton" class="modeButton">Offline Mode (100 Bots)</button>
+            </div>
+            <div id="loading" style="display: none;">
+                <p>Loading game...</p>
+                <div class="spinner"></div>
+            </div>
             <a onclick="document.getElementById('spawn_cell').play();"><button id="startButton">Play</button></a>
             <button id="spectateButton">Spectate</button>
             <button id="settingsButton">Settings</button>
@@ -91,6 +99,9 @@
                     <li>Eat food and other players in order to grow your character (food respawns every time a player eats it).</li>
                     <li>A player's mass is the number of food particles eaten.</li>
                     <li>Objective: Try to get fat and eat other players.</li>
+                    <li>Earn Farm Coins for every 100 mass you gain!</li>
+                    <li>Press space to split your cell!</li>
+                    <li>Press W to eject mass!</li>
                 </ul>
             </div>
         </div>

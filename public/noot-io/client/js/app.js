@@ -5,7 +5,7 @@ let socket; // Define socket variable, will be assigned later
 let isOfflineMode = false;
 let isGameInitialized = false; // Flag to prevent multiple initializations
 let bots = []; // Array for offline bots
-const BOT_COUNT = 10; // How many bots in offline mode
+const BOT_COUNT = 100; // Increased from 10 to 100 bots
 const WORLD_WIDTH = 4000; // Define world size
 const WORLD_HEIGHT = 4000;
 const FOOD_COUNT = 200; // How much food in offline mode
@@ -585,13 +585,67 @@ function drawFood(food) {
 }
 
 function drawLeaderboard() {
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-  ctx.fillRect(canvas.width - 170, 10, 160, 20 + leaderboard.length * 20);
-  drawText('Leaderboard', canvas.width - 90, 25, '#FFFFFF', 16);
+    if (!leaderboard || !leaderboard.length) return;
+    
+    // Background
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.fillRect(canvas.width - 170, 10, 160, 20 + Math.min(leaderboard.length, 10) * 20);
+    
+    // Title
+    drawText('Leaderboard', canvas.width - 90, 25, '#FFFFFF', 16);
 
-  leaderboard.forEach((player, i) => {
-    drawText(`${i+1}. ${player.name || 'Anonymous'}: ${Math.floor(player.mass)}`, canvas.width - 90, 45 + i * 20, '#FFFFFF', 14);
-  });
+    // List entries
+    leaderboard.slice(0, 10).forEach((player, i) => {
+        // Highlight player's position in the leaderboard
+        const isPlayer = isOfflineMode ? 
+            (i === 0 && player.name === window.player.name) : 
+            (player.id === window.player.id);
+            
+        const color = isPlayer ? '#FFFF00' : '#FFFFFF';
+        drawText(`${i+1}. ${player.name || 'Anonymous'}: ${Math.floor(player.mass)}`, 
+            canvas.width - 90, 45 + i * 20, color, 14);
+    });
+}
+
+// Draw improved offline stats in left side
+function drawOfflineStats() {
+    // Background for stats panel
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.fillRect(10, 10, 200, 110);
+    
+    // Player stats
+    ctx.textAlign = 'left';
+    
+    // Get total player mass including split cells
+    const totalPlayerMass = player.mass + bots
+        .filter(b => b.isPlayerSplit)
+        .reduce((total, cell) => total + cell.mass, 0);
+    
+    // Count player cells (main cell + split cells)
+    const playerCellCount = 1 + bots.filter(b => b.isPlayerSplit).length;
+    
+    // Display stats
+    drawText(`Mass: ${Math.floor(totalPlayerMass).toLocaleString()}`, 20, 30, '#FFFFFF', 16);
+    drawText(`Cells: ${playerCellCount}`, 20, 50, '#FFFFFF', 16);
+    drawText(`Bots: ${bots.filter(b => !b.isPlayerSplit).length}`, 20, 70, '#FFFFFF', 16);
+    drawText(`FPS: ${Math.round(fps)}`, 20, 90, '#FFFFFF', 16);
+    
+    // Reset text alignment
+    ctx.textAlign = 'center';
+}
+
+// Add FPS counter
+let lastFrameTime = 0;
+let fps = 60;
+
+// Update FPS calculation in gameLoop
+function updateFPS() {
+    const now = performance.now();
+    const delta = now - lastFrameTime;
+    lastFrameTime = now;
+    fps = 1000 / delta;
+    // Smooth FPS for display
+    fps = Math.min(60, Math.max(0, fps));
 }
 
 let isGameRunning = false; // Flag to control game loop execution
@@ -642,8 +696,82 @@ function spawnOfflineBot(index) {
     bots.push(bot);
 }
 
+// Add mass food ejection functionality for offline mode
+function spawnOfflineMassFood(sourceX, sourceY, direction, speed, mass) {
+    const id = `massFood_${Date.now()}_${Math.random()}`;
+    const angle = direction || Math.random() * Math.PI * 2;
+    const velocity = speed || 10;
+    
+    massFood.push({
+        id: id,
+        x: sourceX,
+        y: sourceY,
+        dx: Math.cos(angle) * velocity,
+        dy: Math.sin(angle) * velocity,
+        mass: mass || 10,
+        color: player.color,
+        createdAt: Date.now()
+    });
+}
+
+// Offline split logic
+function offlineSplit() {
+    if (player.mass < START_MASS * 2) return; // Need minimum mass
+    
+    // Calculate direction based on mouse position
+    const dx = mouseX - canvas.width / 2;
+    const dy = mouseY - canvas.height / 2;
+    const angle = Math.atan2(dy, dx);
+    
+    // Create a new cell by ejecting half the mass
+    const splitMass = player.mass / 2;
+    player.mass = splitMass;
+    
+    // Create a "fake" bot that represents the split cell
+    const splitCell = {
+        id: `split_${Date.now()}_${Math.random()}`,
+        name: player.name,
+        x: player.x,
+        y: player.y,
+        mass: splitMass,
+        color: player.color,
+        renderX: player.x,
+        renderY: player.y,
+        skinPath: player.skinPath,
+        skin: player.skin,
+        isPlayerSplit: true, // Flag to identify this is player's split cell
+        targetX: player.x + Math.cos(angle) * 500, // Launch in direction of mouse
+        targetY: player.y + Math.sin(angle) * 500,
+        speed: 25, // Initial high speed that will decay
+        moveDecay: 0.9, // Speed decay factor
+        mergeCooldown: Date.now() + 10000 // 10 second cooldown before merging
+    };
+    
+    // Add to bots array (will be handled by bot movement logic)
+    bots.push(splitCell);
+}
+
+// Add feed functionality to offline mode
+function offlineFeed() {
+    if (player.mass <= START_MASS + 10) return; // Need minimum mass
+    
+    // Calculate direction based on mouse position
+    const dx = mouseX - canvas.width / 2;
+    const dy = mouseY - canvas.height / 2;
+    const angle = Math.atan2(dy, dx);
+    
+    // Reduce player mass
+    player.mass -= 10;
+    
+    // Create mass food in the direction of mouse
+    spawnOfflineMassFood(player.x, player.y, angle, 15, 10);
+}
+
 // Game loop
 function gameLoop() {
+  // Update FPS
+  updateFPS();
+  
   if (!canvas || !ctx) {
     requestAnimationFrame(gameLoop);
     return;
@@ -701,54 +829,122 @@ function gameLoop() {
 
   // --- Mode Specific Logic ---
   if (isOfflineMode) {
-      // --- Offline Bot Movement ---
+      // --- Process mass food movement ---
+      const MASS_FOOD_LIFETIME = 5000; // 5 seconds lifetime
+      const currentTime = Date.now();
+      
+      // Filter and update mass food
+      massFood = massFood.filter(mf => {
+          // Check lifetime
+          if (currentTime - mf.createdAt > MASS_FOOD_LIFETIME) {
+              return false; // Remove expired mass food
+          }
+          
+          // Move mass food
+          if (mf.dx || mf.dy) {
+              mf.x += mf.dx;
+              mf.y += mf.dy;
+              
+              // Slow down over time
+              mf.dx *= 0.95;
+              mf.dy *= 0.95;
+              
+              // Stop if too slow
+              if (Math.abs(mf.dx) < 0.1 && Math.abs(mf.dy) < 0.1) {
+                  mf.dx = 0;
+                  mf.dy = 0;
+              }
+          }
+          
+          return true; // Keep this mass food
+      });
+      
+      // --- Check for split cells merging ---
+      const playerSplitCells = bots.filter(b => b.isPlayerSplit);
+      if (playerSplitCells.length > 0) {
+          // Find cells ready to merge
+          const readyToMerge = playerSplitCells.filter(cell => 
+              cell.mergeCooldown <= currentTime && 
+              Math.sqrt((cell.x - player.x)**2 + (cell.y - player.y)**2) < 
+                  (Math.sqrt(cell.mass / Math.PI) * 10 + Math.sqrt(player.mass / Math.PI) * 10)
+          );
+          
+          // Merge cells back to player
+          if (readyToMerge.length > 0) {
+              readyToMerge.forEach(cell => {
+                  player.mass += cell.mass;
+                  // Remove from bots array
+                  const cellIndex = bots.findIndex(b => b.id === cell.id);
+                  if (cellIndex !== -1) {
+                      bots.splice(cellIndex, 1);
+                  }
+              });
+          }
+      }
+      
+      // --- Offline Bot Movement with improved logic for split cells ---
       bots.forEach(bot => {
           if (bot.mass <= 0) return; // Skip dead bots
           
-          // Intelligence based on size comparison with player
-          const botRadius = Math.sqrt(bot.mass / Math.PI) * 10;
-          const playerRadius = Math.sqrt(player.mass / Math.PI) * 10;
-          const distToPlayer = Math.sqrt((bot.x - player.x)**2 + (bot.y - player.y)**2);
-          const awarenessRadius = 300; // How far bots can "see" the player
-          
-          if (distToPlayer < awarenessRadius) {
-              // Bot is aware of player
-              if (bot.mass > player.mass * 1.2) {
-                  // Bot is bigger than player - HUNT PLAYER!
-                  console.log(`Bot ${bot.name} is hunting player!`);
-                  bot.targetX = player.x;
-                  bot.targetY = player.y;
-                  bot.speed = 3 + Math.random(); // Aggressive speed
-              } else if (player.mass > bot.mass * 1.2) {
-                  // Player is bigger than bot - RUN AWAY!
-                  console.log(`Bot ${bot.name} is fleeing from player!`);
-                  // Calculate vector away from player
-                  const fleeX = bot.x - player.x;
-                  const fleeY = bot.y - player.y;
-                  const fleeDist = Math.sqrt(fleeX*fleeX + fleeY*fleeY);
-                  if (fleeDist > 0) {
-                      // Normalize and scale to position at edge of world
-                      const escapeMultiplier = 500 / fleeDist;
-                      bot.targetX = bot.x + fleeX * escapeMultiplier;
-                      bot.targetY = bot.y + fleeY * escapeMultiplier;
-                      
-                      // Ensure target is within world bounds
-                      bot.targetX = Math.max(100, Math.min(WORLD_WIDTH - 100, bot.targetX));
-                      bot.targetY = Math.max(100, Math.min(WORLD_HEIGHT - 100, bot.targetY));
-                      bot.speed = 4 + Math.random(); // Faster when fleeing
-                  }
+          // Special handling for player's split cells
+          if (bot.isPlayerSplit) {
+              // Adjust speed based on decay
+              bot.speed *= bot.moveDecay;
+              
+              // Cap minimum speed
+              if (bot.speed < 3) bot.speed = 3;
+              
+              // Player split cells follow mouse after initial thrust
+              if (bot.speed < 10) {
+                  bot.targetX = player.x + (mouseX - canvas.width / 2);
+                  bot.targetY = player.y + (mouseY - canvas.height / 2);
               }
           } else {
-              // Normal wandering behavior when player is not nearby
-              const botDx = bot.targetX - bot.x;
-              const botDy = bot.targetY - bot.y;
-              const botDist = Math.sqrt(botDx * botDx + botDy * botDy);
+              // Intelligence based on size comparison with player
+              const botRadius = Math.sqrt(bot.mass / Math.PI) * 10;
+              const playerRadius = Math.sqrt(player.mass / Math.PI) * 10;
+              const distToPlayer = Math.sqrt((bot.x - player.x)**2 + (bot.y - player.y)**2);
+              const awarenessRadius = 300; // How far bots can "see" the player
               
-              // If bot has reached target or doesn't have one, pick a new random target
-              if (botDist < 20 || isNaN(bot.targetX) || isNaN(bot.targetY)) {
-                  bot.targetX = Math.random() * WORLD_WIDTH;
-                  bot.targetY = Math.random() * WORLD_HEIGHT;
-                  bot.speed = 2 + Math.random(); // Normal wandering speed
+              if (distToPlayer < awarenessRadius) {
+                  // Bot is aware of player
+                  if (bot.mass > player.mass * 1.2) {
+                      // Bot is bigger than player - HUNT PLAYER!
+                      console.log(`Bot ${bot.name} is hunting player!`);
+                      bot.targetX = player.x;
+                      bot.targetY = player.y;
+                      bot.speed = 3 + Math.random(); // Aggressive speed
+                  } else if (player.mass > bot.mass * 1.2) {
+                      // Player is bigger than bot - RUN AWAY!
+                      console.log(`Bot ${bot.name} is fleeing from player!`);
+                      // Calculate vector away from player
+                      const fleeX = bot.x - player.x;
+                      const fleeY = bot.y - player.y;
+                      const fleeDist = Math.sqrt(fleeX*fleeX + fleeY*fleeY);
+                      if (fleeDist > 0) {
+                          // Normalize and scale to position at edge of world
+                          const escapeMultiplier = 500 / fleeDist;
+                          bot.targetX = bot.x + fleeX * escapeMultiplier;
+                          bot.targetY = bot.y + fleeY * escapeMultiplier;
+                          
+                          // Ensure target is within world bounds
+                          bot.targetX = Math.max(100, Math.min(WORLD_WIDTH - 100, bot.targetX));
+                          bot.targetY = Math.max(100, Math.min(WORLD_HEIGHT - 100, bot.targetY));
+                          bot.speed = 4 + Math.random(); // Faster when fleeing
+                      }
+                  }
+              } else {
+                  // Normal wandering behavior when player is not nearby
+                  const botDx = bot.targetX - bot.x;
+                  const botDy = bot.targetY - bot.y;
+                  const botDist = Math.sqrt(botDx * botDx + botDy * botDy);
+                  
+                  // If bot has reached target or doesn't have one, pick a new random target
+                  if (botDist < 20 || isNaN(bot.targetX) || isNaN(bot.targetY)) {
+                      bot.targetX = Math.random() * WORLD_WIDTH;
+                      bot.targetY = Math.random() * WORLD_HEIGHT;
+                      bot.speed = 2 + Math.random(); // Normal wandering speed
+                  }
               }
           }
           
@@ -787,11 +983,35 @@ function gameLoop() {
           }
           return true; // Keep food
       });
-       // Ensure minimum food count
-       while (foods.length < FOOD_COUNT * 0.8) {
-           spawnOfflineFood();
-       }
-
+      
+      // Add collision detection for mass food
+      massFood = massFood.filter(mf => {
+          const massFoodRadius = Math.max(2, Math.sqrt(mf.mass));
+          const collisionDistSq = (player.x - mf.x)**2 + (player.y - mf.y)**2;
+          if (collisionDistSq < playerRadius*playerRadius) {
+              player.mass += mf.mass;
+              checkEarnedCoins(player.mass);
+              return false; // Remove eaten mass food
+          }
+          return true; // Keep mass food
+      });
+      
+      // Also check if bots can eat mass food
+      for (const bot of bots) {
+          if (bot.mass <= 0) continue;
+          const botRadius = Math.sqrt(bot.mass / Math.PI) * 10;
+          
+          massFood = massFood.filter(mf => {
+              const massFoodRadius = Math.max(2, Math.sqrt(mf.mass));
+              const collisionDistSq = (bot.x - mf.x)**2 + (bot.y - mf.y)**2;
+              if (collisionDistSq < botRadius*botRadius) {
+                  bot.mass += mf.mass;
+                  return false; // Remove eaten mass food
+              }
+              return true; // Keep mass food
+          });
+      }
+      
       // Player vs Bots & Bot vs Bots (Simplified)
       let entities = [player, ...bots];
       for (let i = 0; i < entities.length; i++) {
@@ -853,6 +1073,40 @@ function gameLoop() {
        // Clean up dead bots from main array
        bots = bots.filter(b => b.mass > 0);
 
+      // Build offline leaderboard
+      leaderboard = [];
+      // Add player to leaderboard
+      if (player.mass > 0) {
+          leaderboard.push({
+              name: player.name,
+              mass: player.mass
+          });
+      }
+      
+      // Add player's split cells to leaderboard as same player
+      const totalPlayerMass = player.mass + bots
+          .filter(b => b.isPlayerSplit)
+          .reduce((total, cell) => total + cell.mass, 0);
+      
+      // Replace player entry with combined mass
+      if (leaderboard.length > 0 && player.mass > 0) {
+          leaderboard[0].mass = totalPlayerMass;
+      }
+      
+      // Add bots to leaderboard
+      bots.filter(b => !b.isPlayerSplit)
+          .forEach(bot => {
+              leaderboard.push({
+                  name: bot.name,
+                  mass: bot.mass
+              });
+          });
+      
+      // Sort leaderboard by mass (descending)
+      leaderboard.sort((a, b) => b.mass - a.mass);
+      
+      // Limit leaderboard to top 10
+      leaderboard = leaderboard.slice(0, 10);
 
       // Interpolate Player render position
       player.renderX = lerp(player.renderX, player.x, INTERPOLATION_FACTOR);
@@ -864,7 +1118,6 @@ function gameLoop() {
               bot.renderY = lerp(bot.renderY, bot.y, INTERPOLATION_FACTOR * 0.5);
            }
        });
-
 
   } else { // Online Mode
       // Send Input to Server
@@ -963,11 +1216,7 @@ function gameLoop() {
       if (!isOfflineMode) {
            drawLeaderboard();
       } else {
-           // Draw offline score/stats top-left
-           ctx.textAlign = 'left'; // Align left for stats
-           drawText(`Mass: ${player.mass ? Math.floor(player.mass).toLocaleString() : 0}`, 20, 30, '#FFFFFF', 16);
-           drawText(`Bots: ${bots.length}`, 20, 50, '#FFFFFF', 16);
-           // Could add FPS counter here too
+           drawOfflineStats();
       }
 
 
@@ -1090,12 +1339,8 @@ async function initApp() {
             if (!isOfflineMode && socket && socket.connected) {
                 socket.emit('split');
             } else if (isOfflineMode) {
-                // Offline split logic (Example: lose half mass, create smaller piece - complex)
-                console.log("Offline split attempted (not implemented)");
-                 if (player.mass >= START_MASS * 2) {
-                    // player.mass /= 2;
-                    // Create a new 'cell' - needs more logic
-                 }
+                // Implement offline split
+                offlineSplit();
             }
         }
         if (e.key === 'w' || e.key === 'W') { // Feed
@@ -1103,12 +1348,8 @@ async function initApp() {
             if (!isOfflineMode && socket && socket.connected) {
                 socket.emit('feed');
             } else if (isOfflineMode) {
-                 // Offline feed logic (Example: lose small mass, create mass food)
-                 console.log("Offline feed attempted (not implemented)");
-                  if (player.mass > START_MASS + 10) { // Need minimum mass to feed
-                     // player.mass -= 10; // Cost of feeding
-                     // spawnMassFood(player.x, player.y, 10); // Need this function
-                  }
+                // Implement offline feed
+                offlineFeed();
             }
          }
     });
@@ -1171,13 +1412,13 @@ async function initApp() {
                          console.error("[Noot.io App] Initial connection failed:", err.message);
                          isGameInitialized = false; // Reset flag on failure
                           // Provide user feedback (e.g., alert or message on screen)
-                          alert("Failed to connect to online server. Please try again later or play offline.");
+                          alert("Failed to connect to online server. Please try offline mode instead.");
                      });
 
                 } catch (error) {
                     console.error("[Noot.io App] Failed to initialize real socket connection:", error);
                     isGameInitialized = false;
-                    alert("Error setting up online mode. Please try again later or play offline.");
+                    alert("Error setting up online mode. Switching to offline mode.");
                 }
             }
         } else if (event.data && event.data.type === 'noot-io-init') {
@@ -1188,32 +1429,123 @@ async function initApp() {
         }
     });
 
+    // --- Setup mode selection buttons ---
+    const onlineButton = document.getElementById('onlineButton');
+    const offlineButton = document.getElementById('offlineButton');
+    const loadingIndicator = document.getElementById('loading');
+    
+    if (onlineButton) {
+        onlineButton.addEventListener('click', () => {
+            if (isGameInitialized && isGameRunning) return; // Don't change mode during gameplay
+            
+            // Toggle active class
+            onlineButton.classList.add('active');
+            if (offlineButton) offlineButton.classList.remove('active');
+            
+            // Set mode
+            isOfflineMode = false;
+            
+            // Show loading indicator
+            if (loadingIndicator) loadingIndicator.style.display = 'block';
+            
+            // Initialize socket connection
+            try {
+                const websocketURL = getWebSocketURL();
+                socket = io(websocketURL, { /* options */ });
+                setupSocketListeners(); // Setup listeners for real socket
+                
+                socket.once('connect', () => {
+                    console.log("[Noot.io App] Socket connected for online mode.");
+                    isGameInitialized = true;
+                    if (loadingIndicator) loadingIndicator.style.display = 'none';
+                });
+                
+                socket.once('connect_error', (err) => {
+                    console.error("[Noot.io App] Initial connection failed:", err.message);
+                    isGameInitialized = false;
+                    if (loadingIndicator) loadingIndicator.style.display = 'none';
+                    alert("Failed to connect to online server. Please try offline mode instead.");
+                    // Auto-switch to offline mode on connection error
+                    if (offlineButton) offlineButton.click();
+                });
+            } catch (error) {
+                console.error("[Noot.io App] Failed to initialize socket connection:", error);
+                isGameInitialized = false;
+                if (loadingIndicator) loadingIndicator.style.display = 'none';
+                alert("Error setting up online mode. Switching to offline mode.");
+                // Auto-switch to offline mode on error
+                if (offlineButton) offlineButton.click();
+            }
+        });
+    }
+    
+    if (offlineButton) {
+        offlineButton.addEventListener('click', () => {
+            if (isGameInitialized && isGameRunning) return; // Don't change mode during gameplay
+            
+            // Toggle active class
+            offlineButton.classList.add('active');
+            if (onlineButton) onlineButton.classList.remove('active');
+            
+            // Set mode
+            isOfflineMode = true;
+            isGameInitialized = true;
+            
+            // Hide loading indicator
+            if (loadingIndicator) loadingIndicator.style.display = 'none';
+            
+            console.log("[Noot.io App] Mode set to OFFLINE with 100 bots.");
+        });
+    }
+
     // --- UI Button Listeners ---
-    // Use correct ID for start button, e.g., 'startButton'
     const startButton = document.getElementById('startButton');
     if (startButton) {
         startButton.addEventListener('click', () => {
-             if (!isGameInitialized) {
-                 console.warn("Game mode not initialized yet. Please select Online/Offline.");
-                 return;
-             }
-             startGame(); // Calls the modified startGame
-         });
+            if (!isGameInitialized) {
+                console.warn("Game mode not initialized yet. Please select Online/Offline.");
+                alert("Please select Online or Offline mode first!");
+                return;
+            }
+            
+            // Show loading indicator
+            if (loadingIndicator) loadingIndicator.style.display = 'block';
+            
+            // Start the game with a slight delay to allow loading indicator to display
+            setTimeout(() => {
+                startGame();
+                // Hide loading indicator when game starts
+                if (loadingIndicator) loadingIndicator.style.display = 'none';
+            }, 500);
+        });
     }
 
     // Add listener for restart button (using the already defined variable)
     if (restartButton) {
         restartButton.addEventListener('click', () => {
-             // Restart should respect the current mode (isOfflineMode)
-              console.log("Restart button clicked. Restarting in", isOfflineMode ? "Offline" : "Online", "mode.");
-              isGameRunning = false; // Ensure loop stops if somehow still running
-              startGame();
+            // Show loading indicator
+            if (loadingIndicator) loadingIndicator.style.display = 'block';
+            
+            // Restart should respect the current mode (isOfflineMode)
+            console.log("Restart button clicked. Restarting in", isOfflineMode ? "Offline" : "Online", "mode.");
+            isGameRunning = false; // Ensure loop stops if somehow still running
+            
+            // Start the game with a slight delay to allow loading indicator to display
+            setTimeout(() => {
+                startGame();
+                // Hide loading indicator when game starts
+                if (loadingIndicator) loadingIndicator.style.display = 'none';
+            }, 500);
         });
     }
 
     // Initial call to game loop
     gameLoop();
-} // End of initApp
+    
+    // Activate online mode by default (will simulate a click on the online button)
+    if (onlineButton) onlineButton.click();
+}
+
 
 // Wait for the DOM to be fully loaded before initializing
 document.addEventListener('DOMContentLoaded', initApp);

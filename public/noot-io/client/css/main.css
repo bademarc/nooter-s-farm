@@ -111,6 +111,10 @@ div {
     content: "» ";
 }
 
+.chatbox .chat-list li.system:after {
+    content: "» ";
+}
+
 .chatbox .chat-input {
     pointer-events: all;
     box-sizing: border-box;
@@ -143,6 +147,54 @@ div {
     max-width: 400px;
     text-align: center;
     color: #fff;
+}
+
+#gameMode {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 15px;
+}
+
+.modeButton {
+    width: 48%;
+    padding: 8px 0;
+    cursor: pointer;
+    background-color: #333;
+    color: #fff;
+    border: none;
+    transition: background-color 0.2s;
+    font-size: 14px;
+}
+
+.modeButton.active {
+    background-color: #2ecc71;
+    font-weight: bold;
+}
+
+.modeButton:hover {
+    background-color: #444;
+}
+
+.modeButton.active:hover {
+    background-color: #27ae60;
+}
+
+#loading {
+    margin: 15px 0;
+}
+
+.spinner {
+    width: 30px;
+    height: 30px;
+    border: 3px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top-color: #fff;
+    animation: spin 1s linear infinite;
+    margin: 10px auto;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
 }
 
 #startMenu p {
