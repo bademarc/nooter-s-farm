@@ -5,7 +5,6 @@ import { ChevronLeft, ChevronRight, Calendar, Star, Clock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { motion, AnimatePresence } from "framer-motion"
 import { AnimatedBadge } from "@/components/ui/animated-badge"
 import { ShimmerButton } from "@/components/ui/shimmer-button"
 import { useToast } from "@/hooks/use-toast"
@@ -18,7 +17,7 @@ const events = [
     title: "Spring Festival",
     description: "Celebrate the new season with special crops and limited-time animals!",
     date: "May 15 - May 30",
-    image: "/assets/images/events/spring-festival.jpg",
+    backgroundColor: "#4CAF50",
     type: "Seasonal",
     isHot: true,
     rewards: ["Limited Edition Seeds", "Spring Nooter Skin"],
@@ -28,7 +27,7 @@ const events = [
     title: "Nooter Racing Championship",
     description: "Race your fastest Nooters against other farmers for amazing prizes!",
     date: "June 5 - June 7",
-    image: "/assets/images/events/nooter-racing.jpg",
+    backgroundColor: "#F44336",
     type: "Competition",
     isHot: true,
     rewards: ["Golden Trophy", "Racing Nooter", "500 Farm Coins"],
@@ -38,7 +37,7 @@ const events = [
     title: "Crop Exchange Week",
     description: "Trade your crops with other farmers at special exchange rates!",
     date: "June 12 - June 19",
-    image: "/assets/images/events/crop-exchange.jpg",
+    backgroundColor: "#2196F3",
     type: "Community",
     isHot: false,
     rewards: ["Rare Seeds", "Trading Badge"],
@@ -48,7 +47,7 @@ const events = [
     title: "Mystery Seed Hunt",
     description: "Find hidden mystery seeds across the game world for rare plants!",
     date: "June 25 - July 2",
-    image: "/assets/images/events/mystery-seed.jpg",
+    backgroundColor: "#9C27B0",
     type: "Special",
     isHot: true,
     rewards: ["Mystery Plant", "Explorer Badge", "200 Farm Coins"],
@@ -61,36 +60,6 @@ export default function EventsCarousel() {
   const [showConfetti, setShowConfetti] = useState(false)
   const [registeredEvents, setRegisteredEvents] = useState<number[]>([])
   const { toast } = useToast()
-  const [imagesLoaded, setImagesLoaded] = useState<boolean[]>([])
-
-  // Preload images
-  useEffect(() => {
-    const imagePromises = events.map((event, index) => {
-      return new Promise<void>((resolve) => {
-        const img = new Image();
-        img.src = event.image;
-        img.onload = () => {
-          setImagesLoaded(prev => {
-            const newState = [...prev];
-            newState[index] = true;
-            return newState;
-          });
-          resolve();
-        };
-        img.onerror = () => {
-          console.error(`Failed to load image: ${event.image}`);
-          resolve();
-        };
-      });
-    });
-
-    Promise.all(imagePromises);
-  }, []);
-
-  // Debug images on component mount
-  useEffect(() => {
-    console.log("Events carousel images:", events.map(event => event.image));
-  }, []);
 
   const nextSlide = () => {
     setCurrentIndex((prevIndex) => (prevIndex + 1) % events.length)
@@ -160,93 +129,50 @@ export default function EventsCarousel() {
           onMouseEnter={() => setAutoplay(false)}
           onMouseLeave={() => setAutoplay(true)}
         >
-          <AnimatePresence initial={false} mode="wait">
-            <motion.div
-              key={currentIndex}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.5 }}
-              className="absolute inset-0"
-            >
-              <img
-                src={events[currentIndex].image}
-                alt={events[currentIndex].title}
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  console.error(`Failed to load image: ${events[currentIndex].image}`);
-                  // Fallback to a reliable image
-                  e.currentTarget.src = "/assets/images/events/spring-festival.jpg";
-                  e.currentTarget.onerror = null;
-                }}
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent flex flex-col justify-end p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <Badge className={`${getBadgeColor(events[currentIndex].type)}`}>{events[currentIndex].type}</Badge>
-                  {events[currentIndex].isHot && <AnimatedBadge variant="hot">HOT!</AnimatedBadge>}
-                </div>
-                <motion.h3
-                  initial={{ y: 20, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  transition={{ delay: 0.1 }}
-                  className="text-2xl font-bold text-white"
-                >
-                  {events[currentIndex].title}
-                </motion.h3>
-                <motion.p
-                  initial={{ y: 20, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  transition={{ delay: 0.2 }}
-                  className="text-sm text-white/90 mb-3"
-                >
-                  {events[currentIndex].description}
-                </motion.p>
-
-                <motion.div
-                  initial={{ y: 20, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  transition={{ delay: 0.3 }}
-                  className="flex flex-col gap-2 mb-3"
-                >
-                  <div className="flex items-center gap-1 text-white/90">
-                    <Clock className="h-4 w-4" />
-                    <span className="text-sm">{events[currentIndex].date}</span>
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    {events[currentIndex].rewards.map((reward, idx) => (
-                      <motion.span
-                        key={idx}
-                        initial={{ scale: 0.8, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        transition={{ delay: 0.3 + idx * 0.1 }}
-                        className="inline-flex items-center gap-1 rounded-full bg-yellow-400/90 px-2 py-0.5 text-xs font-medium text-black"
-                      >
-                        <Star className="h-3 w-3" />
-                        {reward}
-                      </motion.span>
-                    ))}
-                  </div>
-                </motion.div>
-
-                <motion.div
-                  initial={{ y: 20, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  transition={{ delay: 0.4 }}
-                  className="flex justify-between items-center"
-                >
-                  <span className="text-xs text-white/90 bg-black/30 px-2 py-1 rounded-full">
-                    {currentIndex + 1}/{events.length}
-                  </span>
-                  <ShimmerButton
-                    onClick={() => handleRegister(events[currentIndex].id)}
-                    className={registeredEvents.includes(events[currentIndex].id) ? "bg-green-600" : ""}
-                  >
-                    {registeredEvents.includes(events[currentIndex].id) ? "Registered!" : "Register Now"}
-                  </ShimmerButton>
-                </motion.div>
+          <div className="absolute inset-0" style={{ backgroundColor: events[currentIndex].backgroundColor }}>
+            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent flex flex-col justify-end p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Badge className={`${getBadgeColor(events[currentIndex].type)}`}>{events[currentIndex].type}</Badge>
+                {events[currentIndex].isHot && <AnimatedBadge variant="hot">HOT!</AnimatedBadge>}
               </div>
-            </motion.div>
-          </AnimatePresence>
+              <h3 className="text-2xl font-bold text-white">
+                {events[currentIndex].title}
+              </h3>
+              <p className="text-sm text-white/90 mb-3">
+                {events[currentIndex].description}
+              </p>
+
+              <div className="flex flex-col gap-2 mb-3">
+                <div className="flex items-center gap-1 text-white/90">
+                  <Clock className="h-4 w-4" />
+                  <span className="text-sm">{events[currentIndex].date}</span>
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {events[currentIndex].rewards.map((reward, idx) => (
+                    <span
+                      key={idx}
+                      className="inline-flex items-center gap-1 rounded-full bg-yellow-400/90 px-2 py-0.5 text-xs font-medium text-black"
+                    >
+                      <Star className="h-3 w-3" />
+                      {reward}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-white/90 bg-black/30 px-2 py-1 rounded-full">
+                  {currentIndex + 1}/{events.length}
+                </span>
+                <ShimmerButton
+                  onClick={() => handleRegister(events[currentIndex].id)}
+                  className={registeredEvents.includes(events[currentIndex].id) ? "bg-green-600" : ""}
+                >
+                  {registeredEvents.includes(events[currentIndex].id) ? "Registered!" : "Register Now"}
+                </ShimmerButton>
+              </div>
+            </div>
+          </div>
 
           <Button
             variant="ghost"
