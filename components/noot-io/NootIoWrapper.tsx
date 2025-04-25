@@ -68,7 +68,7 @@ const NootIoWrapper: React.FC<NootIoWrapperProps> = ({ farmCoins, addFarmCoins }
       iframe.contentWindow.postMessage({
         type: 'noot-io-command',
         command: command
-      }, parentOrigin); // Use the stored origin or '*' if not set yet
+      }, "*"); // Use '*' as the target origin when sending command to iframe
     } else {
       console.error("Cannot send command: Iframe not ready.");
     }
