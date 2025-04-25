@@ -242,7 +242,12 @@ function setupSocket(socket) {
     socket.on('nearbyEntitiesUpdate', function (data) {
         // Update lists of other entities
         users = data.players || [];
-        foods = data.foods || [];
+        // Transform food data to match render function expectations
+        foods = (data.foods || []).map(f => ({
+            ...f, // Keep original properties like id, x, y
+            hue: f.color, // Rename color to hue (might need better color handling later)
+            radius: Math.sqrt((f.mass || 1) / Math.PI) // Calculate radius from mass (default mass 1 if missing)
+        }));
         massFood = data.massFood || [];
         // viruses = data.viruses || []; // Add if viruses are implemented
 
