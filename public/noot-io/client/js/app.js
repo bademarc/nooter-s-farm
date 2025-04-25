@@ -648,16 +648,63 @@ function gameLoop() {
     if (isOfflineMode) {
         // --- Offline Bot Movement ---
         bots.forEach(bot => {
-             if (bot.mass <= 0) return; // Skip dead bots
+            if (bot.mass <= 0) return; // Skip dead bots
+            
+            // Intelligence based on size comparison with player
+            const botRadius = Math.sqrt(bot.mass / Math.PI) * 10;
+            const playerRadius = Math.sqrt(player.mass / Math.PI) * 10;
+            const distToPlayer = Math.sqrt((bot.x - player.x)**2 + (bot.y - player.y)**2);
+            const awarenessRadius = 300; // How far bots can "see" the player
+            
+            if (distToPlayer < awarenessRadius) {
+                // Bot is aware of player
+                if (bot.mass > player.mass * 1.2) {
+                    // Bot is bigger than player - HUNT PLAYER!
+                    console.log(`Bot ${bot.name} is hunting player!`);
+                    bot.targetX = player.x;
+                    bot.targetY = player.y;
+                    bot.speed = 3 + Math.random(); // Aggressive speed
+                } else if (player.mass > bot.mass * 1.2) {
+                    // Player is bigger than bot - RUN AWAY!
+                    console.log(`Bot ${bot.name} is fleeing from player!`);
+                    // Calculate vector away from player
+                    const fleeX = bot.x - player.x;
+                    const fleeY = bot.y - player.y;
+                    const fleeDist = Math.sqrt(fleeX*fleeX + fleeY*fleeY);
+                    if (fleeDist > 0) {
+                        // Normalize and scale to position at edge of world
+                        const escapeMultiplier = 500 / fleeDist;
+                        bot.targetX = bot.x + fleeX * escapeMultiplier;
+                        bot.targetY = bot.y + fleeY * escapeMultiplier;
+                        
+                        // Ensure target is within world bounds
+                        bot.targetX = Math.max(100, Math.min(WORLD_WIDTH - 100, bot.targetX));
+                        bot.targetY = Math.max(100, Math.min(WORLD_HEIGHT - 100, bot.targetY));
+                        bot.speed = 4 + Math.random(); // Faster when fleeing
+                    }
+                }
+            } else {
+                // Normal wandering behavior when player is not nearby
+                const botDx = bot.targetX - bot.x;
+                const botDy = bot.targetY - bot.y;
+                const botDist = Math.sqrt(botDx * botDx + botDy * botDy);
+                
+                // If bot has reached target or doesn't have one, pick a new random target
+                if (botDist < 20 || isNaN(bot.targetX) || isNaN(bot.targetY)) {
+                    bot.targetX = Math.random() * WORLD_WIDTH;
+                    bot.targetY = Math.random() * WORLD_HEIGHT;
+                    bot.speed = 2 + Math.random(); // Normal wandering speed
+                }
+            }
+            
+            // Bot movement logic (unchanged)
             const botDx = bot.targetX - bot.x;
             const botDy = bot.targetY - bot.y;
             const botDist = Math.sqrt(botDx * botDx + botDy * botDy);
             const botSpeed = bot.speed / Math.max(1, Math.sqrt(bot.mass / START_MASS));
-
-            if (botDist < 20) { // Reached target, pick a new one
-                bot.targetX = Math.random() * WORLD_WIDTH;
-                bot.targetY = Math.random() * WORLD_HEIGHT;
-            } else {
+            
+            // Only move if there's a valid direction
+            if (botDist > 0) {
                 bot.x += Math.min(botSpeed, botDist) * (botDx / botDist);
                 bot.y += Math.min(botSpeed, botDist) * (botDy / botDist);
                 // Clamp bot position
@@ -665,7 +712,7 @@ function gameLoop() {
                 bot.y = Math.max(0, Math.min(WORLD_HEIGHT, bot.y));
             }
         });
-
+        
         // --- Offline Collision Detection ---
         const playerRadius = Math.sqrt(player.mass / Math.PI) * 10;
 
