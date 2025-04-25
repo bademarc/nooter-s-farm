@@ -10,6 +10,9 @@ const BIG_BOT_COUNT = 10; // Number of big bots to add
 const WORLD_WIDTH = 4000; // Define world size
 const WORLD_HEIGHT = 4000;
 const FOOD_COUNT = 200; // How much food in offline mode
+const START_MASS = 100; // Player starting mass
+const INITIAL_FOODS = 200; // Initial food count
+const OFFLINE_BOTS = 50; // Number of bots in offline mode
 
 // --- Helper to get WebSocket URL ---
 function getWebSocketURL() {
@@ -20,7 +23,20 @@ function getWebSocketURL() {
 }
 // --- End Helper ---
 
-let player = {};
+// Initialize player with default values
+let player = {
+  id: `player_${Date.now()}`,
+  name: "Player",
+  x: WORLD_WIDTH / 2,
+  y: WORLD_HEIGHT / 2,
+  renderX: WORLD_WIDTH / 2,
+  renderY: WORLD_HEIGHT / 2,
+  mass: START_MASS,
+  color: '#2196F3',
+  skin: null,
+  skinPath: null
+};
+
 let players = []; // Holds OTHER players in online mode
 let foods = [];
 let leaderboard = [];
@@ -210,7 +226,6 @@ function initOnlineMode() {
 }
 
 // Game Constants (Added for Prediction)
-const START_MASS = 10; // Assuming this matches server START_MASS
 const PLAYER_SPEED = 5; // Assuming this matches server PLAYER_SPEED
 
 // Set canvas to full container size
@@ -732,7 +747,7 @@ function drawFood(food) {
 }
 
 function drawLeaderboard() {
-    if (!leaderboard || !leaderboard.length) return;
+    if (!leaderboard || !Array.isArray(leaderboard) || leaderboard.length === 0) return;
     
     // Background
     ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
@@ -742,18 +757,21 @@ function drawLeaderboard() {
     drawText('Leaderboard', canvas.width - 90, 25, '#FFFFFF', 16);
 
     // List entries
-    leaderboard.slice(0, 10).forEach((player, i) => {
+    leaderboard.slice(0, 10).forEach((entry, i) => {
         // Skip invalid entries
-        if (!player || typeof player !== 'object') return;
+        if (!entry || typeof entry !== 'object') return;
         
         // Ensure the player has a name property
-        const playerName = player.name || 'Anonymous';
-        const playerMass = Math.floor(player.mass || 0);
+        const playerName = entry.name || 'Anonymous';
+        const playerMass = Math.floor(entry.mass || 0);
         
         // Highlight player's position in the leaderboard
-        const isPlayer = isOfflineMode ? 
-            (i === 0 && playerName === window.player.name) : 
-            (player.id === window.player.id);
+        let isPlayer = false;
+        if (player) {
+            isPlayer = isOfflineMode ? 
+                (i === 0 && playerName === player.name) : 
+                (entry.id && player.id && entry.id === player.id);
+        }
             
         const color = isPlayer ? '#FFFF00' : '#FFFFFF';
         drawText(`${i+1}. ${playerName}: ${playerMass}`, 
@@ -975,410 +993,213 @@ function offlineFeed() {
 
 // Game loop
 function gameLoop() {
-  // Update FPS
-  updateFPS();
-  
-  if (!canvas || !ctx) {
-    requestAnimationFrame(gameLoop);
-    return;
-  }
-
-  if (!isGameRunning) {
-     ctx.fillStyle = '#111827'; // Draw background
-     ctx.fillRect(0, 0, canvas.width, canvas.height);
-     
-     // Message is now handled by the HTML element, no need to draw here
-     
-     requestAnimationFrame(gameLoop);
-     return;
-  }
-  
-  // Game is running, ensure message is hidden
-  setGameMessage('');
-
-  // Clear the background at the start of a running game
-  ctx.fillStyle = '#111827';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  // --- Shared: Calculate local player movement based on mouse ---
-  const targetWorldX = player.x + (mouseX - canvas.width / 2);
-  const targetWorldY = player.y + (mouseY - canvas.height / 2);
-  const dx = targetWorldX - player.x;
-  const dy = targetWorldY - player.y;
-  const dist = Math.sqrt(dx * dx + dy * dy);
-  let moveX = 0;
-  let moveY = 0;
-
-  // Player movement - check if movement is detected and player exists
-  if (dist > 0.1 && player && player.mass > 0) { // Changed from 1 to 0.1 for more responsive movement
-    // Calculate speed based on mass (larger = slower)
-    const speed = PLAYER_SPEED / Math.max(1, Math.sqrt(player.mass / START_MASS));
-    
-    // Calculate movement vector
-    moveX = Math.min(speed, dist) * (dx / dist);
-    moveY = Math.min(speed, dist) * (dy / dist);
-    
-    // Apply movement
-    player.x += moveX;
-    player.y += moveY;
-    
-    // Ensure player stays within world bounds with a buffer
-    const buffer = 50; // Prevent getting stuck at edges
-    player.x = Math.max(buffer, Math.min(WORLD_WIDTH - buffer, player.x));
-    player.y = Math.max(buffer, Math.min(WORLD_HEIGHT - buffer, player.y));
-    
-    // Debug movement periodically
-    if (Math.random() < 0.01) { // Only log occasionally
-      console.log(`[Noot.io App] Player moving: ${Math.round(moveX)},${Math.round(moveY)} to ${Math.round(player.x)},${Math.round(player.y)}`);
-    }
-  } else if (!player || player.mass <= 0) {
-    console.warn("[Noot.io App] Player not valid for movement:", player);
-  }
-  // --- End Player Movement ---
-
-  // --- Mode Specific Logic ---
-  if (isOfflineMode) {
-      // --- Process mass food movement ---
-      const MASS_FOOD_LIFETIME = 5000; // 5 seconds lifetime
-      const currentTime = Date.now();
-      
-      // Filter and update mass food
-      massFood = massFood.filter(mf => {
-          // Check lifetime
-          if (currentTime - mf.createdAt > MASS_FOOD_LIFETIME) {
-              return false; // Remove expired mass food
-          }
-          
-          // Move mass food
-          if (mf.dx || mf.dy) {
-              mf.x += mf.dx;
-              mf.y += mf.dy;
-              
-              // Slow down over time
-              mf.dx *= 0.95;
-              mf.dy *= 0.95;
-              
-              // Stop if too slow
-              if (Math.abs(mf.dx) < 0.1 && Math.abs(mf.dy) < 0.1) {
-                  mf.dx = 0;
-                  mf.dy = 0;
-              }
-          }
-          
-          return true; // Keep this mass food
-      });
-      
-      // --- Check for split cells merging ---
-      // Handle both player and bot split cells merging
-      const playerSplitCells = bots.filter(b => b.isPlayerSplit);
-      if (playerSplitCells.length > 0) {
-          // Find cells ready to merge
-          const readyToMerge = playerSplitCells.filter(cell => 
-              cell.mergeCooldown <= currentTime && 
-              Math.sqrt((cell.x - player.x)**2 + (cell.y - player.y)**2) < 
-                  (Math.sqrt(cell.mass / Math.PI) * 10 + Math.sqrt(player.mass / Math.PI) * 10)
-          );
-          
-          // Merge cells back to player
-          if (readyToMerge.length > 0) {
-              readyToMerge.forEach(cell => {
-                  player.mass += cell.mass;
-                  // Remove from bots array
-                  const cellIndex = bots.findIndex(b => b.id === cell.id);
-                  if (cellIndex !== -1) {
-                      bots.splice(cellIndex, 1);
-                  }
-              });
-          }
+  try {
+      // Skip rendering if game not running
+      if (!isGameRunning) {
+          requestAnimationFrame(gameLoop);
+          return;
       }
       
-      // Bot split cells merging logic
-      const botSplitCells = bots.filter(b => b.isBotSplit);
-      botSplitCells.forEach(splitCell => {
-          if (splitCell.mergeCooldown <= currentTime) {
-              // Find parent bot
-              const parentBot = bots.find(b => b.id === splitCell.parentBot);
-              if (parentBot) {
-                  // Check if close enough to merge
-                  const distance = Math.sqrt((splitCell.x - parentBot.x)**2 + (splitCell.y - parentBot.y)**2);
-                  const mergeDistance = Math.sqrt(splitCell.mass / Math.PI) * 10 + Math.sqrt(parentBot.mass / Math.PI) * 10;
+      // Update FPS counter
+      updateFPS();
+      
+      // For offline mode - handle collisions, respawns, etc.
+      if (isOfflineMode) {
+          // Handle player-food collisions, bot AI, etc.
+          handleEntityCollisions();
+          
+          // Auto-respawn player if dead in offline mode
+          if (player.mass <= 0) {
+              player.mass = START_MASS;
+              player.x = Math.random() * WORLD_WIDTH;
+              player.y = Math.random() * WORLD_HEIGHT;
+              player.renderX = player.x;
+              player.renderY = player.y;
+              
+              // Update leaderboard after respawn
+              updateOfflineLeaderboard();
+          }
+          
+          // Respawn food to maintain count
+          while (foods.length < FOOD_COUNT) {
+              spawnOfflineFood();
+          }
+          
+          // Move bots with simple AI
+          bots.forEach(bot => {
+              if (!bot || bot.mass <= 0) return;
+              
+              // If it's a player split cell, handle differently
+              if (bot.isPlayerSplit) {
+                  // Handle split cell movement and merge cooldown
+                  const now = Date.now();
                   
-                  if (distance < mergeDistance) {
-                      // Merge back to parent
-                      parentBot.mass += splitCell.mass;
-                      // Remove split cell
-                      const cellIndex = bots.findIndex(b => b.id === splitCell.id);
-                      if (cellIndex !== -1) {
-                          bots.splice(cellIndex, 1);
+                  // Move toward target at decreasing speed (emulate split physics)
+                  if (bot.speed > 1) {
+                      bot.speed *= 0.98; // Decay speed
+                      bot.x += Math.cos(bot.angle) * bot.speed;
+                      bot.y += Math.sin(bot.angle) * bot.speed;
+                  } else {
+                      // After speed decay, follow player
+                      const dx = player.x - bot.x;
+                      const dy = player.y - bot.y;
+                      const dist = Math.sqrt(dx * dx + dy * dy);
+                      
+                      // Only move if beyond merge distance
+                      if (dist > 50) {
+                          const angle = Math.atan2(dy, dx);
+                          bot.x += Math.cos(angle) * Math.min(1, dist / 50);
+                          bot.y += Math.sin(angle) * Math.min(1, dist / 50);
+                      }
+                      
+                      // Check if it's time to merge back
+                      if (now - bot.splitTime > 10000 && dist < 50) {
+                          player.mass += bot.mass;
+                          bot.mass = 0; // Mark for removal
+                      }
+                  }
+              } else if (bot.isBotSplit) {
+                  // Handle bot split cell movement
+                  if (bot.speed > 1) {
+                      bot.speed *= bot.moveDecay || 0.98; // Decay speed
+                      const dx = bot.targetX - bot.x;
+                      const dy = bot.targetY - bot.y;
+                      const dist = Math.sqrt(dx * dx + dy * dy);
+                      const angle = Math.atan2(dy, dx);
+                      
+                      bot.x += Math.cos(angle) * bot.speed;
+                      bot.y += Math.sin(angle) * bot.speed;
+                  } else {
+                      // Find a parent bot to merge back with
+                      const parentBot = bots.find(b => !b.isBotSplit && b.id === bot.parentBot);
+                      if (parentBot && Date.now() > bot.mergeCooldown) {
+                          const dx = parentBot.x - bot.x;
+                          const dy = parentBot.y - bot.y;
+                          const dist = Math.sqrt(dx * dx + dy * dy);
+                          
+                          if (dist < 50) {
+                              // Merge back
+                              parentBot.mass += bot.mass;
+                              bot.mass = 0; // Mark for removal
+                          } else {
+                              // Move toward parent for merging
+                              const angle = Math.atan2(dy, dx);
+                              bot.x += Math.cos(angle) * Math.min(2, dist / 50);
+                              bot.y += Math.sin(angle) * Math.min(2, dist / 50);
+                          }
                       }
                   }
               } else {
-                  // Parent bot is gone, convert to regular bot
-                  splitCell.isBotSplit = false;
-                  delete splitCell.parentBot;
-                  delete splitCell.mergeCooldown;
-              }
-          }
-      });
-      
-      // --- Offline Bot Movement with improved fighting logic ---
-      bots.forEach(bot => {
-          if (bot.mass <= 0) return; // Skip dead bots
-          
-          // Special handling for player's split cells
-          if (bot.isPlayerSplit) {
-              // Adjust speed based on decay
-              bot.speed *= bot.moveDecay;
-              
-              // Cap minimum speed
-              if (bot.speed < 3) bot.speed = 3;
-              
-              // Player split cells follow mouse after initial thrust
-              if (bot.speed < 10) {
-                  bot.targetX = player.x + (mouseX - canvas.width / 2);
-                  bot.targetY = player.y + (mouseY - canvas.height / 2);
-              }
-          } 
-          // Special handling for bot split cells
-          else if (bot.isBotSplit) {
-              // Adjust speed based on decay
-              bot.speed *= bot.moveDecay;
-              
-              // Cap minimum speed
-              if (bot.speed < 3) bot.speed = 3;
-              
-              // After initial thrust, target nearby smaller entities
-              if (bot.speed < 10) {
-                  findNearbyTarget(bot);
-              }
-          }
-          else {
-              // Regular bot AI - improved to prioritize fighting with others
-              findNearbyTarget(bot);
-              
-              // Bot splitting logic
-              const shouldTrySplit = Math.random() < 0.01; // 1% chance each frame to consider splitting
-              if (shouldTrySplit) {
-                  // Find potential nearby victims that are smaller but not too small
-                  const nearbyEntities = [...bots.filter(b => b !== bot && !b.isPlayerSplit && !b.isBotSplit), player].filter(e => e.mass > 0);
-                  const potentialVictims = nearbyEntities.filter(entity => {
-                      if (entity.mass <= 0 || entity === player && player.mass <= 0) return false;
-                      const sizeDiff = bot.mass / entity.mass;
-                      const distance = Math.sqrt((bot.x - entity.x)**2 + (bot.y - entity.y)**2);
-                      // Target should be smaller, but not too small, and within split range
-                      return sizeDiff > 2 && sizeDiff < 4 && distance < 500;
-                  });
+                  // Regular bot AI
+                  // Find a new random target occasionally
+                  if (Math.random() < 0.01 || 
+                      (Math.abs(bot.x - bot.targetX) < 10 && Math.abs(bot.y - bot.targetY) < 10)) {
+                      bot.targetX = Math.max(100, Math.min(WORLD_WIDTH - 100, bot.x + (Math.random() - 0.5) * 1000));
+                      bot.targetY = Math.max(100, Math.min(WORLD_HEIGHT - 100, bot.y + (Math.random() - 0.5) * 1000));
+                  }
                   
-                  if (potentialVictims.length > 0) {
-                      // Target the closest victim
-                      const victim = potentialVictims.reduce((closest, current) => {
-                          const closestDist = Math.sqrt((bot.x - closest.x)**2 + (bot.y - closest.y)**2);
-                          const currentDist = Math.sqrt((bot.x - current.x)**2 + (bot.y - current.y)**2);
-                          return currentDist < closestDist ? current : closest;
-                      });
-                      
-                      // Update target to victim position
-                      bot.targetX = victim.x;
-                      bot.targetY = victim.y;
-                      
-                      // Try to split
+                  // Find nearby food or smaller bots to chase
+                  const target = findNearbyTarget(bot);
+                  if (target) {
+                      bot.targetX = target.x;
+                      bot.targetY = target.y;
+                  }
+                  
+                  // Move toward target
+                  const dx = bot.targetX - bot.x;
+                  const dy = bot.targetY - bot.y;
+                  const dist = Math.sqrt(dx * dx + dy * dy);
+                  const angle = Math.atan2(dy, dx);
+                  
+                  // Speed based on mass (bigger = slower)
+                  const speed = bot.speed / (1 + bot.mass / 1000);
+                  
+                  bot.x += Math.cos(angle) * Math.min(speed, dist);
+                  bot.y += Math.sin(angle) * Math.min(speed, dist);
+                  
+                  // Split logic for bots
+                  if (bot.mass > START_MASS * 2 && Math.random() < 0.001) {
                       botSplit(bot);
                   }
               }
-          }
-          
-          // Bot movement logic 
-          const botDx = bot.targetX - bot.x;
-          const botDy = bot.targetY - bot.y;
-          const botDist = Math.sqrt(botDx * botDx + botDy * botDy);
-          const botSpeed = bot.speed / Math.max(1, Math.sqrt(bot.mass / START_MASS));
-          
-          // Only move if there's a valid direction
-          if (botDist > 0) {
-              bot.x += Math.min(botSpeed, botDist) * (botDx / botDist);
-              bot.y += Math.min(botSpeed, botDist) * (botDy / botDist);
-              // Clamp bot position
-              bot.x = Math.max(0, Math.min(WORLD_WIDTH, bot.x));
-              bot.y = Math.max(0, Math.min(WORLD_HEIGHT, bot.y));
-          }
-      });
-      
-      // Function to find target for bot hunting
-      function findNearbyTarget(bot) {
-          // Find all entities (bots and player)
-          const entities = [...bots.filter(b => b !== bot && !b.isPlayerSplit && b.mass > 0), player].filter(e => e.mass > 0);
-          
-          // Calculate distances and size differences
-          const entityData = entities.map(entity => {
-              const distance = Math.sqrt((bot.x - entity.x)**2 + (bot.y - entity.y)**2);
-              const sizeDiff = bot.mass / entity.mass; // >1 means bot is bigger
-              return { entity, distance, sizeDiff };
+              
+              // Smooth position updates with linear interpolation
+              bot.renderX = lerp(bot.renderX, bot.x, 0.1);
+              bot.renderY = lerp(bot.renderY, bot.y, 0.1);
           });
           
-          // Get nearby entities within awareness range
-          const awarenessRadius = 400 + bot.mass/5; // Bigger bots can see further
-          const nearbyEntities = entityData.filter(ed => ed.distance < awarenessRadius);
+          // Remove dead entities
+          bots = bots.filter(bot => bot && bot.mass > 0);
           
-          if (nearbyEntities.length === 0) {
-              // No nearby entities, wander randomly
-              if (Math.random() < 0.01 || isNaN(bot.targetX) || 
-                  Math.sqrt((bot.x - bot.targetX)**2 + (bot.y - bot.targetY)**2) < 20) {
-                  bot.targetX = Math.random() * WORLD_WIDTH;
-                  bot.targetY = Math.random() * WORLD_HEIGHT;
-              }
-              return;
-          }
-          
-          // Categorize nearby entities
-          const smallerEntities = nearbyEntities.filter(ed => ed.sizeDiff > 1.2);
-          const similarSizedEntities = nearbyEntities.filter(ed => ed.sizeDiff >= 0.8 && ed.sizeDiff <= 1.2);
-          const largerEntities = nearbyEntities.filter(ed => ed.sizeDiff < 0.8);
-          
-          // Prioritize hunting:
-          // 1. Similar-sized bots (most interesting fights)
-          // 2. Smaller bots
-          // 3. Run from larger bots
-          
-          // Changed logic to prefer similar-sized entities
-          if (similarSizedEntities.length > 0) {
-              // Hunt similar-sized entity (most interesting for gameplay)
-              const target = similarSizedEntities.reduce((closest, current) => 
-                  current.distance < closest.distance ? current : closest
-              );
-              console.log(`Bot ${bot.name} is hunting similar-sized ${target.entity.name || 'player'}`);
-              bot.targetX = target.entity.x;
-              bot.targetY = target.entity.y;
-          } 
-          else if (smallerEntities.length > 0) {
-              // If no similar-sized entities, hunt smaller ones
-              // Find the largest of the smaller entities (more rewarding)
-              const target = smallerEntities.reduce((largest, current) => 
-                  current.entity.mass > largest.entity.mass ? current : largest
-              );
-              console.log(`Bot ${bot.name} is hunting smaller ${target.entity.name || 'player'}`);
-              bot.targetX = target.entity.x;
-              bot.targetY = target.entity.y;
-          } 
-          else if (largerEntities.length > 0) {
-              // Run away from larger entities
-              // Find the closest larger entity (most dangerous)
-              const threat = largerEntities.reduce((closest, current) => 
-                  current.distance < closest.distance ? current : closest
-              );
-              
-              console.log(`Bot ${bot.name} is fleeing from ${threat.entity.name || 'player'}`);
-              
-              // Calculate vector away from threat
-              const fleeX = bot.x - threat.entity.x;
-              const fleeY = bot.y - threat.entity.y;
-              const fleeDist = Math.sqrt(fleeX*fleeX + fleeY*fleeY);
-              
-              // Normalize and scale the flee vector
-              if (fleeDist > 0) {
-                  const escapeMultiplier = 500 / fleeDist;
-                  bot.targetX = bot.x + fleeX * escapeMultiplier;
-                  bot.targetY = bot.y + fleeY * escapeMultiplier;
-                  
-                  // Ensure target is within world bounds
-                  bot.targetX = Math.max(100, Math.min(WORLD_WIDTH - 100, bot.targetX));
-                  bot.targetY = Math.max(100, Math.min(WORLD_HEIGHT - 100, bot.targetY));
-              }
-          }
+          // Update offline leaderboard
+          updateOfflineLeaderboard();
       }
       
-      // --- Offline Collision Detection ---
-      const playerRadius = Math.sqrt(player.mass / Math.PI) * 10;
-
-      // Player vs Food
-      foods = foods.filter(food => {
-          const foodRadius = 5; // Match drawFood radius approx
-          const collisionDistSq = (player.x - food.x)**2 + (player.y - food.y)**2;
-          const radiiSumSq = (playerRadius + foodRadius)**2; // Maybe playerRadius^2 is enough?
-          if (collisionDistSq < playerRadius*playerRadius * 0.9) { // Eat if food center is inside player radius
-              player.mass += food.mass;
-              checkEarnedCoins(player.mass); // Check for farm coin gain
-              // Respawn one food elsewhere
-              food.x = Math.random() * WORLD_WIDTH;
-              food.y = Math.random() * WORLD_HEIGHT;
-              return true; // Keep the food object, just move it
-              // return false; // Remove eaten food - leads to empty world
+      // Update mass food movement for both offline & online
+      massFood.forEach(mf => {
+          if (!mf) return;
+          
+          // Apply velocity
+          mf.x += mf.dx;
+          mf.y += mf.dy;
+          
+          // Apply drag
+          mf.dx *= 0.98;
+          mf.dy *= 0.98;
+          
+          // Remove old mass food
+          if (Date.now() - mf.createdAt > 5000) {
+              mf.mass = 0; // Mark for removal
           }
-          return true; // Keep food
       });
       
-      // Add collision detection for mass food
-      massFood = massFood.filter(mf => {
-          const massFoodRadius = Math.max(2, Math.sqrt(mf.mass));
-          const collisionDistSq = (player.x - mf.x)**2 + (player.y - mf.y)**2;
-          if (collisionDistSq < playerRadius*playerRadius) {
-              player.mass += mf.mass;
+      // Remove expired mass food
+      massFood = massFood.filter(mf => mf && mf.mass > 0);
+      
+      // Apply mouse controls to player movement
+      if (player.mass > 0) { // Only if player is alive
+          // Calculate direction based on mouse
+          const dx = mouseX - canvas.width / 2;
+          const dy = mouseY - canvas.height / 2;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          
+          if (dist > 0) {
+              // Speed based on mass (bigger = slower)
+              const speed = 5 / (1 + player.mass / 1000);
+              
+              const normalizedDx = dx / dist;
+              const normalizedDy = dy / dist;
+              
+              // Update logical position
+              player.x += normalizedDx * speed;
+              player.y += normalizedDy * speed;
+              
+              // Keep within bounds
+              player.x = Math.max(0, Math.min(WORLD_WIDTH, player.x));
+              player.y = Math.max(0, Math.min(WORLD_HEIGHT, player.y));
+          }
+          
+          // Smooth position updates with linear interpolation
+          player.renderX = lerp(player.renderX, player.x, 0.1);
+          player.renderY = lerp(player.renderY, player.y, 0.1);
+          
+          // Check for earned coins - farming coin integration
+          if (!isNaN(player.mass)) {
               checkEarnedCoins(player.mass);
-              return false; // Remove eaten mass food
           }
-          return true; // Keep mass food
-      });
-      
-      // Also check if bots can eat mass food
-      for (const bot of bots) {
-          if (bot.mass <= 0) continue;
-          const botRadius = Math.sqrt(bot.mass / Math.PI) * 10;
-          
-          massFood = massFood.filter(mf => {
-              const massFoodRadius = Math.max(2, Math.sqrt(mf.mass));
-              const collisionDistSq = (bot.x - mf.x)**2 + (bot.y - mf.y)**2;
-              if (collisionDistSq < botRadius*botRadius) {
-                  bot.mass += mf.mass;
-                  return false; // Remove eaten mass food
-              }
-              return true; // Keep mass food
-          });
       }
       
-      // Player vs Bots & Bot vs Bots collision detection
-      handleEntityCollisions();
-
-      // Clean up dead bots from main array
-      bots = bots.filter(b => b.mass > 0);
-
-      // Build offline leaderboard with proper display
-      updateOfflineLeaderboard();
-
-      // Interpolate Player render position
-      player.renderX = lerp(player.renderX, player.x, INTERPOLATION_FACTOR);
-      player.renderY = lerp(player.renderY, player.y, INTERPOLATION_FACTOR);
-       // Interpolate bot render positions
-       bots.forEach(bot => {
-           if (bot.mass > 0) {
-              bot.renderX = lerp(bot.renderX, bot.x, INTERPOLATION_FACTOR * 0.5); // Slower lerp maybe
-              bot.renderY = lerp(bot.renderY, bot.y, INTERPOLATION_FACTOR * 0.5);
-           }
-       });
-
-  } else { // Online Mode
-      // Send Input to Server
-      if (socket && socket.connected) {
-          const worldMouseX = player.x + (mouseX - canvas.width / 2);
-          const worldMouseY = player.y + (mouseY - canvas.height / 2);
-          socket.emit('0', { x: worldMouseX, y: worldMouseY }); // '0' is the event name for player movement
-      }
-      // Interpolate Player render position based on logical position (prediction)
-      player.renderX = lerp(player.renderX, player.x, INTERPOLATION_FACTOR);
-      player.renderY = lerp(player.renderY, player.y, INTERPOLATION_FACTOR);
-      // Interpolate OTHER players based on server data
-      players.forEach(p => {
-          if (p.serverX !== undefined) {
-              p.renderX = lerp(p.renderX, p.serverX, INTERPOLATION_FACTOR);
-              p.renderY = lerp(p.renderY, p.serverY, INTERPOLATION_FACTOR);
-          } else {
-              p.renderX = p.x; p.renderY = p.y; // Fallback
-          }
-      });
-  }
-
-  // --- Rendering (Shared Logic) ---
-  try {
+      // Clear canvas with a dark background
       ctx.fillStyle = '#111827';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Make sure player has valid render coordinates
+      if (!player.renderX || !player.renderY || isNaN(player.renderX) || isNaN(player.renderY)) {
+          console.warn("[Noot.io Loop] Invalid camera position! Resetting.", { player });
+          // Reset camera to logical position
+          player.renderX = player.x || WORLD_WIDTH / 2;
+          player.renderY = player.y || WORLD_HEIGHT / 2;
+      }
 
       // Use player's interpolated render position for camera center
       let cameraX = player.renderX;
@@ -1386,11 +1207,11 @@ function gameLoop() {
       if (isNaN(cameraX) || isNaN(cameraY)) {
          console.warn("[Noot.io Loop] Invalid camera position! Resetting.", { player });
          // Reset camera to logical position if render is NaN
-         cameraX = player.x;
-         cameraY = player.y;
+         cameraX = player.x || WORLD_WIDTH / 2;
+         cameraY = player.y || WORLD_HEIGHT / 2;
          // Also reset render positions to prevent propagation
-         player.renderX = player.x;
-         player.renderY = player.y;
+         player.renderX = player.x || WORLD_WIDTH / 2;
+         player.renderY = player.y || WORLD_HEIGHT / 2;
       }
 
       // Draw food (shared)
@@ -1416,7 +1237,7 @@ function gameLoop() {
       // Draw other entities (Bots in offline, Players in online)
       const entitiesToDraw = isOfflineMode ? bots : players;
       entitiesToDraw.forEach(p => {
-           if (p.mass <= 0) return; // Don't draw dead entities
+           if (!p || p.mass <= 0) return; // Don't draw dead entities
           const entityDrawData = {
               ...p,
               renderX: p.renderX - cameraX + canvas.width / 2, // Adjust position relative to camera
@@ -1446,11 +1267,15 @@ function gameLoop() {
 
       // Draw leaderboard (Online) or Offline Stats
       if (!isOfflineMode) {
-           drawLeaderboard();
+           if (Array.isArray(leaderboard)) {
+               drawLeaderboard();
+           }
       } else {
            // Draw both stats and leaderboard in offline mode
            drawOfflineStats();
-           drawLeaderboard();
+           if (Array.isArray(leaderboard)) {
+               drawLeaderboard();
+           }
       }
 
   } catch (e) {
@@ -1646,6 +1471,9 @@ function setupModeButtons() {
 function startGame() {
     if (isGameRunning) return;
     
+    console.log("[Noot.io App] Starting game in mode:", isOfflineMode ? "Offline" : "Online");
+    
+    // Reset game state
     isGameRunning = true;
     
     // Show game area
@@ -1659,11 +1487,56 @@ function startGame() {
     // Clear game message when actively playing
     setGameMessage('');
     
-    // Start the appropriate game mode
-    if (gameMode === 'offline') {
-        initOfflineMode();
+    // Notify wrapper that game is starting
+    notifyWrapperOfGameStart(isOfflineMode ? 'offline' : 'online');
+    
+    // Initialize player 
+    player.mass = START_MASS;
+    player.x = WORLD_WIDTH / 2;
+    player.y = WORLD_HEIGHT / 2;
+    player.renderX = player.x;
+    player.renderY = player.y;
+    
+    // Initialize game based on current mode
+    if (isOfflineMode) {
+        // Reset offline game state (clear bots, foods)
+        bots = [];
+        foods = [];
+        leaderboard = [];
+        massFood = [];
+        
+        // Initialize offline game entities
+        for (let i = 0; i < INITIAL_FOODS; i++) {
+            spawnOfflineFood();
+        }
+        
+        for (let i = 0; i < OFFLINE_BOTS; i++) {
+            spawnOfflineBot(i, i < 3); // First 3 bots are "big bots"
+        }
+        
+        updateOfflineLeaderboard();
     } else {
-        initOnlineMode();
+        // For online mode, ensure socket is connected
+        if (!socket || !socket.connected) {
+            console.warn("[Noot.io App] Socket not connected, attempting to reconnect");
+            initOnlineMode();
+            
+            // Wait for socket connection before continuing
+            setTimeout(() => {
+                if (socket && socket.connected) {
+                    console.log("[Noot.io App] Socket reconnected, starting game");
+                    if (socket) socket.emit('respawn', { name: player.name });
+                } else {
+                    console.error("[Noot.io App] Failed to connect socket, defaulting to offline mode");
+                    isOfflineMode = true;
+                    startGame(); // Recursively call with offline mode
+                }
+            }, 1000);
+            return;
+        }
+        
+        // Emit respawn event to server
+        if (socket) socket.emit('respawn', { name: player.name });
     }
 }
 
