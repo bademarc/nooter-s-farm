@@ -114,11 +114,19 @@ function setupSocketListeners() {
 
   socket.on('disconnect', (reason) => {
     console.log('[Noot.io App] Socket disconnected:', reason);
-    // TODO: Handle disconnection - maybe show message or attempt reconnect
+    isGameRunning = false; // Stop game logic
     players = []; // Clear local player list on disconnect
     foods = [];
+    massFood = []; // Clear mass food too
     player = {}; // Reset local player
-    // Consider showing the start menu again
+    // Show start menu again
+    const startMenu = document.getElementById('start-menu');
+    const gameCanvas = document.getElementById('game-canvas');
+    if (startMenu) startMenu.style.display = 'block';
+    if (gameCanvas) gameCanvas.style.display = 'none';
+    // Hide restart button if visible
+    const restartButton = document.getElementById('restart-button');
+    if (restartButton) restartButton.style.display = 'none';
   });
 
   // Listen for the main game state update
@@ -228,17 +236,19 @@ function setupSocketListeners() {
         renderX: p.x,
         renderY: p.y,
         serverX: p.x,
-        serverY: p.x
+        serverY: p.serverY // FIX: should be serverY, was p.x
     }));
 
     foods = data.foods || [];
     massFood = data.massFood || [];
     leaderboard = []; // Leaderboard comes via 'update'
     lastKnownMass = player.mass || 0;
+    isGameRunning = true; // Allow game loop to run
+
     console.log("[Noot.io App] My Player Initialized:", player);
     console.log("[Noot.io App] Initial Other Players:", players);
 
-     // Hide menu, show canvas AFTER initGame
+    // Hide menu, show canvas AFTER initGame
     const startMenu = document.getElementById('start-menu');
     const gameCanvas = document.getElementById('game-canvas');
     if (startMenu) startMenu.style.display = 'none';
@@ -336,6 +346,8 @@ function drawLeaderboard() {
   });
 }
 
+let isGameRunning = false; // Flag to control game loop execution
+
 // Game loop
 function gameLoop() {
   if (!canvas || !ctx) {
@@ -343,11 +355,16 @@ function gameLoop() {
     return;
   }
 
-  // Only run game logic if player object is initialized (post-initGame)
-  if (!player || !player.id) {
-     // Still draw background if needed, or just wait
-     ctx.fillStyle = '#111827';
+  // Only run game logic/rendering if connected and initialized
+  if (!isGameRunning || !player || !player.id) {
+     ctx.fillStyle = '#111827'; // Draw background
      ctx.fillRect(0, 0, canvas.width, canvas.height);
+     // Optional: Draw a "Connecting..." or "Disconnected" message
+     if (!socket || !socket.connected) {
+         drawText('Disconnected. Reconnecting...', canvas.width / 2, canvas.height / 2, '#AAAAAA', 20);
+     } else if (!isGameRunning) {
+         drawText('Waiting for server...', canvas.width / 2, canvas.height / 2, '#AAAAAA', 20);
+     }
      requestAnimationFrame(gameLoop);
      return;
   }
