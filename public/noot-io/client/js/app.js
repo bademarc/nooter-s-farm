@@ -552,7 +552,7 @@ function drawPlayer(p) {
 }
 // --- End Modified drawPlayer ---
 
-// This is the correct drawFood function
+// Keep this one:
 function drawFood(food) {
   // Radius calculation might differ from player, keep simple for now
   drawCircle(food.x, food.y, 5, food.color || '#8BC34A');

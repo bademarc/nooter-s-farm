@@ -4,23 +4,29 @@
 // Overwrite socket.io to simulate a local server
 class MockSocket {
   constructor() {
-    this.eventHandlers = {};
-    this.player = null;
-    this.players = []; // Includes player + bots
-    this.foods = [];
-    this.leaderboard = [];
-    this.worldWidth = 4000;
-    this.worldHeight = 4000;
-    this.foodCount = 200;
-    this.botCount = 30; // Set to 30
-    this.initialized = false;
-    this.intervalId = null; // To store interval ID for cleanup
+    try {
+      this.eventHandlers = {};
+      this.player = null;
+      this.players = []; // Includes player + bots
+      this.foods = [];
+      this.leaderboard = [];
+      this.worldWidth = 4000;
+      this.worldHeight = 4000;
+      this.foodCount = 200;
+      this.botCount = 30; // Set to 30
+      this.initialized = false;
+      this.intervalId = null; // To store interval ID for cleanup
 
-    console.log("[MockSocket] Initialized");
+      console.log("[MockSocket] Initialized");
 
-    // Show server status message immediately for offline mode
-    const serverStatus = document.getElementById('server-status');
-    if (serverStatus) serverStatus.classList.remove('hidden');
+      // Show server status message immediately for offline mode
+      const serverStatus = document.getElementById('server-status');
+      if (serverStatus) serverStatus.classList.remove('hidden');
+
+    } catch (error) {
+      console.error("[MockSocket] Error during constructor (possibly storage access):", error);
+      // Optionally display an error to the user that offline mode might be limited
+    }
   }
 
   on(event, callback) {
