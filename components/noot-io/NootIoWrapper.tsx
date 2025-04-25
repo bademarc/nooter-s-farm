@@ -110,10 +110,10 @@ const NootIoWrapper: React.FC<NootIoWrapperProps> = ({ farmCoins, addFarmCoins }
         ref={iframeRef}
         src="/noot-io/client/index.html"
         className="w-full h-full border-none"
-        style={{ flex: 1, minHeight: '600px' }}
+        style={{ flex: 1, minHeight: '600px', position: 'relative', zIndex: 10 }}
         title="Noot.io Game"
         allowFullScreen
-        sandbox="allow-scripts allow-same-origin allow-storage-access-by-user-activation"
+        sandbox="allow-scripts allow-same-origin"
         onLoad={handleIframeLoad}
       />
       <div className="mt-4 text-white text-center text-sm">
