@@ -4,7 +4,7 @@ import Link from "next/link"
 import { Menu } from "lucide-react"
 import { Button } from "../../../components/ui/button"
 import FarmFeed from "../../../components/farm-feed"
-import EventsCarousel from "../../../components/events-carousel"
+import { EventsCarousel } from "../../../components/events-carousel"
 import FriendSuggestions from "../../../components/friend-suggestions"
 import AchievementShowcase from "../../../components/achievement-showcase"
 import { PulseNotification } from "../../../components/ui/pulse-notification"
@@ -48,7 +48,7 @@ export function SocialHubPage({
     toast({
       title: "Daily Reward Claimed!",
       description: "Come back tomorrow for another reward!",
-      variant: "success",
+      variant: "default",
     })
     
     setShowDailyReward(false)

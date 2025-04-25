@@ -112,7 +112,7 @@ export function EventsCarousel() {
       toast({
         title: "Event Registration Successful!",
         description: `You've registered for ${events.find((e) => e.id === eventId)?.title}!`,
-        variant: "success",
+        variant: "default",
       })
     } else {
       setRegisteredEvents(registeredEvents.filter((id) => id !== eventId))
