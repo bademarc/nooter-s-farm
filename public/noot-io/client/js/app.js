@@ -1,8 +1,9 @@
-var io = require('socket.io-client');
-var render = require('./render');
-var ChatClient = require('./chat-client');
-var Canvas = require('./canvas');
-var global = require('./global');
+// Remove Node.js require calls - these scripts are now loaded globally via index.html
+// var io = require('socket.io-client');
+// var render = require('./render');
+// var ChatClient = require('./chat-client');
+// var Canvas = require('./canvas');
+// var global = require('./global');
 
 var playerNameInput = document.getElementById('playerNameInput');
 var socket;
